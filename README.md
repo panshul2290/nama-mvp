@@ -32,7 +32,8 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    | Variable | Where it's used |
    |---|---|
    | `NEXT_PUBLIC_SUPABASE_URL` | browser + server |
-   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | browser + server (anon or publishable key; RLS protects the data) |
+   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | browser + server (publishable key; the legacy anon key works too, also accepted as `NEXT_PUBLIC_SUPABASE_ANON_KEY`). RLS protects the data |
+   | `DATABASE_URL` | `npm run db:apply` only (applies the migration with `pg`) |
    | `NEXT_PUBLIC_ENABLE_SIMULATION` | `true` shows the driver's *Simulate drive* switch (dev only) |
    | `SUPABASE_SERVICE_ROLE_KEY` | **`npm run seed` only.** Never referenced by app code; never prefix it with `NEXT_PUBLIC_` |
 
