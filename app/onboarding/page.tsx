@@ -2,12 +2,19 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Loading, TopBar } from "@/components/Shell";
+import { SERVICE_SHORT } from "@/components/OrderBits";
+import { Loading } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
 import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 
 const CAPACITIES = [3000, 5000, 7000, 10000];
+const TYPE_NOTE: Record<ServiceType, string> = {
+  DW: "Potable water from NWS filling stations",
+  WW: "Septic tank pickup, discharged at an approved STP",
+  TE: "For irrigation and construction — not for drinking",
+};
+const COLOR: Record<ServiceType, string> = { DW: "var(--dw)", WW: "var(--ww)", TE: "var(--te)" };
 
 export default function DriverOnboarding() {
   const router = useRouter();
@@ -47,50 +54,49 @@ export default function DriverOnboarding() {
   if (!profile) return <Loading />;
 
   return (
-    <>
-      <TopBar subtitle="Driver" />
-      <main className="screen">
-        <div className="ptop">
-          <div>
-            <h3>Your tanker</h3>
-            <span className="sub">You’ll only see requests your tanker can serve.</span>
-          </div>
+    <main className="screen">
+      <div className="rq-h">
+        <div>
+          <h3>Your tanker</h3>
+          <small>You’ll only see requests your tanker can serve</small>
         </div>
-        <form onSubmit={submit}>
-          {error && <div className="note bad">{error}</div>}
-          <div className="fld">
-            <label htmlFor="plate">Plate number</label>
-            <input id="plate" required minLength={2} maxLength={20} placeholder="e.g. 1234 AB" value={plate} onChange={(e) => setPlate(e.target.value)} />
-          </div>
-          <div className="fld">
-            <span className="lbl">Service type</span>
-            <div className="seg" role="radiogroup" aria-label="Service type">
-              {(Object.keys(SERVICE_LABEL) as ServiceType[]).map((t) => (
-                <button key={t} type="button" role="radio" aria-checked={type === t} className={type === t ? "on" : ""} onClick={() => setType(t)}>
-                  {t}
-                </button>
-              ))}
-            </div>
-            <p className="mut small" style={{ marginTop: -6 }}>
-              <span className={`tag ${type}`}>{SERVICE_LABEL[type]}</span>
-            </p>
-          </div>
-          <div className="fld">
-            <label htmlFor="cap">Capacity (gallons)</label>
-            <div className="opts" style={{ marginBottom: 8 }}>
-              {CAPACITIES.map((c) => (
-                <button key={c} type="button" className={`opt ${capacity === c ? "on" : ""}`} onClick={() => setCapacity(c)}>
-                  {c.toLocaleString()}
-                </button>
-              ))}
-            </div>
-            <input id="cap" type="number" min={100} max={20000} step={50} required value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} />
-          </div>
-          <button className="cta" disabled={busy}>
-            {busy ? "Saving…" : "Save and continue"}
-          </button>
-        </form>
-      </main>
-    </>
+      </div>
+      <form onSubmit={submit}>
+        {error && <div className="banner badb">{error}</div>}
+        <div className="fld">
+          <label htmlFor="plate">Plate number</label>
+          <input id="plate" required minLength={2} maxLength={20} placeholder="e.g. OM 4821 AR" value={plate} onChange={(e) => setPlate(e.target.value)} />
+        </div>
+
+        <h4 className="ch-sec">Service</h4>
+        <div className="svc" role="radiogroup" aria-label="Service type">
+          {(Object.keys(SERVICE_LABEL) as ServiceType[]).map((t) => (
+            <button key={t} type="button" role="radio" aria-checked={type === t} className={type === t ? "on" : ""} onClick={() => setType(t)}>
+              <i style={{ background: COLOR[t] }} />
+              <div>
+                <b>{SERVICE_SHORT[t]}</b>
+                <span>{TYPE_NOTE[t]}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <h4 className="ch-sec">Capacity (gallons)</h4>
+        <div className="opts" style={{ marginBottom: 10 }}>
+          {CAPACITIES.map((c) => (
+            <button key={c} type="button" className={`opt ${capacity === c ? "on" : ""}`} onClick={() => setCapacity(c)}>
+              {c.toLocaleString()}
+            </button>
+          ))}
+        </div>
+        <div className="fld">
+          <label htmlFor="cap">Or enter capacity</label>
+          <input id="cap" type="number" min={100} max={20000} step={50} required value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} />
+        </div>
+        <button className="cta" disabled={busy}>
+          {busy ? "Saving…" : "Save and continue"}
+        </button>
+      </form>
+    </main>
   );
 }

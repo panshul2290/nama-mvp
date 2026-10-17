@@ -1,39 +1,48 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Icon, type IconName } from "@/components/icons";
 
-export function Brand() {
+export type Tab = { href: string; label: string; icon: IconName; badge?: number; match?: (path: string) => boolean };
+
+// Bottom tab bar from the prototype's phone screens.
+export function TabBar({ tabs }: { tabs: Tab[] }) {
+  const path = usePathname();
   return (
-    <span className="brand">
-      <i aria-hidden="true" />
-      Nama Tanker
-    </span>
+    <nav className="tabbar" aria-label="Sections">
+      {tabs.map((t) => {
+        const on = t.match ? t.match(path) : path === t.href;
+        return (
+          <Link key={t.href} href={t.href} className={on ? "on" : ""} aria-current={on ? "page" : undefined}>
+            <Icon name={t.icon} />
+            {t.label}
+            {t.badge ? <span className="badge">{t.badge}</span> : null}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
-export function TopBar({ subtitle, right }: { subtitle?: string; right?: React.ReactNode }) {
-  const router = useRouter();
-  async function signOut() {
-    await supabase().auth.signOut();
-    router.replace("/login");
+export function BackButton({ href, onClick, label = "Back" }: { href?: string; onClick?: () => void; label?: string }) {
+  if (href) {
+    return (
+      <Link href={href} className="rb" aria-label={label}>
+        <Icon name="back" />
+      </Link>
+    );
   }
   return (
-    <header className="topbar">
-      <Brand />
-      {subtitle && <small>{subtitle}</small>}
-      <span className="sp" />
-      {right}
-      <button className="lk small" onClick={signOut}>
-        Sign out
-      </button>
-    </header>
+    <button type="button" className="rb" aria-label={label} onClick={onClick}>
+      <Icon name="back" />
+    </button>
   );
 }
 
 export function Loading({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="spin" role="status">
+    <div className="spin-page" role="status">
       {label}
     </div>
   );

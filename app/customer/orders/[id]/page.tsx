@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { useCustomer } from "@/components/CustomerContext";
+import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
-import { OrderPriceLines, StatusPill, Timeline, TypeTag } from "@/components/OrderBits";
-import { Loading, TopBar } from "@/components/Shell";
-import { useProfile } from "@/components/useProfile";
+import { OrderBill, SERVICE_SHORT, StatusPill, Stepper } from "@/components/OrderBits";
+import { BackButton, Loading } from "@/components/Shell";
 import { useToast } from "@/components/useToast";
 import { errorCode, friendlyError } from "@/lib/errors";
 import { announceGone } from "@/lib/feed";
-import { distanceKm } from "@/lib/geo";
+import { DEFAULT_CENTER, distanceKm } from "@/lib/geo";
+import { etaMinutes, hhmm, initials, kmText, orderCode } from "@/lib/format";
 import { supabase } from "@/lib/supabase/client";
 import type { LngLat, Order, OrderLocation, Tanker } from "@/lib/types";
 
@@ -18,7 +20,7 @@ const ON_JOB = ["accepted", "arriving", "arrived"];
 
 export default function OrderTracking() {
   const { id } = useParams<{ id: string }>();
-  const profile = useProfile("customer");
+  const profile = useCustomer();
   const toast = useToast();
   const [order, setOrder] = useState<Order | null>(null);
   const [loc, setLoc] = useState<OrderLocation | null>(null);
@@ -40,7 +42,6 @@ export default function OrderTracking() {
 
   // Order row: initial load, live updates, and a catch-up on tab focus.
   useEffect(() => {
-    if (!profile) return;
     load();
     const db = supabase();
     const ch = db
@@ -57,7 +58,7 @@ export default function OrderTracking() {
       document.removeEventListener("visibilitychange", onFocus);
       db.removeChannel(ch);
     };
-  }, [profile, id, load]);
+  }, [profile.id, id, load]);
 
   // Tanker position, only while a driver is on the job (RLS allows nothing else).
   const driverId = order && ON_JOB.includes(order.status) ? order.driver_id : null;
@@ -94,80 +95,126 @@ export default function OrderTracking() {
 
   if (missing) {
     return (
-      <>
-        <TopBar subtitle="Order" />
-        <main className="screen">
-          <div className="empty">Order not found.</div>
-          <Link href="/customer" className="cta sec">
-            Back
-          </Link>
-        </main>
-      </>
+      <main className="screen">
+        <div className="rq-h">
+          <BackButton href="/customer/orders" />
+          <div>
+            <h3>Order not found</h3>
+          </div>
+        </div>
+      </main>
     );
   }
-  if (!profile || !order) return <Loading />;
+  if (!order) return <Loading />;
 
-  const tanker = driverId && tankerFix?.driverId === driverId ? tankerFix.pos : null;
+  const code = orderCode(order.id);
   const dest = loc ? { lat: loc.lat, lng: loc.lng } : null;
+  const tanker = driverId && tankerFix?.driverId === driverId ? tankerFix.pos : null;
   const away = tanker && dest ? distanceKm(tanker, dest) : null;
-  const finished = order.status === "delivered" || order.status === "cancelled";
+  const place = [order.area, loc?.address].filter(Boolean).join(" · ");
+  const subtitle = `${SERVICE_SHORT[order.service_type]} · ${order.gallons.toLocaleString()} gal · ${place}`;
+
+  // Finished orders: no map, just the outcome and the bill.
+  if (order.status === "delivered" || order.status === "cancelled") {
+    return (
+      <main className="screen">
+        <div className="rq-h">
+          <BackButton href="/customer/orders" />
+          <div>
+            <h3>{code}</h3>
+            <small>{subtitle}</small>
+          </div>
+        </div>
+        {order.status === "delivered" ? (
+          <div className="done-hero">
+            <Icon name="check" />
+            <div>
+              <b>Delivered</b>
+              <small>
+                {hhmm(order.delivered_at)}
+                {order.driver_name ? ` · ${order.driver_name}` : ""}
+                {order.tanker_plate ? ` · ${order.tanker_plate}` : ""}
+              </small>
+            </div>
+          </div>
+        ) : (
+          <div className="banner">You cancelled this request{order.cancelled_at ? ` at ${hhmm(order.cancelled_at)}` : ""}.</div>
+        )}
+        <div className="rq-card pad">
+          <OrderBill order={order} />
+        </div>
+        <Link href={`/customer/request?type=${order.service_type}`} className="cta">
+          Request again
+        </Link>
+      </main>
+    );
+  }
 
   return (
-    <>
-      <TopBar subtitle={profile.full_name || "Customer"} />
-      <main className="screen flush">
-        <Map center={dest ?? { lat: 23.588, lng: 58.3829 }} destination={dest} tanker={tanker} follow className="tall" />
-        <section className="sheet">
-          <div className="ptop">
+    <main className="screen flush">
+      <div className="tr-map">
+        <Map center={dest ?? DEFAULT_CENTER} destination={dest} tanker={tanker} follow padBottom={30} />
+        {order.status === "requested" && <span className="radar" aria-hidden="true" />}
+        <Link href="/customer" className="tr-chip">
+          <Icon name="back" />
+          <b>{code}</b>
+        </Link>
+      </div>
+
+      <div className="sheet2">
+        <i className="grab" aria-hidden="true" />
+        {order.status === "requested" ? (
+          <div className="srch-row">
+            <span className="spin sm" role="img" aria-label="Searching" />
             <div>
-              <h3>
-                <TypeTag type={order.service_type} /> {order.gallons.toLocaleString()} gal
-              </h3>
-              <span className="sub">
-                {order.area}
-                {loc?.address ? ` · ${loc.address}` : ""}
-              </span>
+              <h3 className="tj-t">Finding a permitted tanker near you</h3>
+              <p className="mut" style={{ margin: 0 }}>
+                We’ll update this screen the moment a driver accepts.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="tr-eta">
+            <div>
+              <small>{order.status === "arrived" ? "Your tanker" : "Tanker is"}</small>
+              <strong>
+                {order.status === "arrived" ? "At your door" : away != null ? kmText(away) : order.status === "accepted" ? "Starting" : "On the way"}
+              </strong>
+              {away != null && order.status !== "arrived" && <small>about {etaMinutes(away)} min away</small>}
             </div>
             <StatusPill status={order.status} />
           </div>
+        )}
 
-          {order.status === "cancelled" ? (
-            <div className="note bad">You cancelled this request.</div>
-          ) : (
-            <div className="card">
-              <Timeline order={order} />
-            </div>
-          )}
+        <Stepper order={order} />
 
-          {order.tanker_plate && (
-            <div className="card hl">
-              <div className="row">
-                <div>
-                  <h4>{order.driver_name ?? "Your driver"}</h4>
-                  <p>{away != null && !finished ? `${away < 1 ? `${Math.round(away * 1000)} m` : `${away.toFixed(1)} km`} away` : "Assigned driver"}</p>
-                </div>
-                <span className="plate">{order.tanker_plate}</span>
+        {order.tanker_plate && (
+          <div className="dcard">
+            <div className="dc-top">
+              <span className="av">{initials(order.driver_name)}</span>
+              <div>
+                <b>{order.driver_name ?? "Your driver"}</b>
+                <small>{SERVICE_SHORT[order.service_type]} tanker</small>
               </div>
+              <span className="plate">{order.tanker_plate}</span>
             </div>
-          )}
-
-          <div className="card">
-            <OrderPriceLines order={order} />
           </div>
+        )}
 
-          {order.status === "requested" && (
+        <div className="rq-card pad">
+          <OrderBill order={order} />
+        </div>
+
+        {order.status === "requested" && (
+          <div className="tr-act one">
             <button className="cta danger" disabled={busy} onClick={cancel}>
-              {busy ? "Cancelling…" : "Cancel request"}
+              {busy ? "Cancelling…" : "Cancel order"}
             </button>
-          )}
-          {finished && (
-            <Link href="/customer" className="cta">
-              New request
-            </Link>
-          )}
-        </section>
-        {toast.node}
-      </main>
-    </>
+          </div>
+        )}
+        <p className="tr-note">{place}</p>
+      </div>
+      {toast.node}
+    </main>
   );
 }

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Brand } from "@/components/Shell";
+import { NamaLogo } from "@/components/icons";
+import { BackButton } from "@/components/Shell";
 import { supabase } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
 
@@ -39,49 +40,44 @@ export default function SignupPage() {
   if (sentTo) {
     return (
       <main className="screen">
-        <Brand />
-        <div className="hero">
+        <div className="dlogin">
+          <NamaLogo className="ph-logo" />
           <h2>Check your email</h2>
           <p>
             We sent a confirmation link to <b>{sentTo}</b>. Open it on this device to finish signing up.
           </p>
+          <Link href="/login" className="cta sec">
+            Back to sign in
+          </Link>
         </div>
-        <Link href="/login" className="cta sec">
-          Back to sign in
-        </Link>
       </main>
     );
   }
 
   return (
     <main className="screen">
-      <div className="ptop">
-        <h3>Create account</h3>
-        <Link href="/login" className="small">
-          Sign in
-        </Link>
+      <div className="rq-h">
+        <BackButton href="/login" />
+        <div>
+          <h3>Create account</h3>
+          <small>{role === "customer" ? "Order water to your door" : "You’ll add your tanker next"}</small>
+        </div>
       </div>
       <form onSubmit={submit}>
-        <div className="fld">
-          <span className="lbl">I am a</span>
-          <div className="seg" role="radiogroup" aria-label="Account type">
-            {(["customer", "driver"] as Role[]).map((r) => (
-              <button key={r} type="button" role="radio" aria-checked={role === r} className={role === r ? "on" : ""} onClick={() => setRole(r)}>
-                {r === "customer" ? "Customer" : "Driver"}
-              </button>
-            ))}
-          </div>
-          <p className="mut small" style={{ marginTop: -6 }}>
-            {role === "customer" ? "Order drinking water, wastewater pickup or treated effluent." : "You’ll add your tanker details next."}
-          </p>
+        <div className="seg" role="radiogroup" aria-label="Account type">
+          {(["customer", "driver"] as Role[]).map((r) => (
+            <button key={r} type="button" role="radio" aria-checked={role === r} className={role === r ? "on" : ""} onClick={() => setRole(r)}>
+              {r === "customer" ? "Customer" : "Driver"}
+            </button>
+          ))}
         </div>
-        {error && <div className="note bad">{error}</div>}
+        {error && <div className="banner badb">{error}</div>}
         <div className="fld">
           <label htmlFor="name">Full name</label>
           <input id="name" required maxLength={120} autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
         </div>
         <div className="fld">
-          <label htmlFor="phone">Mobile (optional)</label>
+          <label htmlFor="phone">Mobile number (optional)</label>
           <input id="phone" type="tel" maxLength={32} autoComplete="tel" dir="ltr" placeholder="+968" value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div className="fld">

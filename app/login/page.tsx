@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Brand } from "@/components/Shell";
+import { NamaLogo } from "@/components/icons";
 import { supabase } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -25,33 +25,28 @@ export default function LoginPage() {
 
   return (
     <main className="screen">
-      <Brand />
-      <div className="hero">
-        <div className="tank" aria-hidden="true">
-          <i style={{ background: "var(--dw)" }} />
-          <i style={{ background: "var(--ww)" }} />
-          <i style={{ background: "var(--te)" }} />
-        </div>
-        <h2>Water to your door, tracked live.</h2>
-        <p>Sign in to request a tanker or pick up jobs.</p>
+      <div className="dlogin">
+        <NamaLogo className="ph-logo" />
+        <h2>Water tankers you can trust, on time</h2>
+        <p>Order drinking water, wastewater pickup or treated water from permitted tankers — or sign in as a driver to pick up jobs.</p>
+        <form onSubmit={submit}>
+          {error && <div className="banner badb">{error}</div>}
+          <div className="fld">
+            <label htmlFor="email">Email</label>
+            <input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="fld">
+            <label htmlFor="password">Password</label>
+            <input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          <button className="cta" disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+        <Link href="/signup" className="cta sec">
+          Create account
+        </Link>
       </div>
-      <form onSubmit={submit}>
-        {error && <div className="note bad">{error}</div>}
-        <div className="fld">
-          <label htmlFor="email">Email</label>
-          <input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        </div>
-        <div className="fld">
-          <label htmlFor="password">Password</label>
-          <input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-        </div>
-        <button className="cta" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
-      <Link href="/signup" className="cta sec">
-        Create an account
-      </Link>
     </main>
   );
 }

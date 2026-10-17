@@ -1,3 +1,5 @@
+import { Icon } from "@/components/icons";
+import { hhmm } from "@/lib/format";
 import { omr, omrValue, SERVICE_LABEL, type Quote, type ServiceType } from "@/lib/pricing";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -10,86 +12,105 @@ export const STATUS_TEXT: Record<OrderStatus, [string, "act" | "ok" | "warn" | "
   cancelled: ["Cancelled", "bad"],
 };
 
+export const SERVICE_SHORT: Record<ServiceType, string> = { DW: "Drinking water", WW: "Wastewater", TE: "Treated water" };
+
 export function StatusPill({ status }: { status: OrderStatus }) {
   const [text, tone] = STATUS_TEXT[status];
   return <span className={`st ${tone}`}>{text}</span>;
 }
 
-export function TypeTag({ type, long }: { type: ServiceType; long?: boolean }) {
-  return <span className={`tag ${type}`}>{long ? SERVICE_LABEL[type] : type}</span>;
+export function TypeTag({ type }: { type: ServiceType }) {
+  return <span className={`tag ${type}`}>{SERVICE_SHORT[type]}</span>;
 }
 
-const hhmm = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
-
-const STEPS: { key: OrderStatus; label: string; now: string; at: keyof Order }[] = [
-  { key: "requested", label: "Requested", now: "Looking for a driver near you", at: "created_at" },
-  { key: "accepted", label: "Driver accepted", now: "Driver accepted your request", at: "accepted_at" },
-  { key: "arriving", label: "On the way", now: "Tanker is on the way", at: "arriving_at" },
-  { key: "arrived", label: "Arrived", now: "Tanker has arrived", at: "arrived_at" },
-  { key: "delivered", label: "Delivered", now: "Delivered", at: "delivered_at" },
+const STEPS: { key: OrderStatus; label: string; at: keyof Order }[] = [
+  { key: "requested", label: "Requested", at: "created_at" },
+  { key: "accepted", label: "Accepted", at: "accepted_at" },
+  { key: "arriving", label: "On the way", at: "arriving_at" },
+  { key: "arrived", label: "Arrived", at: "arrived_at" },
+  { key: "delivered", label: "Delivered", at: "delivered_at" },
 ];
 
-export function Timeline({ order }: { order: Order }) {
-  const idx = STEPS.findIndex((s) => s.key === order.status);
+export function stepIndex(status: OrderStatus) {
+  return status === "delivered" ? STEPS.length : STEPS.findIndex((s) => s.key === status) + 1;
+}
+
+/** Horizontal 5-step tracker (prototype .tlh). */
+export function Stepper({ order }: { order: Order }) {
+  const done = stepIndex(order.status); // steps completed so far
   return (
-    <ul className="tl">
+    <div className="tlh">
       {STEPS.map((s, i) => {
-        const state = order.status === "delivered" || i < idx ? "done" : i === idx ? "cur" : "";
+        const state = i < done ? "done" : i === done && order.status !== "cancelled" ? "cur" : "";
         const t = hhmm(order[s.at] as string | null);
         return (
-          <li key={s.key} className={state}>
-            {state === "cur" && order.status !== "delivered" ? s.now : s.label}
-            {t && state && <small>{t}</small>}
-          </li>
+          <div key={s.key} className={state}>
+            <i>{state === "done" && <Icon name="check" />}</i>
+            <b>{s.label}</b>
+            <small>{t || (state === "cur" ? "now" : "")}</small>
+          </div>
         );
       })}
-    </ul>
+    </div>
   );
 }
 
-export function PriceLines({ quote, gallons }: { quote: Quote; gallons: number }) {
+/** 5-segment progress bar for the active-order card. */
+export function Progress({ status }: { status: OrderStatus }) {
+  const done = stepIndex(status);
   return (
-    <ul className="lines">
-      <li>
-        <span>Water · {gallons.toLocaleString()} gal</span>
-        <span>{omr(quote.water)}</span>
-      </li>
-      <li>
+    <span className="seg5" aria-hidden="true">
+      {STEPS.map((s, i) => (
+        <i key={s.key} className={i < done ? "on" : i === done ? "half" : ""} />
+      ))}
+    </span>
+  );
+}
+
+export function Bill({ quote }: { quote: Quote }) {
+  return (
+    <div className="bill">
+      <div>
+        <span>Water charge</span>
+        <span>{(quote.water / 1000).toFixed(3)}</span>
+      </div>
+      <div>
         <span>Delivery fee</span>
-        <span>{omr(quote.fee)}</span>
-      </li>
-      <li>
+        <span>{(quote.fee / 1000).toFixed(3)}</span>
+      </div>
+      <div>
         <span>VAT 5%</span>
-        <span>{omr(quote.vat)}</span>
-      </li>
-      <li className="total">
+        <span>{(quote.vat / 1000).toFixed(3)}</span>
+      </div>
+      <div className="tot">
         <span>Total</span>
         <span>{omr(quote.total)}</span>
-      </li>
-    </ul>
+      </div>
+    </div>
   );
 }
 
-export function OrderPriceLines({ order }: { order: Order }) {
+export function OrderBill({ order }: { order: Order }) {
   return (
-    <ul className="lines">
-      <li>
-        <span>Water · {order.gallons.toLocaleString()} gal</span>
-        <span>{omrValue(order.water_charge)}</span>
-      </li>
-      <li>
+    <div className="bill">
+      <div>
+        <span>Water charge · {order.gallons.toLocaleString()} gal</span>
+        <span>{Number(order.water_charge).toFixed(3)}</span>
+      </div>
+      <div>
         <span>Delivery fee</span>
-        <span>{omrValue(order.delivery_fee)}</span>
-      </li>
-      <li>
+        <span>{Number(order.delivery_fee).toFixed(3)}</span>
+      </div>
+      <div>
         <span>VAT 5%</span>
-        <span>{omrValue(order.vat)}</span>
-      </li>
-      <li className="total">
+        <span>{Number(order.vat).toFixed(3)}</span>
+      </div>
+      <div className="tot">
         <span>Total</span>
         <span>{omrValue(order.total)}</span>
-      </li>
-    </ul>
+      </div>
+    </div>
   );
 }
+
+export { SERVICE_LABEL };

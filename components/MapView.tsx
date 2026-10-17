@@ -18,7 +18,8 @@ const OSM_STYLE: maplibregl.StyleSpecification = {
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     },
   },
-  layers: [{ id: "osm", type: "raster", source: "osm" }],
+  // Muted to sit closer to the prototype's pale schematic map.
+  layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.45, "raster-contrast": -0.08, "raster-brightness-min": 0.06 } }],
 };
 
 const PIN_SVG = `<svg viewBox="0 0 30 40" width="30" height="40" aria-hidden="true"><path d="M15 39s13-13.2 13-23.5C28 7.5 22.2 1.5 15 1.5S2 7.5 2 15.5C2 25.8 15 39 15 39z" fill="#0A7C88" stroke="#fff" stroke-width="2.5"/><circle cx="15" cy="15.5" r="5" fill="#fff"/></svg>`;
@@ -44,11 +45,12 @@ type Props = {
   /** Keep destination + tanker/me in view as they change. */
   follow?: boolean;
   hint?: string;
-  className?: string;
   onLocate?: () => void;
+  /** Extra bottom padding when framing, e.g. for a sheet overlapping the map. */
+  padBottom?: number;
 };
 
-export default function MapView({ center, pick, destination, tanker, me, follow, hint, className, onLocate }: Props) {
+export default function MapView({ center, pick, destination, tanker, me, follow, hint, onLocate, padBottom = 0 }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const pickMarker = useRef<maplibregl.Marker | null>(null);
@@ -71,7 +73,6 @@ export default function MapView({ center, pick, destination, tanker, me, follow,
       zoom: 14,
       attributionControl: { compact: true },
     });
-    m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     m.on("click", (e) => onPick.current?.({ lat: e.lngLat.lat, lng: e.lngLat.lng }));
     map.current = m;
     return () => {
@@ -172,16 +173,16 @@ export default function MapView({ center, pick, destination, tanker, me, follow,
       return;
     }
     const b = new maplibregl.LngLatBounds(toArr(destination), toArr(destination)).extend(toArr(other));
-    m.fitBounds(b, { padding: 70, maxZoom: 16, duration: 800 });
-  }, [follow, destination?.lat, destination?.lng, tanker?.lat, tanker?.lng, me?.lat, me?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+    m.fitBounds(b, { padding: { top: 70, left: 50, right: 50, bottom: 50 + padBottom }, maxZoom: 16, duration: 800 });
+  }, [follow, padBottom, destination?.lat, destination?.lng, tanker?.lat, tanker?.lng, me?.lat, me?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className={`map ${className ?? ""}`}>
+    <div className="mapfill">
       <div ref={box} className="ml" />
       {hint && <div className="hint">{hint}</div>}
       {onLocate && (
         <button type="button" className="locate" onClick={onLocate}>
-          ◎ My location
+          ◎ Use my location
         </button>
       )}
     </div>

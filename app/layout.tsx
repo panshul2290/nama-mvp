@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Nunito_Sans } from "next/font/google";
+import { AppFrame } from "@/components/AppFrame";
 import "./globals.css";
 
 const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["400", "600", "700", "800"], variable: "--font-nunito" });
@@ -20,9 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={nunito.variable}>
       <body>
-        <div className="stage">
-          <div className="phone">{children}</div>
-        </div>
+        <AppFrame>{children}</AppFrame>
       </body>
     </html>
   );
