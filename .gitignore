@@ -42,3 +42,6 @@ next-env.d.ts
 
 # keep the template
 !.env.local.example
+
+# copied from node_modules on install
+/public/maplibre-gl-worker.mjs
