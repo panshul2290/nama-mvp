@@ -91,7 +91,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .ptop .sub { font-size: 13px; color: var(--muted); }
 .ch-sec { font-size: 16px; margin: 4px 0 8px; }
 .empty { padding: 28px 14px; color: var(--muted); font-size: 14px; text-align: center; }
-.spin-page { display: grid; place-items: center; height: 100%; color: var(--muted); }
+.spin-page { flex: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
 
 .card { border: 1px solid var(--line); border-radius: 14px; padding: 13px; margin-bottom: 12px; background: var(--panel); display: block; width: 100%; text-align: inherit; color: var(--ink); }
 .card.sunk { background: var(--sunk); }

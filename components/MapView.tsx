@@ -77,6 +77,12 @@ export default function MapView({ center, pick, destination, tanker, me, follow,
     map.current = m;
     return () => {
       cancelAnimationFrame(anim.current);
+      // Drop markers with the map so they're rebuilt on the next one
+      // (React Strict Mode mounts effects twice in development).
+      for (const ref of [pickMarker, destMarker, tankerMarker, meMarker]) {
+        ref.current?.remove();
+        ref.current = null;
+      }
       m.remove();
       map.current = null;
     };
@@ -173,7 +179,7 @@ export default function MapView({ center, pick, destination, tanker, me, follow,
       return;
     }
     const b = new maplibregl.LngLatBounds(toArr(destination), toArr(destination)).extend(toArr(other));
-    m.fitBounds(b, { padding: { top: 70, left: 50, right: 50, bottom: 50 + padBottom }, maxZoom: 16, duration: 800 });
+    m.fitBounds(b, { padding: { top: 84, left: 50, right: 50, bottom: 50 + padBottom }, maxZoom: 16, duration: 800 });
   }, [follow, padBottom, destination?.lat, destination?.lng, tanker?.lat, tanker?.lng, me?.lat, me?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

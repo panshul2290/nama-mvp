@@ -42,8 +42,8 @@ export function BackButton({ href, onClick, label = "Back" }: { href?: string; o
 
 export function Loading({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="spin-page" role="status">
-      {label}
+    <div className="spin-page" role="status" aria-label={label}>
+      <span className="spin" aria-hidden="true" />
     </div>
   );
 }

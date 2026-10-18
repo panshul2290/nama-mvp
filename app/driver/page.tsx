@@ -61,13 +61,13 @@ export default function DriverHome() {
         <div className="row">
           <div>
             <p>Today</p>
-            <div className="money" style={{ fontSize: 22 }}>
+            <div className="money" style={{ fontSize: 22, whiteSpace: "nowrap" }}>
               {omr(Math.round(today.earned * 1000))}
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
             <p>Deliveries {today.jobs}</p>
-            <p>You keep 85% of each delivery fee</p>
+            <p>85% of delivery fees</p>
           </div>
         </div>
       </div>

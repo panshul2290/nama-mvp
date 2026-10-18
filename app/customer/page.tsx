@@ -92,7 +92,7 @@ export default function CustomerHome() {
                     {SERVICE_SHORT[o.service_type]} · {o.gallons.toLocaleString()} gal
                   </b>
                   <small>
-                    {o.area} · {new Date(o.created_at).toLocaleDateString()} · {omrValue(o.total)}
+                    {o.area} · {new Date(o.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · {omrValue(o.total)}
                   </small>
                 </span>
                 <StatusPill status={o.status} />
