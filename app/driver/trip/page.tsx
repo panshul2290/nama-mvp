@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { SIMULATION, useDriver } from "@/components/DriverContext";
+import { useDriver } from "@/components/DriverContext";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { RuleTag, SERVICE_SHORT } from "@/components/OrderBits";
@@ -17,7 +17,7 @@ const STEP_LABEL: Record<string, [string, "act" | "ok"]> = {
 };
 
 export default function TripPage() {
-  const { job, me, advance, acting, simulate, setSimulate, wakeLock } = useDriver();
+  const { job, me, advance, acting, wakeLock, demoMode, sim, startSimulation, stopSimulation } = useDriver();
   const eta = useRoadEta(job && job.order.status !== "arrived" ? me : null, job?.loc ? { lat: job.loc.lat, lng: job.loc.lng } : null);
 
   if (!job) {
@@ -113,11 +113,30 @@ export default function TripPage() {
           </button>
         )}
 
-        {SIMULATION && (
-          <label className="reco sim">
-            <input type="checkbox" checked={simulate} onChange={(e) => setSimulate(e.target.checked)} />
-            Simulate drive (dev) — move toward the customer on each 10 s ping
-          </label>
+        {demoMode && !arrived && (
+          <div className="reco sim">
+            {!sim ? (
+              <>
+                <button type="button" className="btn sm" onClick={startSimulation}>
+                  Simulate trip
+                </button>
+                <span>Demo only: drives a road route to the customer through the normal location updates.</span>
+              </>
+            ) : (
+              <>
+                <button type="button" className="btn sm" onClick={stopSimulation}>
+                  Stop
+                </button>
+                <span>
+                  {sim.status === "loading"
+                    ? "Planning a route…"
+                    : sim.status === "done"
+                      ? "Simulated tanker has reached the customer."
+                      : `Simulating: ${kmText(sim.leftKm)} left of ${kmText(sim.totalKm)}${sim.source === "osrm" ? " by road" : " (straight line — routing unavailable)"}`}
+                </span>
+              </>
+            )}
+          </div>
         )}
 
         <div className="tj-links">

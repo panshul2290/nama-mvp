@@ -35,7 +35,8 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    | `NEXT_PUBLIC_SUPABASE_URL` | browser + server |
    | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | browser + server (publishable key; the legacy anon key works too, also accepted as `NEXT_PUBLIC_SUPABASE_ANON_KEY`). RLS protects the data |
    | `DATABASE_URL` | `npm run db:apply` only (applies migrations with `pg`) |
-   | `NEXT_PUBLIC_ENABLE_SIMULATION` | `true` shows the driver's *Simulate drive* switch (dev only) |
+   | `NEXT_PUBLIC_DEMO_MODE` | `true` shows the driver's **Simulate trip** button (demo only; leave unset in production) |
+   | `NEXT_PUBLIC_OSRM_URL` | optional road-routing server for ETAs; defaults to the public OSRM demo server |
    | `SUPABASE_SERVICE_ROLE_KEY` | **`npm run seed` only.** Never referenced by app code; never prefix it with `NEXT_PUBLIC_` |
 
    `.env.local` is gitignored.
@@ -63,7 +64,7 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
 2. **Customer:** allow location (or drag the pin), choose **DW** and **1,000** gal, and check the quote (5.460 OMR). Then **Place request**.
 3. **Driver:** the request appears instantly, showing area, distance and *you earn 2.975 OMR*. Tap **Accept job**.
 4. **Customer:** the status changes to *Driver accepted*, then *On the way* after the first GPS ping, and the driver's name, plate and tanker marker appear.
-5. **Driver:** with *Simulate drive* ticked, the tanker moves toward the pin every 10 s. Tap **Mark arrived**, then **Mark delivered**.
+5. **Driver:** on the Trip tab, tap **Simulate trip** (demo mode only). The app plays back a road route to the customer through the normal location updates, so the customer sees the tanker move, the "Last updated" label and the road ETA. Then tap **Mark arrived** and **Mark delivered**.
 
 To see the race handling, open the driver screen in two browsers (a second driver needs their own account; sign up as Driver and register a DW tanker). Accept the same request in both. One wins, and the other gets **"Already taken"**.
 

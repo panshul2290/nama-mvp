@@ -1,14 +1,14 @@
 "use client";
 
 // Driver state shared by the Home, Jobs, Trip and Profile tabs. It lives in the
-// driver layout, so GPS pings keep running while the driver switches tabs.
+// driver layout, so location reporting keeps running while the driver switches tabs.
 import { useRouter } from "next/navigation";
 import { createContext, use, useCallback, useEffect, useRef, useState } from "react";
 import { useProfile } from "@/components/useProfile";
 import { useToast } from "@/components/useToast";
 import { friendlyError } from "@/lib/errors";
-import { distanceKm } from "@/lib/geo";
 import { omrValue } from "@/lib/pricing";
+import { buildDemoRoute, DEMO_MODE, positionAt, travelled, type SimRoute } from "@/lib/simulator";
 import { supabase } from "@/lib/supabase/client";
 import { MAX_ACCURACY_M, MOVING_INTERVAL_MS, shouldSend, type Fix, type Sent } from "@/lib/tracking";
 import type { LngLat, Order, OrderLocation, Profile, Tanker } from "@/lib/types";
@@ -25,9 +25,9 @@ const ISSUE_TEXT: Record<TrackingIssue, string> = {
   hidden: "The app is in the background, so your location isn’t being shared.",
   nofix: "No GPS fix for 30 seconds. Check that location is on and you have a clear view of the sky.",
 };
-export const SIMULATION = process.env.NEXT_PUBLIC_ENABLE_SIMULATION === "true";
 
 export type Job = { order: Order; loc: OrderLocation | null; customer: Pick<Profile, "full_name" | "phone"> | null };
+export type SimState = { status: "loading" | "running" | "done"; totalKm: number; leftKm: number; source: "osrm" | "straight-line" };
 
 type DriverState = {
   profile: Profile;
@@ -43,10 +43,13 @@ type DriverState = {
   getPosition: () => LngLat | null;
   hasFix: boolean;
   gpsError: boolean;
-  simulate: boolean;
-  setSimulate: (v: boolean) => void;
   /** Screen Wake Lock state during a job: held, unsupported, or failed. */
   wakeLock: "held" | "unsupported" | "failed" | "off";
+  /** Demo trip simulator (NEXT_PUBLIC_DEMO_MODE=true only). */
+  demoMode: boolean;
+  sim: SimState | null;
+  startSimulation: () => void;
+  stopSimulation: () => void;
   today: { earned: number; jobs: number };
   toast: (m: string) => void;
 };
@@ -69,25 +72,22 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   const [acting, setActing] = useState(false);
   const [today, setToday] = useState({ earned: 0, jobs: 0 });
 
-  const [gps, setGps] = useState<LngLat | null>(null);
+  const [me, setMe] = useState<LngLat | null>(null);
   const [gpsError, setGpsError] = useState(false);
-  const [simulate, setSimulate] = useState(SIMULATION);
-  const [simPos, setSimPos] = useState<LngLat | null>(null);
   const [trackingIssue, setTrackingIssue] = useState<TrackingIssue | null>(null);
   const [wakeLock, setWakeLock] = useState<"held" | "unsupported" | "failed" | "off">("off");
+  const [sim, setSim] = useState<SimState | null>(null);
   const deniedRef = useRef(false);
   const lastFixAt = useRef(0); // when the last *usable* fix arrived (local clock)
   const fixRef = useRef<Fix | null>(null); // latest usable fix (accuracy ≤ 100 m)
   const lastSent = useRef<Sent | null>(null);
+  const simRoute = useRef<{ route: SimRoute; startedAt: number } | null>(null);
 
   const online = tanker?.is_online ?? false;
   const onJob = Boolean(job);
-  const me = onJob && simulate ? simPos : gps;
   const meRef = useRef<LngLat | null>(me);
-  const gpsRef = useRef<LngLat | null>(gps);
   useEffect(() => {
     meRef.current = me;
-    gpsRef.current = gps;
   });
 
   const loadJob = useCallback(async (driverId: string) => {
@@ -135,15 +135,23 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     loadToday(profile.id);
   }, [profile, router, loadJob, loadToday]);
 
-  // A fix from the browser. Fixes worse than 100 m are dropped (the server rejects them too).
-  const onFix = useCallback((p: GeolocationPosition) => {
-    deniedRef.current = false;
-    setGpsError(false);
-    if (p.coords.accuracy > MAX_ACCURACY_M) return;
-    fixRef.current = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, at: p.timestamp };
+  // One entry point for fixes, real or simulated. Fixes worse than 100 m are dropped (the server rejects them too).
+  const acceptFix = useCallback((f: Fix) => {
+    if (f.accuracy > MAX_ACCURACY_M) return;
+    fixRef.current = f;
     lastFixAt.current = Date.now();
-    setGps({ lat: p.coords.latitude, lng: p.coords.longitude });
+    setMe({ lat: f.lat, lng: f.lng });
   }, []);
+
+  const onFix = useCallback(
+    (p: GeolocationPosition) => {
+      deniedRef.current = false;
+      setGpsError(false);
+      if (simRoute.current) return; // the simulator is driving
+      acceptFix({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, at: p.timestamp });
+    },
+    [acceptFix],
+  );
   const onFixError = useCallback((err: GeolocationPositionError) => {
     if (err.code === err.PERMISSION_DENIED) deniedRef.current = true;
     setGpsError(true);
@@ -172,9 +180,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       if (!profile) return { message: "not_a_driver" };
       const { error } = await supabase().rpc("accept_order", { p_order_id: orderId }).single<Order>();
       if (error) return error;
-      const j = await loadJob(profile.id);
-      setSimPos(null);
-      setJob(j);
+      setJob(await loadJob(profile.id));
       return null;
     },
     [profile, loadJob],
@@ -188,7 +194,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     destRef.current = dest;
   });
 
-  // Own job updates (e.g. accepted → arriving after the first GPS ping).
+  // Own job updates (e.g. accepted → arriving after the first location update).
   useEffect(() => {
     if (!jobId) return;
     const db = supabase();
@@ -204,22 +210,16 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   }, [jobId]);
 
   // Location reporting during a job: every 10 s while moving (>15 m), at most every 30 s
-  // otherwise, with accuracy and the fix's own timestamp (simulated drive in dev, if enabled).
+  // otherwise, with accuracy and the fix's own timestamp. Same path for real and simulated fixes.
   useEffect(() => {
     if (!jobId) return;
     lastSent.current = null;
     const tick = () => {
       const now = Date.now();
-      let fix = fixRef.current;
-      if (simulate && destRef.current) {
-        const pos = simulateStep(meRef.current ?? gpsStart(destRef.current, gpsRef.current), destRef.current);
-        meRef.current = pos;
-        fix = { ...pos, accuracy: 5, at: now };
-        lastFixAt.current = now;
-        setSimPos(pos);
-      } else if (now - lastFixAt.current > POKE_AFTER_MS && navigator.geolocation) {
+      if (!simRoute.current && now - lastFixAt.current > POKE_AFTER_MS && navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(onFix, onFixError, { enableHighAccuracy: true, maximumAge: 0, timeout: 9_000 });
       }
+      const fix = fixRef.current;
       if (!shouldSend(fix, lastSent.current, now)) return;
       const f = fix as Fix;
       lastSent.current = { lat: f.lat, lng: f.lng, at: now };
@@ -229,13 +229,53 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
           if (error) lastSent.current = null; // retry on the next tick
         });
     };
-    const first = setTimeout(tick, 0); // ping straight away so the job flips to 'arriving'
+    const first = setTimeout(tick, 0); // send straight away so the job flips to 'arriving'
     const timer = setInterval(tick, PING_MS);
     return () => {
       clearTimeout(first);
       clearInterval(timer);
     };
-  }, [jobId, simulate, onFix, onFixError]);
+  }, [jobId, onFix, onFixError]);
+
+  // ---------------------------------------------------------------- demo trip simulator
+  const startSimulation = useCallback(() => {
+    const to = destRef.current;
+    if (!DEMO_MODE || !to || simRoute.current) return;
+    setSim({ status: "loading", totalKm: 0, leftKm: 0, source: "osrm" });
+    buildDemoRoute(to).then((route) => {
+      simRoute.current = { route, startedAt: Date.now() };
+      setSim({ status: "running", totalKm: route.totalM / 1000, leftKm: route.totalM / 1000, source: route.source });
+    });
+  }, []);
+  const stopSimulation = useCallback(() => {
+    simRoute.current = null;
+    setSim(null);
+  }, []);
+
+  // One simulated GPS fix per second, like a phone; reporting still follows the 10 s / 30 s cadence.
+  const simRunning = sim?.status === "running" || sim?.status === "done";
+  useEffect(() => {
+    if (!simRunning) return;
+    const step = () => {
+      const s = simRoute.current;
+      if (!s) return;
+      const m = Math.min(s.route.totalM, travelled((Date.now() - s.startedAt) / 1000));
+      const pos = positionAt(s.route, m);
+      acceptFix({ ...pos, accuracy: 5 + Math.random() * 7, at: Date.now() });
+      const leftKm = (s.route.totalM - m) / 1000;
+      setSim((x) => (x ? { ...x, leftKm, status: leftKm <= 0 ? "done" : "running" } : x));
+    };
+    const timer = setInterval(step, 1_000);
+    return () => clearInterval(timer);
+  }, [simRunning, acceptFix]);
+
+  // The job ending stops the simulator.
+  useEffect(() => {
+    if (jobId) return;
+    simRoute.current = null;
+    const t = setTimeout(() => setSim(null), 0);
+    return () => clearTimeout(t);
+  }, [jobId]);
 
   // Keep the screen on during a job; the lock is dropped whenever the page is hidden, so re-request it.
   useEffect(() => {
@@ -274,7 +314,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     const check = () => {
       const hidden = document.visibilityState === "hidden";
       const sinceFix = Date.now() - Math.max(lastFixAt.current, startedAt);
-      setTrackingIssue(deniedRef.current ? "denied" : hidden ? "hidden" : sinceFix > NO_FIX_MS ? "nofix" : null);
+      setTrackingIssue(deniedRef.current && !simRoute.current ? "denied" : hidden ? "hidden" : sinceFix > NO_FIX_MS ? "nofix" : null);
     };
     const first = setTimeout(check, 0);
     const timer = setInterval(check, 2_000);
@@ -296,7 +336,6 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       if (fn === "mark_delivered") {
         toast.show(`Delivered · you earned ${omrValue(data.driver_earnings)}`);
         setJob(null);
-        setSimPos(null);
         loadToday(profile.id);
       } else {
         setJob({ ...job, order: data });
@@ -322,11 +361,13 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
         acting,
         me,
         getPosition,
-        hasFix: Boolean(gps),
+        hasFix: Boolean(me),
         gpsError,
-        simulate,
-        setSimulate,
         wakeLock,
+        demoMode: DEMO_MODE,
+        sim,
+        startSimulation,
+        stopSimulation,
         today,
         toast: toast.show,
       }}
@@ -341,18 +382,4 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       {toast.node}
     </Ctx>
   );
-}
-
-// Start a simulated drive from the real fix if it's plausible, else ~2.5 km out.
-function gpsStart(dest: LngLat, fix: LngLat | null): LngLat {
-  if (fix && distanceKm(fix, dest) < 30) return fix;
-  return { lat: dest.lat + 0.018, lng: dest.lng - 0.014 };
-}
-
-// Cover a quarter of the remaining distance per ping (at least ~120 m).
-function simulateStep(from: LngLat, to: LngLat): LngLat {
-  const left = distanceKm(from, to);
-  if (left < 0.03) return to;
-  const f = Math.min(1, Math.max(0.25, 0.12 / left));
-  return { lat: from.lat + (to.lat - from.lat) * f, lng: from.lng + (to.lng - from.lng) * f };
 }
