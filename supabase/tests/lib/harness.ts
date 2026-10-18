@@ -238,16 +238,37 @@ export async function supabaseTarget(): Promise<Target> {
         if (data.users.length < 200) break;
       }
       const all = [...new Map([...created, ...leftovers].map((u) => [u.id, u])).values()];
+      const ids0 = all.map((u) => u.id);
+      // Tankers outlive their drivers (tanker_assignments), so delete the test ones explicitly.
+      // Only "TST…" plates assigned (now or before) to test users are touched; permits cascade.
+      const [tk] = await target.admin<{ n: number }>(
+        `with gone as (
+           delete from public.tankers t
+            where t.plate like 'TST%'
+              and exists (select 1 from public.tanker_assignments a where a.tanker_id = t.id and a.driver_id = any($1::uuid[]))
+           returning 1)
+         select count(*)::int as n from gone`,
+        [ids0],
+      );
+      const [orphans] = await target.admin<{ n: number }>(
+        `with gone as (
+           delete from public.tankers t
+            where t.plate like 'TST%' and not exists (select 1 from public.tanker_assignments a where a.tanker_id = t.id)
+           returning 1)
+         select count(*)::int as n from gone`,
+      );
+      log.push(`deleted ${tk.n} test tankers (+${orphans.n} unassigned TST tankers) with their permits`);
       for (const u of all) {
         if (!isTestEmail(u.email)) throw new Error(`refusing to delete non-test user ${u.id}`);
         const { error } = await adminApi.auth.admin.deleteUser(u.id);
         if (error) log.push(`delete ${u.email}: ERROR ${error.message}`);
       }
       const ids = all.map((u) => u.id);
-      const [left] = await target.admin<{ users: number; profiles: number; tankers: number; orders: number; locations: number }>(
+      const [left] = await target.admin<{ users: number; profiles: number; assignments: number; test_tankers: number; orders: number; locations: number }>(
         `select (select count(*) from auth.users where id = any($1::uuid[]))::int as users,
                 (select count(*) from public.profiles where id = any($1::uuid[]))::int as profiles,
-                (select count(*) from public.tankers where driver_id = any($1::uuid[]))::int as tankers,
+                (select count(*) from public.tanker_assignments where driver_id = any($1::uuid[]))::int as assignments,
+                (select count(*) from public.tankers where plate like 'TST%')::int as test_tankers,
                 (select count(*) from public.orders where customer_id = any($1::uuid[]) or driver_id = any($1::uuid[]))::int as orders,
                 (select count(*) from public.order_locations l join public.orders o on o.id = l.order_id where o.customer_id = any($1::uuid[]))::int as locations`,
         [ids],

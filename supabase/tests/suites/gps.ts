@@ -14,8 +14,8 @@ export async function gpsSuite(t: Target, r: Reporter) {
   const view = (uid: string) =>
     t.as<{ last_seen_at: string | null; age: number | null; stale: boolean }>(
       uid,
-      "select t.last_seen_at, location_age_s(t) as age, location_stale(t) as stale from tankers t where t.driver_id = $1",
-      [D1.id],
+      "select t.last_seen_at, location_age_s(t) as age, location_stale(t) as stale from tankers t where t.id = $1",
+      [w.tk.D1],
     );
 
   const [before] = await view(C1.id);
@@ -23,7 +23,7 @@ export async function gpsSuite(t: Target, r: Reporter) {
 
   await t.as(D1.id, "select report_location(23.595, 58.195, 8, now())");
   const [fresh] = await view(C1.id);
-  const [{ skew }] = await t.admin<{ skew: number }>("select abs(extract(epoch from (now() - last_seen_at)))::float as skew from tankers where driver_id = $1", [D1.id]);
+  const [{ skew }] = await t.admin<{ skew: number }>("select abs(extract(epoch from (now() - last_seen_at)))::float as skew from tankers where id = $1", [w.tk.D1]);
   r.check("report_location stores the fix with a server timestamp (within 5 s of now)", fresh?.last_seen_at !== null && skew < 5, { fresh, skew });
   r.check("a fresh fix is not stale", fresh?.stale === false && (fresh.age ?? 99) <= 5, fresh);
 
@@ -34,7 +34,7 @@ export async function gpsSuite(t: Target, r: Reporter) {
     [65, true],
     [600, true],
   ] as const) {
-    await t.admin("update tankers set last_seen_at = now() - make_interval(secs => $2) where driver_id = $1", [D1.id, secs]);
+    await t.admin("update tankers set last_seen_at = now() - make_interval(secs => $2) where id = $1", [w.tk.D1, secs]);
     const [v] = await view(C1.id);
     r.check(`fix ${secs} s old → stale = ${want}`, v?.stale === want && v.age !== null && Math.abs(v.age - secs) <= 2, v);
   }
@@ -50,8 +50,8 @@ export async function gpsSuite(t: Target, r: Reporter) {
   // Accuracy and timestamps on each fix.
   const stored = async () =>
     (await t.admin<{ last_lat: number; last_accuracy_m: number; fix_age: number }>(
-      "select last_lat, last_accuracy_m, extract(epoch from (now() - last_fix_at))::float as fix_age from tankers where driver_id = $1",
-      [D1.id],
+      "select last_lat, last_accuracy_m, extract(epoch from (now() - last_fix_at))::float as fix_age from tankers where id = $1",
+      [w.tk.D1],
     ))[0];
   await r.allows("a fix with accuracy 100 m is accepted", () => t.as(D1.id, "select report_location(23.597, 58.197, 100, now())"));
   const s1 = await stored();
@@ -70,10 +70,10 @@ export async function gpsSuite(t: Target, r: Reporter) {
   if (t.apiClientFor) {
     await t.admin("update tankers set last_seen_at = now() - interval '61 seconds' where driver_id = $1", [D1.id]);
     const api = await t.apiClientFor(C1.email, C1.password);
-    const { data, error } = await api.from("tankers").select("last_lat, last_lng, last_seen_at, location_age_s, location_stale").eq("driver_id", D1.id).maybeSingle();
+    const { data, error } = await api.from("tankers").select("last_lat, last_lng, last_seen_at, location_age_s, location_stale").eq("id", w.tk.D1).maybeSingle();
     r.check("REST API (as the customer): tankers?select=…,location_stale returns stale = true for a 61 s old fix", !error && data?.location_stale === true, error?.message ?? data);
     const other = await t.apiClientFor(C2.email, C2.password);
-    const { data: none } = await other.from("tankers").select("location_stale").eq("driver_id", D1.id);
+    const { data: none } = await other.from("tankers").select("location_stale").eq("id", w.tk.D1);
     r.check("REST API (as another customer): no row returned", Array.isArray(none) && none.length === 0, none);
     await api.auth.signOut();
     await other.auth.signOut();

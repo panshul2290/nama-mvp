@@ -59,18 +59,24 @@ export async function authzSuite(t: Target, r: Reporter) {
     await r.denies(`${role} cannot INSERT a profile`, () => rows(uid, "insert into profiles (id, role) values (gen_random_uuid(), 'customer')"), "permission denied");
   }
 
-  // ---------------------------------------------------------------- tankers
-  await r.allows("customer reads the tanker on their active order (with location columns)", () => rows(C1.id, "select plate, last_lat, last_lng, last_seen_at from tankers where driver_id = $1", [D1.id]), one);
-  await r.allows("customer cannot read a tanker not on their active order (0 rows)", () => rows(C1.id, "select plate from tankers where driver_id = $1", [D2.id]), none);
-  await r.allows("other customer cannot read the assigned tanker's location (0 rows)", () => rows(C2.id, "select last_lat, last_lng from tankers where driver_id = $1", [D1.id]), none);
-  await r.allows("driver reads own tanker", () => rows(D1.id, "select plate from tankers where driver_id = $1", [D1.id]), one);
-  await r.allows("driver cannot read another driver's tanker (0 rows)", () => rows(D1.id, "select plate from tankers where driver_id = $1", [D2.id]), none);
-  await r.allows("driver toggles own is_online", () => rows(D2.id, "update tankers set is_online = true where driver_id = $1 returning driver_id", [D2.id]), one);
-  await r.allows("driver cannot update another driver's tanker (0 rows)", () => rows(D1.id, "update tankers set is_online = false where driver_id = $1 returning driver_id", [D2.id]), none);
-  for (const col of ["last_lat = 1", "last_lng = 1", "last_seen_at = now()"]) {
-    await r.denies(`driver cannot write ${col.split(" ")[0]} directly (only report_location)`, () => rows(D1.id, `update tankers set ${col} where driver_id = $1`, [D1.id]), "permission denied");
+  // ---------------------------------------------------------------- tankers (by tankers.id; drivers reach theirs via tanker_assignments)
+  const { tk } = w;
+  await r.allows("customer reads the tanker on their active order (with location columns)", () => rows(C1.id, "select plate, last_lat, last_lng, last_seen_at from tankers where id = $1", [tk.D1]), one);
+  await r.allows("customer cannot read a tanker not on their active order (0 rows)", () => rows(C1.id, "select plate from tankers where id = $1", [tk.D2]), none);
+  await r.allows("other customer cannot read the assigned tanker's location (0 rows)", () => rows(C2.id, "select last_lat, last_lng from tankers where id = $1", [tk.D1]), none);
+  await r.allows("driver reads the tanker assigned to them", () => rows(D1.id, "select plate from tankers where id = $1", [tk.D1]), one);
+  await r.allows("driver cannot read another driver's tanker (0 rows)", () => rows(D1.id, "select plate from tankers where id = $1", [tk.D2]), none);
+  await r.allows("driver reads own active assignment", () => rows(D1.id, "select tanker_id from tanker_assignments where unassigned_at is null"), (x) => x.length === 1 && x[0].tanker_id === tk.D1);
+  await r.allows("driver sees only their own assignment rows", () => rows(D1.id, "select driver_id from tanker_assignments"), (x) => x.length > 0 && x.every((a) => a.driver_id === D1.id));
+  await r.allows("driver goes online through driver_set_online()", () => rows(D2.id, "select is_online from driver_set_online(true)"), (x) => x[0]?.is_online === true);
+  for (const col of ["is_online = false", "last_lat = 1", "last_lng = 1", "last_seen_at = now()", "blocked = false", "plate = 'X'"]) {
+    await r.denies(`driver cannot UPDATE tankers SET ${col} directly`, () => rows(D1.id, `update tankers set ${col} where id = $1`, [tk.D1]), "permission denied");
   }
-  await r.denies("customer cannot register a tanker", () => rows(C1.id, "insert into tankers (driver_id, plate, service_type, capacity_gal) values ($1, $2, 'DW', 3000)", [C1.id, w.plate("CX")]), "row-level security");
+  await r.denies("driver cannot INSERT a tanker directly", () => rows(D1.id, "insert into tankers (plate, service_type, capacity_gal) values ($1, 'DW', 3000)", [w.plate("DX")]), "permission denied");
+  await r.denies("driver cannot write tanker_assignments directly", () => rows(D1.id, "insert into tanker_assignments (driver_id, tanker_id) values ($1, $2)", [D1.id, tk.D2]), "permission denied");
+  await r.denies("customer cannot register a tanker (driver_register_tanker → not_a_driver)", () => rows(C1.id, "select * from driver_register_tanker($1, 'DW', 3000)", [w.plate("CX")]), "not_a_driver");
+  await r.denies("customer cannot INSERT a tanker directly", () => rows(C1.id, "insert into tankers (plate, service_type, capacity_gal) values ($1, 'DW', 3000)", [w.plate("CY")]), "permission denied");
+  await r.denies("customer cannot go online (driver_set_online → not_a_driver)", () => rows(C1.id, "select * from driver_set_online(true)"), "not_a_driver");
 
   // ---------------------------------------------------------------- orders
   await r.allows("customer reads own orders", () => rows(C1.id, "select id from orders where id = any($1::uuid[])", [[oReq.id, oAcc.id]]), (x) => x.length === 2);
@@ -131,7 +137,7 @@ export async function authzSuite(t: Target, r: Reporter) {
   await r.allows("signed-in user: price_quote", () => rows(C2.id, "select total from price_quote('DW', 1000)"), one);
 
   // After the job: access is withdrawn.
-  await r.allows("after delivery, customer can no longer read the tanker (0 rows)", () => rows(C1.id, "select plate from tankers where driver_id = $1", [D1.id]), none);
+  await r.allows("after delivery, customer can no longer read the tanker (0 rows)", () => rows(C1.id, "select plate from tankers where id = $1", [w.tk.D1]), none);
   await r.allows("after delivery, driver can no longer read the exact address (0 rows)", () => rows(D1.id, "select address from order_locations where order_id = $1", [oAcc.id]), none);
   await r.allows("after delivery, driver can no longer read the customer's profile (0 rows)", () => rows(D1.id, "select id from profiles where id = $1", [C1.id]), none);
 }

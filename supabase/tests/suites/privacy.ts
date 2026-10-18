@@ -6,15 +6,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Reporter, Target } from "../lib/harness";
 import { makeWorld, placeOrder, setOnline } from "../lib/world";
 
-const sees = async (t: Target, viewer: string | null, driver: string) =>
-  (await t.as<{ last_lat: number }>(viewer, "select last_lat from tankers where driver_id = $1", [driver]).catch(() => [])).length > 0;
+const sees = async (t: Target, viewer: string | null, tanker: string) =>
+  (await t.as<{ last_lat: number }>(viewer, "select last_lat from tankers where id = $1", [tanker]).catch(() => [])).length > 0;
 
 /** Realtime: count tanker UPDATE events `client` receives for `driver` while `act` runs. */
-async function realtimeEvents(client: SupabaseClient, driver: string, act: () => Promise<unknown>, waitMs = 6000): Promise<number | "not-subscribed"> {
+async function realtimeEvents(client: SupabaseClient, tanker: string, act: () => Promise<unknown>, waitMs = 6000): Promise<number | "not-subscribed"> {
   let n = 0;
   const ch = client
-    .channel(`privacy-${driver}-${Math.random().toString(36).slice(2)}`)
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tankers", filter: `driver_id=eq.${driver}` }, () => n++);
+    .channel(`privacy-${tanker}-${Math.random().toString(36).slice(2)}`)
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tankers", filter: `id=eq.${tanker}` }, () => n++);
   const ok = await new Promise<boolean>((res) => {
     const timer = setTimeout(() => res(false), 10_000);
     ch.subscribe((status) => {
@@ -53,28 +53,28 @@ export async function privacySuite(t: Target, r: Reporter) {
   );
   r.check("no table lets a signed-in user (or anon) write a coordinate column directly", writable.length === 0, writable);
   await r.denies("a customer cannot create a tanker row (the only table holding live positions)", () =>
-    t.as(C1.id, "insert into tankers (driver_id, plate, service_type, capacity_gal) values ($1, $2, 'DW', 3000)", [C1.id, w.plate("PX")]), "row-level security");
+    t.as(C1.id, "insert into tankers (plate, service_type, capacity_gal) values ($1, 'DW', 3000)", [w.plate("PX")]), "permission denied");
   await r.denies("a customer cannot write order_locations directly", () => t.as(C1.id, "insert into order_locations (order_id, lat, lng) values (gen_random_uuid(), 1, 1)"), "permission denied");
   r.skip("customer screens never send their position (source check)", "covered by npm run test:unit (tests/unit/privacy.test.ts)");
 
   // ---- 2. driver location visible only to the customer of the active order
   const o = await placeOrder(t, C1.id, "DW", 800);
-  r.check("open request: the customer cannot see any driver's location yet", !(await sees(t, C1.id, D1.id)) && !(await sees(t, C1.id, D2.id)));
+  r.check("open request: the customer cannot see any driver's location yet", !(await sees(t, C1.id, w.tk.D1)) && !(await sees(t, C1.id, w.tk.D2)));
   await t.as(D1.id, "select * from accept_order($1)", [o.id]);
   await ping(23.62);
-  r.check("accepted: the order's customer sees the driver's location", await sees(t, C1.id, D1.id));
-  r.check("accepted: another customer does not", !(await sees(t, C2.id, D1.id)));
-  r.check("accepted: another driver does not", !(await sees(t, D2.id, D1.id)));
-  r.check("accepted: anon does not", !(await sees(t, null, D1.id)));
+  r.check("accepted: the order's customer sees the driver's location", await sees(t, C1.id, w.tk.D1));
+  r.check("accepted: another customer does not", !(await sees(t, C2.id, w.tk.D1)));
+  r.check("accepted: another driver does not", !(await sees(t, D2.id, w.tk.D1)));
+  r.check("accepted: anon does not", !(await sees(t, null, w.tk.D1)));
   await t.as(D1.id, "select * from mark_arrived($1)", [o.id]);
-  r.check("arrived: the order's customer still sees it", await sees(t, C1.id, D1.id));
+  r.check("arrived: the order's customer still sees it", await sees(t, C1.id, w.tk.D1));
 
   let realtimeClients: { c1: SupabaseClient; c2: SupabaseClient } | null = null;
   if (t.apiClientFor) {
     realtimeClients = { c1: await t.apiClientFor(C1.email, C1.password), c2: await t.apiClientFor(C2.email, C2.password) };
     const [mine, other] = await Promise.all([
-      realtimeEvents(realtimeClients.c1, D1.id, () => ping(23.63)),
-      realtimeEvents(realtimeClients.c2, D1.id, async () => undefined),
+      realtimeEvents(realtimeClients.c1, w.tk.D1, () => ping(23.63)),
+      realtimeEvents(realtimeClients.c2, w.tk.D1, async () => undefined),
     ]);
     r.check("Realtime: the active order's customer receives the driver's location updates", typeof mine === "number" && mine >= 1, mine);
     r.check("Realtime: another customer subscribed to the same driver receives nothing", other === 0, other);
@@ -83,9 +83,9 @@ export async function privacySuite(t: Target, r: Reporter) {
   }
 
   await t.as(D1.id, "select * from mark_delivered($1)", [o.id]);
-  r.check("delivered: the customer can no longer see the driver's location", !(await sees(t, C1.id, D1.id)));
+  r.check("delivered: the customer can no longer see the driver's location", !(await sees(t, C1.id, w.tk.D1)));
   if (realtimeClients) {
-    const after = await realtimeEvents(realtimeClients.c1, D1.id, () => ping(23.64));
+    const after = await realtimeEvents(realtimeClients.c1, w.tk.D1, () => ping(23.64));
     r.check("Realtime: after delivery, the customer receives no further location updates", after === 0, after);
   } else {
     r.skip("Realtime: no updates after delivery", "covered by the Supabase run");
@@ -95,13 +95,13 @@ export async function privacySuite(t: Target, r: Reporter) {
   // order that ends up cancelled (only possible by an operator today) stops exposing it.
   const c = await placeOrder(t, C2.id, "DW", 800);
   await t.as(C2.id, "select * from cancel_order($1)", [c.id]);
-  r.check("cancelled request: the customer sees no driver location", !(await sees(t, C2.id, D1.id)));
+  r.check("cancelled request: the customer sees no driver location", !(await sees(t, C2.id, w.tk.D1)));
   const o2 = await placeOrder(t, C2.id, "DW", 800);
   await t.as(D1.id, "select * from accept_order($1)", [o2.id]);
-  r.check("accepted (second order): its customer sees the driver", await sees(t, C2.id, D1.id));
+  r.check("accepted (second order): its customer sees the driver", await sees(t, C2.id, w.tk.D1));
   await t.admin("update orders set status = 'cancelled', cancelled_at = now() where id = $1", [o2.id]);
-  r.check("accepted order cancelled (operator action): the customer can no longer see the driver", !(await sees(t, C2.id, D1.id)));
-  r.check("… and the previous customer still can't either", !(await sees(t, C1.id, D1.id)));
+  r.check("accepted order cancelled (operator action): the customer can no longer see the driver", !(await sees(t, C2.id, w.tk.D1)));
+  r.check("… and the previous customer still can't either", !(await sees(t, C1.id, w.tk.D1)));
 
   if (realtimeClients) {
     await realtimeClients.c1.auth.signOut();

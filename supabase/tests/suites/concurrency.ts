@@ -5,12 +5,12 @@
 // so the accept_order UPDATEs genuinely overlap. On PGlite (one connection) the
 // same calls run one after another — logic check only, labelled as such.
 import type { Reporter, Session, Target } from "../lib/harness";
-import { placeOrder, plateFor, setOnline } from "../lib/world";
+import { giveTanker, placeOrder, plateFor, setOnline } from "../lib/world";
 
 type Outcome = { ok: boolean; msg: string };
 
 /** Run fn for each uid concurrently, released together from a barrier. Returns outcomes and how many were waiting at release. */
-async function raceFromBarrier(t: Target, uids: string[], sql: (i: number) => [string, unknown[]]): Promise<{ outcomes: Outcome[]; waiting: number }> {
+export async function raceFromBarrier(t: Target, uids: string[], sql: (i: number) => [string, unknown[]]): Promise<{ outcomes: Outcome[]; waiting: number }> {
   if (!t.parallel) {
     const outcomes = await Promise.all(
       uids.map((u, i) =>
@@ -73,7 +73,7 @@ export async function concurrencySuite(t: Target, r: Reporter) {
   const drivers = [];
   for (let i = 0; i < 20; i++) {
     const d = await t.createUser(`race-d${i}`, { role: "driver", full_name: `Test Racer ${i}` });
-    await t.as(d.id, "insert into tankers (driver_id, plate, service_type, capacity_gal) values ($1, $2, 'DW', 5000)", [d.id, plateFor(t, `R${i}`)]);
+    await giveTanker(t, d.id, plateFor(t, `R${i}`), "DW", 5000);
     await setOnline(t, d.id, true);
     drivers.push(d);
   }
@@ -91,7 +91,7 @@ export async function concurrencySuite(t: Target, r: Reporter) {
 
   // --- one driver, two orders at once (repeated)
   const solo = await t.createUser("race-solo", { role: "driver", full_name: "Test Solo Driver" });
-  await t.as(solo.id, "insert into tankers (driver_id, plate, service_type, capacity_gal) values ($1, $2, 'DW', 5000)", [solo.id, plateFor(t, "SOLO")]);
+  await giveTanker(t, solo.id, plateFor(t, "SOLO"), "DW", 5000);
   await setOnline(t, solo.id, true);
   const ROUNDS = 5;
   let good = 0;

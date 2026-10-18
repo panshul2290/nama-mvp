@@ -12,6 +12,8 @@ import { lifecycleSuite } from "./suites/lifecycle";
 import { beforeMigration, migrationsSuite } from "./suites/migrations";
 import { pricingSuite } from "./suites/pricing";
 import { privacySuite } from "./suites/privacy";
+import { assignmentsSuite } from "./suites/assignments";
+import { staffSuite } from "./suites/staff";
 
 const which = (process.argv[2] ?? "pglite") as "pglite" | "supabase";
 const outDir = process.argv[3]; // optional: write raw output + JSON here
@@ -41,7 +43,10 @@ async function main() {
       `with real_users as (select id from auth.users where not (email like 'test-%' and email like '%@nama.test'))
        select (select count(*)::int from real_users) as users, count(*)::int as rows, md5(coalesce(string_agg(x, ',' order by x), '')) as md5 from (
          select 'p' || row_to_json(p)::text as x from public.profiles p where p.id in (select id from real_users)
-         union all select 't' || row_to_json(k)::text from public.tankers k where k.driver_id in (select id from real_users)
+         union all select 't' || row_to_json(k)::text from public.tankers k where k.plate not like 'TST%'
+         union all select 'a' || row_to_json(a)::text from public.tanker_assignments a where a.driver_id in (select id from real_users)
+         union all select 'm' || row_to_json(m)::text from public.permits m join public.tankers k on k.id = m.tanker_id where k.plate not like 'TST%'
+         union all select 'u' || row_to_json(u)::text from public.audit_log u where coalesce(u.actor_email, '') not like 'test-%'
          union all select 'o' || row_to_json(o)::text from public.orders o where o.customer_id in (select id from real_users)
          union all select 'l' || row_to_json(l)::text from public.order_locations l join public.orders o on o.id = l.order_id where o.customer_id in (select id from real_users)
        ) s`,
@@ -49,7 +54,7 @@ async function main() {
   const before = t.name === "supabase" ? (await fingerprint())[0] : null;
   if (before) out(`non-test data before: ${before.users} users, ${before.rows} rows, md5 ${before.md5}`);
   try {
-    for (const suite of [migrationsSuite, lifecycleSuite, pricingSuite, authzSuite, concurrencySuite, gpsSuite, privacySuite]) {
+    for (const suite of [migrationsSuite, lifecycleSuite, pricingSuite, authzSuite, concurrencySuite, gpsSuite, privacySuite, assignmentsSuite, staffSuite]) {
       try {
         await suite(t, r);
       } catch (e) {
