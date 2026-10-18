@@ -1,6 +1,6 @@
 # Database test run — target: supabase
-started: 2026-10-18T04:07:45.611Z
-run id: mvdb1fqb9yk5; parallel backends: true; fresh database: false
+started: 2026-10-18T04:18:56.383Z
+run id: mvdbftaxiwl8; parallel backends: true; fresh database: false
 non-test data before: 3 users, 22 rows, md5 b72708c1754fc990e376956d4e8a9475
 
 ## MIG migrations and schema
@@ -184,10 +184,10 @@ PASS  AUTHZ-126  after delivery, driver can no longer read the exact address (0 
 PASS  AUTHZ-127  after delivery, driver can no longer read the customer's profile (0 rows)
 
 ## RACE concurrency
-PASS  RACE-01  20 drivers accept the same order (concurrent (separate backends, released from a barrier); 15 were blocked at the barrier when released): exactly 1 succeeds
-PASS  RACE-02  … and the other 19 get already_taken
+PASS  RACE-01  20 drivers call accept_order on the same order at once: exactly 1 succeeds  [concurrent (separate backends, released from a barrier); 15 of 20 were blocked at the barrier when it opened]
+PASS  RACE-02  … and the other 19 get already_taken  [concurrent (separate backends, released from a barrier); 15 of 20 were blocked at the barrier when it opened]
 PASS  RACE-03  the order row is accepted and belongs to the single winner
-PASS  RACE-04  one driver accepts two orders at once, 5 rounds (concurrent (separate backends, released from a barrier)): always exactly one active job, the other call gets driver_busy
+PASS  RACE-04  one driver accepts two orders at once (5 rounds): always exactly one active job; the other call gets driver_busy  [concurrent (separate backends, released from a barrier); per round: [{"round":0,"active":1,"ok":1,"busy":1,"waiting":2},{"round":1,"active":1,"ok":1,"busy":1,"waiting":2},{"round":2,"active":1,"ok":1,"busy":1,"waiting":2},{"round":3,"active":1,"ok":1,"busy":1,"waiting":2},{"round":4,"active":1,"ok":1,"busy":1,"waiting":2}]]
 
 ## GPS location freshness
 PASS  GPS-01  before any fix: no timestamp and reported stale
@@ -212,4 +212,4 @@ deleted 37 test users (37 from this run, 0 leftovers)
 remaining rows for those users: {"users":0,"profiles":0,"tankers":0,"orders":0,"locations":0}
 
 186 passed, 0 failed, 1 skipped
-finished: 2026-10-18T04:12:15.791Z
+finished: 2026-10-18T04:23:35.279Z

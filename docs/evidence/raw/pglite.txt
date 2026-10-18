@@ -1,5 +1,5 @@
 # Database test run — target: pglite
-started: 2026-10-18T04:07:39.351Z
+started: 2026-10-18T04:18:50.944Z
 run id: pglite; parallel backends: false; fresh database: true
 
 ## MIG migrations and schema
@@ -183,10 +183,10 @@ PASS  AUTHZ-126  after delivery, driver can no longer read the exact address (0 
 PASS  AUTHZ-127  after delivery, driver can no longer read the customer's profile (0 rows)
 
 ## RACE concurrency
-PASS  RACE-01  20 drivers accept the same order (serialised on PGlite's single connection — logic only, not a race): exactly 1 succeeds
-PASS  RACE-02  … and the other 19 get already_taken
+PASS  RACE-01  20 drivers call accept_order on the same order at once: exactly 1 succeeds  [serialised on PGlite's single connection — logic only, not a race]
+PASS  RACE-02  … and the other 19 get already_taken  [serialised on PGlite's single connection — logic only, not a race]
 PASS  RACE-03  the order row is accepted and belongs to the single winner
-PASS  RACE-04  one driver accepts two orders at once, 5 rounds (serialised on PGlite's single connection — logic only, not a race): always exactly one active job, the other call gets driver_busy
+PASS  RACE-04  one driver accepts two orders at once (5 rounds): always exactly one active job; the other call gets driver_busy  [serialised on PGlite's single connection — logic only, not a race; per round: [{"round":0,"active":1,"ok":1,"busy":1,"waiting":0},{"round":1,"active":1,"ok":1,"busy":1,"waiting":0},{"round":2,"active":1,"ok":1,"busy":1,"waiting":0},{"round":3,"active":1,"ok":1,"busy":1,"waiting":0},{"round":4,"active":1,"ok":1,"busy":1,"waiting":0}]]
 
 ## GPS location freshness
 PASS  GPS-01  before any fix: no timestamp and reported stale
@@ -204,4 +204,4 @@ SKIP  GPS-11  REST API returns location_stale  — PGlite has no PostgREST; cove
 ## CLEANUP
 
 183 passed, 0 failed, 2 skipped
-finished: 2026-10-18T04:07:42.788Z
+finished: 2026-10-18T04:18:53.793Z

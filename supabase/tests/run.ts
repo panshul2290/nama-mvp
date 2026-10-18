@@ -28,7 +28,8 @@ async function main() {
   out(`# Database test run — target: ${which}`);
   out(`started: ${started.toISOString()}`);
   const t: Target = which === "supabase" ? await supabaseTarget() : await pgliteTarget({ beforeMigration });
-  out(`run id: ${t.runId}; parallel backends: ${t.parallel}; fresh database: ${t.fresh}`);
+  const [{ version }] = await t.admin<{ version: string }>("select split_part(version(), ' ', 2) as version");
+  out(`run id: ${t.runId}; parallel backends: ${t.parallel}; fresh database: ${t.fresh}; Postgres ${version}`);
   const r = new Reporter(out);
   let crashed: string | null = null;
 

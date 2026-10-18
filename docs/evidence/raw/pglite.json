@@ -1,6 +1,6 @@
 {
   "target": "pglite",
-  "started": "2026-10-18T04:07:39.351Z",
+  "started": "2026-10-18T04:18:50.944Z",
   "runId": "pglite",
   "parallel": false,
   "pass": 183,
@@ -1032,14 +1032,16 @@
     {
       "section": "RACE concurrency",
       "id": "RACE-01",
-      "name": "20 drivers accept the same order (serialised on PGlite's single connection — logic only, not a race): exactly 1 succeeds",
-      "ok": true
+      "name": "20 drivers call accept_order on the same order at once: exactly 1 succeeds",
+      "ok": true,
+      "note": "serialised on PGlite's single connection — logic only, not a race"
     },
     {
       "section": "RACE concurrency",
       "id": "RACE-02",
       "name": "… and the other 19 get already_taken",
-      "ok": true
+      "ok": true,
+      "note": "serialised on PGlite's single connection — logic only, not a race"
     },
     {
       "section": "RACE concurrency",
@@ -1050,8 +1052,9 @@
     {
       "section": "RACE concurrency",
       "id": "RACE-04",
-      "name": "one driver accepts two orders at once, 5 rounds (serialised on PGlite's single connection — logic only, not a race): always exactly one active job, the other call gets driver_busy",
-      "ok": true
+      "name": "one driver accepts two orders at once (5 rounds): always exactly one active job; the other call gets driver_busy",
+      "ok": true,
+      "note": "serialised on PGlite's single connection — logic only, not a race; per round: [{\"round\":0,\"active\":1,\"ok\":1,\"busy\":1,\"waiting\":0},{\"round\":1,\"active\":1,\"ok\":1,\"busy\":1,\"waiting\":0},{\"round\":2,\"active\":1,\"ok\":1,\"busy\":1,\"waiting\":0},{\"round\":3,\"active\":1,\"ok\":1,\"busy\":1,\"waiting\":0},{\"round\":4,\"active\":1,\"ok\":1,\"busy\":1,\"waiting\":0}]"
     },
     {
       "section": "GPS location freshness",

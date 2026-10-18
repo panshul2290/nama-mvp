@@ -5,10 +5,8 @@
 // the region code from the pooler hostname.
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join } from "node:path";
 
-const require = createRequire(import.meta.url);
 const OUT = "docs/evidence";
 const RAW = join(OUT, "raw");
 mkdirSync(RAW, { recursive: true });
@@ -17,13 +15,18 @@ const git = (...a) => execFileSync("git", a, { encoding: "utf8" }).trim();
 const commit = git("rev-parse", "HEAD");
 const dirty = git("status", "--porcelain", "--", ".", ":!docs/evidence").length > 0;
 
+// --report-only rebuilds the report from the raw JSON already in docs/evidence/raw.
+const reportOnly = process.argv.includes("--report-only");
 const runs = [];
 for (const target of ["pglite", "supabase"]) {
-  console.log(`\n=== ${target} ===`);
-  const args = ["tsx", ...(target === "supabase" ? ["--env-file-if-exists=.env.local"] : []), "supabase/tests/run.ts", target, RAW];
-  const res = spawnSync("npx", args, { stdio: "inherit", shell: true });
+  let exit = null;
+  if (!reportOnly) {
+    console.log(`\n=== ${target} ===`);
+    const args = ["tsx", ...(target === "supabase" ? ["--env-file-if-exists=.env.local"] : []), "supabase/tests/run.ts", target, RAW];
+    exit = spawnSync("npx", args, { stdio: "inherit", shell: true }).status;
+  }
   const json = JSON.parse(readFileSync(join(RAW, `${target}.json`), "utf8"));
-  runs.push({ target, exit: res.status, ...json });
+  runs.push({ target, exit: exit ?? (json.fail ? 1 : 0), ...json });
 }
 
 let region = "unknown";
@@ -46,7 +49,7 @@ let md = `# Test report — database authorization, concurrency and GPS freshnes
 | Generated | ${now.toISOString()} (UTC) |
 | Git commit | \`${commit}\`${dirty ? " (working tree had uncommitted changes outside docs/evidence)" : ""} |
 | Node.js | ${process.version} on ${process.platform} |
-| PGlite | ${require("@electric-sql/pglite/package.json").version} (Postgres compiled to WASM, single connection) |
+| PGlite | ${JSON.parse(readFileSync("node_modules/@electric-sql/pglite/package.json", "utf8")).version} (Postgres compiled to WASM, single connection) |
 | Supabase | project region \`${region}\`, Postgres ${pgVersion ?? "?"}, reached through the Supavisor transaction pooler |
 | Command | \`npm run evidence\` (runs \`supabase/tests/run.ts\` against each target) |
 
