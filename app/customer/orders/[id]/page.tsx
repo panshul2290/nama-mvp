@@ -7,6 +7,7 @@ import { useCustomer } from "@/components/CustomerContext";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { OrderBill, SERVICE_SHORT, StatusPill, Stepper } from "@/components/OrderBits";
+import { usePricingRules } from "@/components/usePricingRules";
 import { BackButton, Loading } from "@/components/Shell";
 import { useToast } from "@/components/useToast";
 import { errorCode, friendlyError } from "@/lib/errors";
@@ -27,6 +28,7 @@ export default function OrderTracking() {
   const [tankerFix, setTankerFix] = useState<{ driverId: string; pos: LngLat } | null>(null);
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const { rules } = usePricingRules();
 
   const load = useCallback(() => {
     const db = supabase();
@@ -141,7 +143,7 @@ export default function OrderTracking() {
           <div className="banner">You cancelled this request{order.cancelled_at ? ` at ${hhmm(order.cancelled_at)}` : ""}.</div>
         )}
         <div className="rq-card pad">
-          <OrderBill order={order} />
+          <OrderBill order={order} rules={rules} />
         </div>
         <Link href={`/customer/request?type=${order.service_type}`} className="cta">
           Request again
@@ -202,7 +204,7 @@ export default function OrderTracking() {
         )}
 
         <div className="rq-card pad">
-          <OrderBill order={order} />
+          <OrderBill order={order} rules={rules} />
         </div>
 
         {order.status === "requested" && (

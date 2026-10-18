@@ -1,4 +1,4 @@
-import type { ServiceType } from "./pricing";
+import type { RuleStatus, ServiceType } from "./pricing";
 
 export type Role = "customer" | "driver";
 
@@ -39,6 +39,8 @@ export type Order = {
   total: string;
   driver_earnings: string;
   status: OrderStatus;
+  /** Status of the pricing rules behind each line when the order was priced. */
+  price_basis: { water: RuleStatus; fee: RuleStatus; vat: RuleStatus; total: RuleStatus; earnings: RuleStatus; rules: string[]; mode: string } | null;
   driver_name: string | null;
   tanker_plate: string | null;
   created_at: string;
@@ -59,6 +61,7 @@ export type OpenRequest = {
   area: string;
   distance_km: number;
   driver_earnings: string;
+  earnings_status: RuleStatus | null;
   created_at: string;
 };
 

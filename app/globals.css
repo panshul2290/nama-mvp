@@ -154,6 +154,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .st.bad { background: color-mix(in srgb, var(--bad) 12%, transparent); } .st.bad::before { background: var(--bad); }
 .st.act { background: color-mix(in srgb, var(--accent) 12%, transparent); } .st.act::before { background: var(--accent); }
 button.st { border: 0; }
+.st.ptag { font-size: 10.5px; padding: 0 7px 0 6px; vertical-align: 1px; margin-left: 4px; }
 
 .banner { border-radius: 12px; padding: 10px 12px; font-size: 13.5px; margin-bottom: 12px; background: color-mix(in srgb, var(--warn) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line)); }
 .banner.okb { background: color-mix(in srgb, var(--ok) 12%, var(--panel)); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }

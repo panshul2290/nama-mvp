@@ -12,6 +12,8 @@ const MESSAGES: Record<string, string> = {
   invalid_location: "Pick a delivery location on the map.",
   area_required: "Enter the area or neighbourhood.",
   not_found: "Order not found.",
+  pricing_unconfirmed: "This order can’t be priced yet: some pricing rules are still awaiting NWS confirmation (billing is in production mode).",
+  price_immutable: "Prices can’t be changed after an order is placed.",
 };
 
 export function errorCode(error: { message?: string } | null | undefined): string | null {

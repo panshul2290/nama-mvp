@@ -83,15 +83,19 @@ Order numbers (`0002_order_no.sql`) come from the `orders_order_no_seq` sequence
 
 Status: `requested → accepted → arriving → arrived → delivered`, or `requested → cancelled`. `arriving` is set automatically by the driver's first GPS ping after accepting.
 
-### Pricing
-| | Water | Delivery fee |
-|---|---|---|
-| DW | 1 baisa/gal for the first 650 gal, 3 baisa/gal above (tiered) | 3.500 OMR |
-| WW | 1 baisa/gal | 6.000 OMR |
-| TE | 0.05 baisa/gal | 8.000 OMR |
+### Pricing (`0004_pricing_rules.sql`)
+Every tariff figure is a row in `public.pricing_rules` (`rule_key`, `value`, `status`, `source`, `notes`). Nothing is hard-coded in SQL or in `lib/pricing.ts`.
 
-VAT is 5% of (water + fee). The driver earns 85% of the delivery fee. Each line is rounded to 3 decimals (1 OMR = 1000 baisa).
-The price is computed **on the server** by `price_quote()` inside `place_order()`. `lib/pricing.ts` mirrors it only for the live quote, and the test suite checks the two agree.
+| Status | Rules |
+|---|---|
+| `confirmed` (tender tariff table) | DW up to 650 gal: 1 baisa/gal · WW 1 baisa/gal · TE 0.05 baisa/gal |
+| `pending_clarification` | DW above 650 gal: 3 baisa/gal, applied as a **slab** today (Q05: slab vs whole volume) · VAT 5% on water + fee (Q07) |
+| `assumption` | Delivery base fees DW 3.5 / WW 6 / TE 8 OMR · driver share 85% · peak 1.2× · priority 1.5× · monthly 10% / yearly 15% discount · cancel fee 1 OMR (the last five aren't used by the MVP) |
+
+- **Pricing trigger:** a `BEFORE INSERT` trigger on `orders` prices every order from these rules and ignores any price supplied, then prices are frozen. Each order stores the status of the rules behind each line in `orders.price_basis`. The quote and driver earnings screens tag such lines **Assumption** or **Pending NWS clarification**.
+- **`BILLING_MODE`:** a row in `public.app_settings`, `demo` by default. In `production` the trigger refuses to price an order if any rule it uses isn't `confirmed`, with an error that names those rules. It lives in the database because the database is what enforces it. To switch, run this as the database owner: `update app_settings set value = 'production' where key = 'BILLING_MODE';`
+- **Changing a rule:** e.g. `update pricing_rules set value = 'whole_volume', status = 'confirmed', source = 'NWS reply to Q05' where rule_key = 'dw_above_650_basis';`. Signed-in users can read the rules; only the database owner can change them.
+- **Rounding:** each line is rounded to 3 decimals (1 OMR = 1000 baisa). `lib/pricing.ts` mirrors `price_quote()` for the live quote only, and the tests check that the two agree on amounts and statuses.
 
 ### All writes go through RPCs
 Signed-in users have **no** INSERT/UPDATE rights on `orders`. Every change is a `SECURITY DEFINER` function that checks the caller and the allowed transition:

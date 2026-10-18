@@ -8,7 +8,9 @@ import { Bill, SERVICE_SHORT, TypeTag } from "@/components/OrderBits";
 import { BackButton, Loading } from "@/components/Shell";
 import { friendlyError } from "@/lib/errors";
 import { currentPosition, DEFAULT_CENTER, reverseGeocodeArea } from "@/lib/geo";
-import { omr, quote, VOLUME_PRESETS, type ServiceType } from "@/lib/pricing";
+import { feeKey, omr, quote, ruleNumber, VOLUME_PRESETS, type PricingRules, type ServiceType } from "@/lib/pricing";
+import { RuleTag } from "@/components/OrderBits";
+import { usePricingRules } from "@/components/usePricingRules";
 import { supabase } from "@/lib/supabase/client";
 import type { LngLat, Order } from "@/lib/types";
 
@@ -19,11 +21,16 @@ const TYPE_NOTE: Record<ServiceType, string> = {
   WW: "Septic tank emptied, discharged at an approved STP",
   TE: "For irrigation and construction — not for drinking",
 };
-const TARIFF_NOTE: Record<ServiceType, string> = {
-  DW: "1 baisa a gallon up to 650 gal, 3 baisa a gallon above that. Delivery fee 3.500 OMR.",
-  WW: "1 baisa a gallon. Delivery fee 6.000 OMR.",
-  TE: "0.05 baisa a gallon. Delivery fee 8.000 OMR.",
-};
+// Explains the tariff from the rules table (no figures are hard-coded).
+function tariffNote(type: ServiceType, rules: PricingRules) {
+  const n = (k: string) => ruleNumber(rules, k);
+  const fee = `Delivery fee ${n(feeKey(type)).toFixed(3)} OMR.`;
+  if (type === "DW") {
+    const basis = rules.dw_above_650_basis?.value === "whole_volume" ? "on every gallon once over" : "on the gallons above";
+    return `${n("dw_rate_upto_650")} baisa a gallon up to ${n("dw_tier_threshold_gal")} gal, ${n("dw_rate_above_650")} baisa a gallon ${basis} ${n("dw_tier_threshold_gal")}. ${fee}`;
+  }
+  return `${n(type === "WW" ? "ww_rate" : "te_rate")} baisa a gallon. ${fee}`;
+}
 const COLOR: Record<ServiceType, string> = { DW: "var(--dw)", WW: "var(--ww)", TE: "var(--te)" };
 
 export default function RequestPage() {
@@ -78,7 +85,8 @@ function RequestWizard() {
     };
   }, [point]);
 
-  const q = useMemo(() => quote(type, gallons || 0), [type, gallons]);
+  const { rules } = usePricingRules();
+  const q = useMemo(() => (rules ? quote(type, gallons || 0, rules) : null), [type, gallons, rules]);
   const validGallons = Number.isInteger(gallons) && gallons >= 1 && gallons <= 20000;
   const canNext = step === 1 || (step === 2 && area.trim().length > 0) || (step === 3 && validGallons);
 
@@ -173,12 +181,22 @@ function RequestWizard() {
             <label htmlFor="gal">Or enter an amount</label>
             <input id="gal" type="number" inputMode="numeric" min={1} max={20000} step={1} value={gallons || ""} onChange={(e) => setGallons(Math.floor(Number(e.target.value)))} />
           </div>
-          <div className="reco">
-            <b>Tariff:</b> {TARIFF_NOTE[type]}
-          </div>
-          <div className="rq-card pad">
-            <Bill quote={q} />
-          </div>
+          {rules && q && (
+            <>
+              <div className="reco">
+                <b>Tariff:</b> {tariffNote(type, rules)}
+                {q.status.water !== "confirmed" && (
+                  <>
+                    {" "}
+                    <RuleTag status={q.status.water} /> {rules.dw_above_650_basis?.source}: how the higher rate applies is awaiting NWS.
+                  </>
+                )}
+              </div>
+              <div className="rq-card pad">
+                <Bill quote={q} rules={rules} />
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -202,9 +220,16 @@ function RequestWizard() {
               <b>As soon as possible</b>
             </div>
           </div>
-          <div className="rq-card pad">
-            <Bill quote={q} />
-          </div>
+          {rules && q && (
+            <div className="rq-card pad">
+              <Bill quote={q} rules={rules} />
+              {q.status.total !== "confirmed" && (
+                <p className="mut small" style={{ margin: "8px 0 0" }}>
+                  Tagged lines use rates that NWS hasn’t confirmed yet.
+                </p>
+              )}
+            </div>
+          )}
           {error && <div className="banner badb">{error}</div>}
         </>
       )}
@@ -216,8 +241,8 @@ function RequestWizard() {
           </button>
         ) : (
           <>
-            <button className="cta" disabled={busy} onClick={place}>
-              {busy ? "Placing request…" : `Place request · ${omr(q.total)}`}
+            <button className="cta" disabled={busy || !q} onClick={place}>
+              {busy ? "Placing request…" : q ? `Place request · ${omr(q.total)}` : "Place request"}
             </button>
             <div className="rq-note">
               <Icon name="shield" />

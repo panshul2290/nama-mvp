@@ -1,6 +1,6 @@
 import { Icon } from "@/components/icons";
 import { hhmm } from "@/lib/format";
-import { omr, omrValue, SERVICE_LABEL, type Quote, type ServiceType } from "@/lib/pricing";
+import { omr, omrValue, ruleNumber, SERVICE_LABEL, type PricingRules, type Quote, type RuleStatus, type ServiceType } from "@/lib/pricing";
 import type { Order, OrderStatus } from "@/lib/types";
 
 export const STATUS_TEXT: Record<OrderStatus, [string, "act" | "ok" | "warn" | "bad"]> = {
@@ -67,48 +67,48 @@ export function Progress({ status }: { status: OrderStatus }) {
   );
 }
 
-export function Bill({ quote }: { quote: Quote }) {
+/** Flags a price line that rests on a rule NWS hasn't confirmed. */
+export function RuleTag({ status }: { status?: RuleStatus | string | null }) {
+  if (!status || status === "confirmed") return null;
+  return <span className="st warn ptag">{status === "assumption" ? "Assumption" : "Pending NWS clarification"}</span>;
+}
+
+const vatLabel = (rules?: PricingRules | null) => {
+  const r = rules ? ruleNumber(rules, "vat_rate") : NaN;
+  return Number.isFinite(r) ? `VAT ${Math.round(r * 1000) / 10}%` : "VAT";
+};
+
+function Line({ label, amount, status, className }: { label: string; amount: string; status?: string | null; className?: string }) {
   return (
-    <div className="bill">
-      <div>
-        <span>Water charge</span>
-        <span>{(quote.water / 1000).toFixed(3)}</span>
-      </div>
-      <div>
-        <span>Delivery fee</span>
-        <span>{(quote.fee / 1000).toFixed(3)}</span>
-      </div>
-      <div>
-        <span>VAT 5%</span>
-        <span>{(quote.vat / 1000).toFixed(3)}</span>
-      </div>
-      <div className="tot">
-        <span>Total</span>
-        <span>{omr(quote.total)}</span>
-      </div>
+    <div className={className}>
+      <span>
+        {label} <RuleTag status={status} />
+      </span>
+      <span>{amount}</span>
     </div>
   );
 }
 
-export function OrderBill({ order }: { order: Order }) {
+export function Bill({ quote, rules }: { quote: Quote; rules: PricingRules }) {
+  const f = (b: number) => (b / 1000).toFixed(3);
   return (
     <div className="bill">
-      <div>
-        <span>Water charge · {order.gallons.toLocaleString()} gal</span>
-        <span>{Number(order.water_charge).toFixed(3)}</span>
-      </div>
-      <div>
-        <span>Delivery fee</span>
-        <span>{Number(order.delivery_fee).toFixed(3)}</span>
-      </div>
-      <div>
-        <span>VAT 5%</span>
-        <span>{Number(order.vat).toFixed(3)}</span>
-      </div>
-      <div className="tot">
-        <span>Total</span>
-        <span>{omrValue(order.total)}</span>
-      </div>
+      <Line label="Water charge" amount={f(quote.water)} status={quote.status.water} />
+      <Line label="Delivery fee" amount={f(quote.fee)} status={quote.status.fee} />
+      <Line label={vatLabel(rules)} amount={f(quote.vat)} status={quote.status.vat} />
+      <Line className="tot" label="Total" amount={omr(quote.total)} status={quote.status.total} />
+    </div>
+  );
+}
+
+export function OrderBill({ order, rules }: { order: Order; rules?: PricingRules | null }) {
+  const b = order.price_basis;
+  return (
+    <div className="bill">
+      <Line label={`Water charge · ${order.gallons.toLocaleString()} gal`} amount={Number(order.water_charge).toFixed(3)} status={b?.water} />
+      <Line label="Delivery fee" amount={Number(order.delivery_fee).toFixed(3)} status={b?.fee} />
+      <Line label={vatLabel(rules)} amount={Number(order.vat).toFixed(3)} status={b?.vat} />
+      <Line className="tot" label="Total" amount={omrValue(order.total)} status={b?.total} />
     </div>
   );
 }

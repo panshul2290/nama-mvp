@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useDriver } from "@/components/DriverContext";
 import { Icon } from "@/components/icons";
-import { SERVICE_SHORT } from "@/components/OrderBits";
+import { RuleTag, SERVICE_SHORT } from "@/components/OrderBits";
 import { errorCode, friendlyError } from "@/lib/errors";
 import { FEED_CHANNEL, GONE_EVENT } from "@/lib/feed";
 import { orderNo } from "@/lib/format";
@@ -111,7 +111,9 @@ export default function JobsPage() {
               <span>
                 <b>{orderNo(r.order_no)}</b>
               </span>
-              <b className="e num">{omrValue(r.driver_earnings)}</b>
+              <b className="e num">
+                {omrValue(r.driver_earnings)} <RuleTag status={r.earnings_status} />
+              </b>
             </div>
             <small>
               {r.gallons.toLocaleString()} gal · {r.area} · {Number(r.distance_km).toFixed(1)} km · As soon as possible

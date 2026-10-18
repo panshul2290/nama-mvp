@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { useDriver } from "@/components/DriverContext";
-import { SERVICE_SHORT } from "@/components/OrderBits";
+import { RuleTag, SERVICE_SHORT } from "@/components/OrderBits";
+import { usePricingRules } from "@/components/usePricingRules";
 import { orderNo } from "@/lib/format";
 import { omr } from "@/lib/pricing";
 
 export default function DriverHome() {
   const { profile, tanker, online, toggleOnline, job, today } = useDriver();
+  const { rules } = usePricingRules();
+  const share = rules?.driver_share;
 
   return (
     <main className="screen">
@@ -67,7 +70,11 @@ export default function DriverHome() {
           </div>
           <div style={{ textAlign: "right" }}>
             <p>Deliveries {today.jobs}</p>
-            <p>85% of delivery fees</p>
+            {share && (
+              <p>
+                {Math.round(Number(share.value) * 100)}% of delivery fees <RuleTag status={share.status} />
+              </p>
+            )}
           </div>
         </div>
       </div>

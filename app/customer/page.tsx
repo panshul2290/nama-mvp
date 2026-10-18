@@ -6,13 +6,15 @@ import { useCustomer } from "@/components/CustomerContext";
 import { Icon } from "@/components/icons";
 import { Progress, SERVICE_SHORT, StatusPill, STATUS_TEXT } from "@/components/OrderBits";
 import { firstName, greeting, orderNo } from "@/lib/format";
-import { omrValue, type ServiceType } from "@/lib/pricing";
+import { omrValue, ruleNumber, type ServiceType } from "@/lib/pricing";
+import { usePricingRules } from "@/components/usePricingRules";
 import { supabase } from "@/lib/supabase/client";
 import { ACTIVE_STATUSES, type Order } from "@/lib/types";
 
 export default function CustomerHome() {
   const profile = useCustomer();
   const [orders, setOrders] = useState<Order[] | null>(null);
+  const { rules } = usePricingRules();
 
   useEffect(() => {
     supabase()
@@ -69,14 +71,17 @@ export default function CustomerHome() {
         </Link>
       ))}
 
-      {active.length === 0 && (
+      {active.length === 0 && rules && (
         <div className="ch-tip">
           <span className="ri">
             <Icon name="drop" />
           </span>
           <div>
             <b>Know the price before you order</b>
-            <p>Drinking water is 1 baisa a gallon for the first 650 gal. Delivery and 5% VAT are shown upfront.</p>
+            <p>
+              Drinking water is {ruleNumber(rules, "dw_rate_upto_650")} baisa a gallon for the first {ruleNumber(rules, "dw_tier_threshold_gal")} gal. Delivery and VAT are shown
+              upfront, and any rate NWS hasn’t confirmed yet is tagged.
+            </p>
           </div>
         </div>
       )}

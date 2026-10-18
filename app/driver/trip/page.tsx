@@ -4,7 +4,7 @@ import Link from "next/link";
 import { SIMULATION, useDriver } from "@/components/DriverContext";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
-import { SERVICE_SHORT } from "@/components/OrderBits";
+import { RuleTag, SERVICE_SHORT } from "@/components/OrderBits";
 import { etaMinutes, kmText, orderNo } from "@/lib/format";
 import { DEFAULT_CENTER, distanceKm } from "@/lib/geo";
 import { omrValue } from "@/lib/pricing";
@@ -91,7 +91,9 @@ export default function TripPage() {
             <Icon name="coins" />
             <span>
               <small>Your earnings</small>
-              <b>{omrValue(o.driver_earnings)}</b>
+              <b>
+                {omrValue(o.driver_earnings)} <RuleTag status={o.price_basis?.earnings} />
+              </b>
             </span>
           </div>
         </div>
