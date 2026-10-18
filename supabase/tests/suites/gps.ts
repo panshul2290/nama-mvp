@@ -68,7 +68,7 @@ export async function gpsSuite(t: Target, r: Reporter) {
 
   // The tracking screen's initial fetch goes through PostgREST (supabase-js).
   if (t.apiClientFor) {
-    await t.admin("update tankers set last_seen_at = now() - interval '61 seconds' where driver_id = $1", [D1.id]);
+    await t.admin("update tankers set last_seen_at = now() - interval '61 seconds' where id = $1", [w.tk.D1]);
     const api = await t.apiClientFor(C1.email, C1.password);
     const { data, error } = await api.from("tankers").select("last_lat, last_lng, last_seen_at, location_age_s, location_stale").eq("id", w.tk.D1).maybeSingle();
     r.check("REST API (as the customer): tankers?select=…,location_stale returns stale = true for a 61 s old fix", !error && data?.location_stale === true, error?.message ?? data);

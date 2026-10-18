@@ -28,7 +28,7 @@ async function realtimeEvents(client: SupabaseClient, tanker: string, act: () =>
     await client.removeChannel(ch);
     return "not-subscribed";
   }
-  await new Promise((res) => setTimeout(res, 1500)); // let the subscription settle server-side
+  await new Promise((res) => setTimeout(res, 3000)); // let the subscription register server-side
   await act();
   await new Promise((res) => setTimeout(res, waitMs));
   await client.removeChannel(ch);
@@ -42,6 +42,13 @@ export async function privacySuite(t: Target, r: Reporter) {
   await setOnline(t, D1.id, true);
   const ping = (lat: number) => t.as(D1.id, "select report_location($1, 58.2, 8, now())", [lat]);
   await ping(23.61); // the driver has a position before any job
+  // Several updates a little apart, so a just-registered Realtime subscription can't miss them all.
+  const pings = async (lat: number) => {
+    for (const d of [0, 0.001, 0.002]) {
+      await ping(lat + d);
+      await new Promise((res) => setTimeout(res, 1200));
+    }
+  };
 
   // ---- 1. customers never send their live location
   await r.denies("a customer cannot report a live location (report_location → not_a_driver)", () => t.as(C1.id, "select report_location(23.6, 58.2, 5, now())"), "not_a_driver");
@@ -73,10 +80,10 @@ export async function privacySuite(t: Target, r: Reporter) {
   if (t.apiClientFor) {
     realtimeClients = { c1: await t.apiClientFor(C1.email, C1.password), c2: await t.apiClientFor(C2.email, C2.password) };
     const [mine, other] = await Promise.all([
-      realtimeEvents(realtimeClients.c1, w.tk.D1, () => ping(23.63)),
+      realtimeEvents(realtimeClients.c1, w.tk.D1, () => pings(23.63)),
       realtimeEvents(realtimeClients.c2, w.tk.D1, async () => undefined),
     ]);
-    r.check("Realtime: the active order's customer receives the driver's location updates", typeof mine === "number" && mine >= 1, mine);
+    r.check("Realtime: the active order's customer receives the driver's location updates", typeof mine === "number" && mine >= 2, mine);
     r.check("Realtime: another customer subscribed to the same driver receives nothing", other === 0, other);
   } else {
     r.skip("Realtime: only the active order's customer receives location updates", "PGlite has no Realtime server; covered by the Supabase run");
@@ -85,7 +92,7 @@ export async function privacySuite(t: Target, r: Reporter) {
   await t.as(D1.id, "select * from mark_delivered($1)", [o.id]);
   r.check("delivered: the customer can no longer see the driver's location", !(await sees(t, C1.id, w.tk.D1)));
   if (realtimeClients) {
-    const after = await realtimeEvents(realtimeClients.c1, w.tk.D1, () => ping(23.64));
+    const after = await realtimeEvents(realtimeClients.c1, w.tk.D1, () => pings(23.64));
     r.check("Realtime: after delivery, the customer receives no further location updates", after === 0, after);
   } else {
     r.skip("Realtime: no updates after delivery", "covered by the Supabase run");
