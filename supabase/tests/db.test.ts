@@ -1,5 +1,5 @@
-// Runs the migration against PGlite (Postgres in WASM) with a minimal stub of
-// the Supabase environment, then exercises RLS and the order lifecycle.
+// Runs the migrations against PGlite (Postgres in WASM) with a minimal stub of
+// the Supabase environment, then exercises RLS, the order lifecycle and order numbers.
 //   npm run test:db
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -23,6 +23,8 @@ const SUPABASE_STUB = `
   alter default privileges in schema public grant all on functions to anon, authenticated;
   create publication supabase_realtime;
 `;
+
+const migration = (file: string) => readFileSync(join(__dirname, "../migrations", file), "utf8");
 
 const db = new PGlite();
 let failures = 0;
@@ -78,8 +80,45 @@ async function createUser(email: string, meta: Record<string, string>) {
 
 async function main() {
   await db.exec(SUPABASE_STUB);
-  await db.exec(readFileSync(join(__dirname, "../migrations/0001_init.sql"), "utf8"));
-  console.log("migration applied");
+  await db.exec(migration("0001_init.sql"));
+  console.log("0001 applied");
+
+  // Orders that exist before 0002, inserted out of created_at order, to check the backfill.
+  const legacy = await createUser("legacy@test", { role: "customer", full_name: "Legacy" });
+  const legacyIds: string[] = [];
+  for (const g of [100, 200, 300]) {
+    const [o] = await as<{ id: string }>(legacy, "select * from place_order('DW', $1, 23.6, 58.2, 'Old Town')", [g]);
+    legacyIds.push(o.id);
+  }
+  // Creation times: 2nd order oldest, then 3rd, then 1st.
+  const times = ["2026-01-03T10:00:00Z", "2026-01-01T10:00:00Z", "2026-01-02T10:00:00Z"];
+  for (let i = 0; i < 3; i++) await db.query("update orders set created_at = $1 where id = $2", [times[i], legacyIds[i]]);
+
+  await db.exec(migration("0002_order_no.sql"));
+  console.log("0002 applied");
+
+  console.log("order number backfill");
+  const back = (await db.query<{ id: string; order_no: string }>("select id, order_no from orders order by order_no")).rows;
+  check(
+    "existing orders backfilled from 48200 in created_at order",
+    JSON.stringify(back.map((r) => [r.id, Number(r.order_no)])) ===
+      JSON.stringify([
+        [legacyIds[1], 48200],
+        [legacyIds[2], 48201],
+        [legacyIds[0], 48202],
+      ]),
+    back,
+  );
+  const col = (
+    await db.query<{ is_nullable: string }>(
+      "select is_nullable from information_schema.columns where table_name = 'orders' and column_name = 'order_no'",
+    )
+  ).rows[0];
+  check("order_no is NOT NULL after the backfill", col?.is_nullable === "NO", col);
+  const uniq = await db.query("select 1 from pg_constraint where conname = 'orders_order_no_key' and contype = 'u'");
+  check("order_no has a UNIQUE constraint", uniq.rows.length === 1);
+  // Close the legacy requests so they don't show up in the lifecycle tests below.
+  for (const id of legacyIds) await as(legacy, "select * from cancel_order($1)", [id]);
 
   console.log("pricing");
   const quote = async (t: string, g: number) =>
@@ -120,7 +159,7 @@ async function main() {
 
   console.log("profiles and tankers");
   check("profile rows created by trigger",
-    (await db.query("select * from profiles")).rows.length === 5);
+    (await db.query("select * from profiles")).rows.length === 6); // 5 + the legacy customer
   await expectError("user cannot change own role", C, "update profiles set role = 'driver' where id = $1", [C], "permission denied");
   await expectError("customer cannot register a tanker", C,
     "insert into tankers (driver_id, plate, service_type, capacity_gal) values ($1, 'X 1', 'DW', 3000)", [C], "row-level security");
@@ -205,6 +244,47 @@ async function main() {
     (await as<{ tanker_plate: string }>(C, "select tanker_plate from orders where id = $1", [o1.id]))[0].tanker_plate === "1234 AB");
   check("driver is free for a new job",
     (await as<{ status: string }>(D2, "select * from accept_order($1)", [small.id]))[0].status === "accepted");
+
+  console.log("order numbers");
+  const nums: number[] = [];
+  for (let i = 0; i < 25; i++) {
+    nums.push(Number((await as<{ order_no: string }>(C, "select * from place_order('WW', 50, 23.6, 58.2, 'Qurum')"))[0].order_no));
+  }
+  check("25 orders in a row get distinct, increasing numbers", new Set(nums).size === 25 && nums.every((v, i) => i === 0 || v > nums[i - 1]), nums);
+  check("new numbers continue after the backfill", nums[0] > 48202, nums[0]);
+  const all = (await db.query<{ order_no: string }>("select order_no from orders")).rows.map((r) => r.order_no);
+  check(`no two of the ${all.length} orders share a number`, new Set(all).size === all.length);
+
+  // Even a privileged insert that supplies a number gets the next one from the sequence.
+  const forced = (
+    await db.query<{ order_no: string }>(
+      "insert into orders (customer_id, service_type, gallons, area, water_charge, delivery_fee, vat, total, driver_earnings, order_no) values ($1,'DW',1,'x',0,0,0,0,0,$2) returning order_no",
+      [C, nums[0]],
+    )
+  ).rows[0];
+  check("a supplied number is ignored on insert (no duplicate possible)", Number(forced.order_no) === nums[24] + 1, forced);
+
+  const target = small.id;
+  await expectError("customer cannot change a number", C, "update orders set order_no = 1 where id = $1", [target], "permission denied");
+  await expectError("driver cannot change a number", D2, "update orders set order_no = 1 where id = $1", [target], "permission denied");
+  await expectError("customer cannot insert with a chosen number", C,
+    "insert into orders (customer_id, service_type, gallons, area, water_charge, delivery_fee, vat, total, driver_earnings, order_no) values ($1,'DW',1,'x',0,0,0,0,0,1)", [C], "permission denied");
+  await expectError("customer cannot advance the sequence", C, "select nextval('orders_order_no_seq')", [], "permission denied");
+  await expectError("driver cannot reset the sequence", D1, "select setval('orders_order_no_seq', 1)", [], "permission denied");
+  try {
+    await db.query("update orders set order_no = order_no + 1000 where id = $1", [target]);
+    check("number is frozen even for privileged updates", false, "no error");
+  } catch (e) {
+    check("number is frozen even for privileged updates", (e as Error).message.includes("order_no_immutable"), (e as Error).message);
+  }
+
+  console.log("RPCs return order_no");
+  const [placed] = await as<{ order_no: string }>(C, "select * from place_order('DW', 900, 23.6, 58.2, 'Ruwi')");
+  check("place_order returns order_no", Number(placed.order_no) > 0, placed);
+  const openReq = await as<{ order_no: string }>(D1, "select * from open_requests_near(23.6, 58.2)");
+  check("open_requests_near returns order_no", openReq.length > 0 && openReq.every((r) => Number(r.order_no) > 0), openReq);
+  const [cancelled] = await as<{ order_no: string }>(C, "select * from cancel_order((select id from orders where order_no = $1))", [placed.order_no]);
+  check("cancel_order returns the same order_no", cancelled.order_no === placed.order_no, cancelled);
 
   console.log(`\n${passes} passed, ${failures} failed`);
   process.exit(failures ? 1 : 0);

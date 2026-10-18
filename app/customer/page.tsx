@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
 import { Icon } from "@/components/icons";
 import { Progress, SERVICE_SHORT, StatusPill, STATUS_TEXT } from "@/components/OrderBits";
-import { firstName, greeting, orderCode } from "@/lib/format";
+import { firstName, greeting, orderNo } from "@/lib/format";
 import { omrValue, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import { ACTIVE_STATUSES, type Order } from "@/lib/types";
@@ -55,7 +55,7 @@ export default function CustomerHome() {
       {active.map((o) => (
         <Link key={o.id} href={`/customer/orders/${o.id}`} className="ch-active">
           <span className="row">
-            <b>{orderCode(o.id)}</b>
+            <b>{orderNo(o.order_no)}</b>
             <StatusPill status={o.status} />
           </span>
           <small>

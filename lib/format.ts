@@ -1,10 +1,7 @@
 // Display helpers shared by the customer and driver screens.
 
-// Short, human-friendly order reference ("TO-48229") derived from the UUID.
-// Display only; the UUID stays the real key.
-export function orderCode(id: string): string {
-  return `TO-${(parseInt(id.replace(/-/g, "").slice(0, 8), 16) % 90000) + 10000}`;
-}
+// Order reference shown to people, from the database's order_no sequence.
+export const orderNo = (n: number | string) => `TO-${n}`;
 
 export function greeting(d = new Date()): string {
   const h = d.getHours();

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useDriver } from "@/components/DriverContext";
 import { SERVICE_SHORT } from "@/components/OrderBits";
-import { orderCode } from "@/lib/format";
+import { orderNo } from "@/lib/format";
 import { omr } from "@/lib/pricing";
 
 export default function DriverHome() {
@@ -39,7 +39,7 @@ export default function DriverHome() {
 
       {job ? (
         <Link href="/driver/trip" className="card hl">
-          <h4>Job in progress · {orderCode(job.order.id)}</h4>
+          <h4>Job in progress · {orderNo(job.order.order_no)}</h4>
           <p>
             {job.order.gallons.toLocaleString()} gal · {job.order.area} — open Trip
           </p>

@@ -12,7 +12,7 @@ import { useToast } from "@/components/useToast";
 import { errorCode, friendlyError } from "@/lib/errors";
 import { announceGone } from "@/lib/feed";
 import { DEFAULT_CENTER, distanceKm } from "@/lib/geo";
-import { etaMinutes, hhmm, initials, kmText, orderCode } from "@/lib/format";
+import { etaMinutes, hhmm, initials, kmText, orderNo } from "@/lib/format";
 import { supabase } from "@/lib/supabase/client";
 import type { LngLat, Order, OrderLocation, Tanker } from "@/lib/types";
 
@@ -107,7 +107,7 @@ export default function OrderTracking() {
   }
   if (!order) return <Loading />;
 
-  const code = orderCode(order.id);
+  const code = orderNo(order.order_no);
   const dest = loc ? { lat: loc.lat, lng: loc.lng } : null;
   const tanker = driverId && tankerFix?.driverId === driverId ? tankerFix.pos : null;
   const away = tanker && dest ? distanceKm(tanker, dest) : null;

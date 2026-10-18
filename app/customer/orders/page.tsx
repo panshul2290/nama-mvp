@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
 import { SERVICE_SHORT, StatusPill } from "@/components/OrderBits";
-import { orderCode } from "@/lib/format";
+import { orderNo } from "@/lib/format";
 import { omrValue } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import { ACTIVE_STATUSES, type Order } from "@/lib/types";
@@ -53,7 +53,7 @@ export default function OrdersPage() {
         list.map((o) => (
           <Link key={o.id} href={`/customer/orders/${o.id}`} className="card">
             <div className="row">
-              <h4>{orderCode(o.id)}</h4>
+              <h4>{orderNo(o.order_no)}</h4>
               <StatusPill status={o.status} />
             </div>
             <p>

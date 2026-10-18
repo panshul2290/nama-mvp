@@ -26,6 +26,8 @@ export type Tanker = {
 
 export type Order = {
   id: string;
+  /** Sequential, server-assigned; display as TO-<order_no>. */
+  order_no: number;
   customer_id: string;
   driver_id: string | null;
   service_type: ServiceType;
@@ -51,6 +53,7 @@ export type OrderLocation = { order_id: string; lat: number; lng: number; addres
 
 export type OpenRequest = {
   id: string;
+  order_no: number;
   service_type: ServiceType;
   gallons: number;
   area: string;

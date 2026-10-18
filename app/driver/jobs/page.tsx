@@ -8,7 +8,7 @@ import { Icon } from "@/components/icons";
 import { SERVICE_SHORT } from "@/components/OrderBits";
 import { errorCode, friendlyError } from "@/lib/errors";
 import { FEED_CHANNEL, GONE_EVENT } from "@/lib/feed";
-import { orderCode } from "@/lib/format";
+import { orderNo } from "@/lib/format";
 import { DEFAULT_CENTER } from "@/lib/geo";
 import { omrValue } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
@@ -109,7 +109,7 @@ export default function JobsPage() {
           <div key={r.id} className="dj-job">
             <div className="row">
               <span>
-                <b>{orderCode(r.id)}</b>
+                <b>{orderNo(r.order_no)}</b>
               </span>
               <b className="e num">{omrValue(r.driver_earnings)}</b>
             </div>

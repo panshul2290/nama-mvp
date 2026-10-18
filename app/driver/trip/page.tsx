@@ -5,7 +5,7 @@ import { SIMULATION, useDriver } from "@/components/DriverContext";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { SERVICE_SHORT } from "@/components/OrderBits";
-import { etaMinutes, kmText, orderCode } from "@/lib/format";
+import { etaMinutes, kmText, orderNo } from "@/lib/format";
 import { DEFAULT_CENTER, distanceKm } from "@/lib/geo";
 import { omrValue } from "@/lib/pricing";
 
@@ -50,7 +50,7 @@ export default function TripPage() {
       <div className="tr-map short">
         <Map center={dest ?? me ?? DEFAULT_CENTER} destination={dest} me={me} follow padBottom={30} />
         <div className="tr-chip">
-          <b>{orderCode(o.id)}</b>
+          <b>{orderNo(o.order_no)}</b>
           <span className="mut">· {arrived ? "Step 2 of 2" : "Step 1 of 2"}</span>
         </div>
       </div>

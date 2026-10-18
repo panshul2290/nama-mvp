@@ -14,11 +14,12 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    ```
    `postinstall` copies MapLibre's web worker into `public/`.
 
-2. **Create the database.** In the Supabase dashboard open **SQL Editor**, paste `supabase/migrations/0001_init.sql`, and run it. Or, with the Supabase CLI:
+2. **Create the database.** Put the Postgres connection string in `DATABASE_URL` (in `.env.local`, see step 4), then run:
    ```bash
-   supabase link --project-ref YOUR-PROJECT-REF
-   supabase db push
+   npm run db:apply
    ```
+   It applies `supabase/migrations/NNNN_*.sql` in order, each in its own transaction, and records them in `supabase_migrations.schema_migrations` (the table the Supabase CLI uses), so it's safe to re-run. Already-applied migrations are skipped. It then checks the tables, RLS, RPCs and the realtime publication.
+   Alternatives: paste each file into the dashboard's **SQL Editor** in order, or use `supabase link` + `supabase db push`.
 
 3. **Configure auth.** Under **Authentication → URL Configuration**, set **Site URL** to `http://localhost:3000` and add `http://localhost:3000/auth/callback` to **Redirect URLs**.
    For quick local testing you can turn off **Authentication → Providers → Email → Confirm email**, so new sign-ups land in the app straight away. Seeded accounts are pre-confirmed either way.
@@ -33,7 +34,7 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    |---|---|
    | `NEXT_PUBLIC_SUPABASE_URL` | browser + server |
    | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | browser + server (publishable key; the legacy anon key works too, also accepted as `NEXT_PUBLIC_SUPABASE_ANON_KEY`). RLS protects the data |
-   | `DATABASE_URL` | `npm run db:apply` only (applies the migration with `pg`) |
+   | `DATABASE_URL` | `npm run db:apply` only (applies migrations with `pg`) |
    | `NEXT_PUBLIC_ENABLE_SIMULATION` | `true` shows the driver's *Simulate drive* switch (dev only) |
    | `SUPABASE_SERVICE_ROLE_KEY` | **`npm run seed` only.** Never referenced by app code; never prefix it with `NEXT_PUBLIC_` |
 
@@ -70,13 +71,15 @@ Geolocation needs a secure context. `localhost` works. To test on a phone over y
 
 ## How it works
 
-### Data model (`supabase/migrations/0001_init.sql`)
+### Data model (`supabase/migrations/`)
 | Table | Purpose |
 |---|---|
 | `profiles` | one per auth user; `role` = `customer` \| `driver`; created by a trigger from sign-up metadata |
 | `tankers` | one per driver: plate, `service_type` (DW/WW/TE), `capacity_gal`, `is_online`, last GPS fix |
-| `orders` | service, gallons, **area**, price lines (`numeric(10,3)` OMR), status, driver name and plate snapshot, per-status timestamps |
+| `orders` | **`order_no`** (shown as `TO-<order_no>`), service, gallons, **area**, price lines (`numeric(10,3)` OMR), status, driver name and plate snapshot, per-status timestamps |
 | `order_locations` | the **exact** lat/lng and address, kept apart so RLS can hide it until a driver accepts |
+
+Order numbers (`0002_order_no.sql`) come from the `orders_order_no_seq` sequence, starting at 48200. A trigger assigns the next number on every insert and ignores any value supplied, and another rejects changes. Clients have no access to the sequence, and the column is `NOT NULL` and `UNIQUE`. Orders that existed before the migration were numbered in `created_at` order.
 
 Status: `requested → accepted → arriving → arrived → delivered`, or `requested → cancelled`. `arriving` is set automatically by the driver's first GPS ping after accepting.
 
@@ -124,7 +127,7 @@ Users can edit only `full_name` and `phone` on their profile (a column-level gra
 ```bash
 npm run test:db
 ```
-Runs the migration in [PGlite](https://pglite.dev) (Postgres in WASM) against a stub of Supabase's `auth` schema and roles. It checks RLS for each role, every RPC and transition, the one-active-job index, the "already taken" path, and JS/SQL price parity. Concurrency is exercised sequentially there. The race guarantee comes from Postgres row locking on the conditional `UPDATE`.
+Runs the migrations in [PGlite](https://pglite.dev) (Postgres in WASM) against a stub of Supabase's `auth` schema and roles. It checks RLS for each role, every RPC and transition, the one-active-job index, the "already taken" path, JS/SQL price parity, and order numbers: the backfill order, uniqueness, that customers and drivers can't set or change them, and that the RPCs return them. Concurrency is exercised sequentially there. The race guarantee comes from Postgres row locking on the conditional `UPDATE`.
 
 `npm run lint` and `npm run build` should both be clean.
 
@@ -140,6 +143,8 @@ components/                         MapView (MapLibre), order UI, shell
 lib/                                pricing, Supabase clients, types, geo, error copy
 proxy.ts                            session refresh + optimistic redirects (Next 16 "proxy")
 supabase/migrations/0001_init.sql   schema, RLS, RPCs, realtime publication
+supabase/migrations/0002_order_no.sql  sequential order numbers (TO-48200…)
+scripts/apply-migration.mjs         npm run db:apply: ordered, tracked migrations
 supabase/tests/db.test.ts           PGlite test suite
 scripts/seed.ts                     test customer + driver (service-role key)
 ```
