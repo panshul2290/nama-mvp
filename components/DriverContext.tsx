@@ -10,9 +10,12 @@ import { friendlyError } from "@/lib/errors";
 import { distanceKm } from "@/lib/geo";
 import { omrValue } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
+import { MAX_ACCURACY_M, MOVING_INTERVAL_MS, shouldSend, type Fix, type Sent } from "@/lib/tracking";
 import type { LngLat, Order, OrderLocation, Profile, Tanker } from "@/lib/types";
 
-const PING_MS = 10_000;
+const PING_MS = MOVING_INTERVAL_MS; // decide every 10 s; shouldSend() applies the 15 m / 30 s rule
+/** If no new fix has arrived for this long, ask the browser for one (some phones go quiet when stationary). */
+const POKE_AFTER_MS = 8_000;
 /** No usable fix for this long during a job → "Tracking paused". */
 const NO_FIX_MS = 30_000;
 
@@ -73,7 +76,9 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   const [trackingIssue, setTrackingIssue] = useState<TrackingIssue | null>(null);
   const [wakeLock, setWakeLock] = useState<"held" | "unsupported" | "failed" | "off">("off");
   const deniedRef = useRef(false);
-  const lastFixAt = useRef(0);
+  const lastFixAt = useRef(0); // when the last *usable* fix arrived (local clock)
+  const fixRef = useRef<Fix | null>(null); // latest usable fix (accuracy ≤ 100 m)
+  const lastSent = useRef<Sent | null>(null);
 
   const online = tanker?.is_online ?? false;
   const onJob = Boolean(job);
@@ -130,24 +135,26 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     loadToday(profile.id);
   }, [profile, router, loadJob, loadToday]);
 
+  // A fix from the browser. Fixes worse than 100 m are dropped (the server rejects them too).
+  const onFix = useCallback((p: GeolocationPosition) => {
+    deniedRef.current = false;
+    setGpsError(false);
+    if (p.coords.accuracy > MAX_ACCURACY_M) return;
+    fixRef.current = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, at: p.timestamp };
+    lastFixAt.current = Date.now();
+    setGps({ lat: p.coords.latitude, lng: p.coords.longitude });
+  }, []);
+  const onFixError = useCallback((err: GeolocationPositionError) => {
+    if (err.code === err.PERMISSION_DENIED) deniedRef.current = true;
+    setGpsError(true);
+  }, []);
+
   // GPS while online or on a job.
   useEffect(() => {
     if (!(online || onJob) || !navigator.geolocation) return;
-    const watch = navigator.geolocation.watchPosition(
-      (p) => {
-        deniedRef.current = false;
-        lastFixAt.current = Date.now();
-        setGpsError(false);
-        setGps({ lat: p.coords.latitude, lng: p.coords.longitude });
-      },
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) deniedRef.current = true;
-        setGpsError(true);
-      },
-      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 },
-    );
+    const watch = navigator.geolocation.watchPosition(onFix, onFixError, { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 });
     return () => navigator.geolocation.clearWatch(watch);
-  }, [online, onJob]);
+  }, [online, onJob, onFix, onFixError]);
 
   const toggleOnline = useCallback(async () => {
     if (!tanker || job) return;
@@ -196,18 +203,31 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     };
   }, [jobId]);
 
-  // Send GPS every 10 s while on the job (simulated drive in dev, if enabled).
+  // Location reporting during a job: every 10 s while moving (>15 m), at most every 30 s
+  // otherwise, with accuracy and the fix's own timestamp (simulated drive in dev, if enabled).
   useEffect(() => {
     if (!jobId) return;
+    lastSent.current = null;
     const tick = () => {
-      let pos = meRef.current;
+      const now = Date.now();
+      let fix = fixRef.current;
       if (simulate && destRef.current) {
-        pos = simulateStep(pos ?? gpsStart(destRef.current, gpsRef.current), destRef.current);
+        const pos = simulateStep(meRef.current ?? gpsStart(destRef.current, gpsRef.current), destRef.current);
         meRef.current = pos;
-        lastFixAt.current = Date.now();
+        fix = { ...pos, accuracy: 5, at: now };
+        lastFixAt.current = now;
         setSimPos(pos);
+      } else if (now - lastFixAt.current > POKE_AFTER_MS && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(onFix, onFixError, { enableHighAccuracy: true, maximumAge: 0, timeout: 9_000 });
       }
-      if (pos) supabase().rpc("report_location", { p_lat: pos.lat, p_lng: pos.lng }).then();
+      if (!shouldSend(fix, lastSent.current, now)) return;
+      const f = fix as Fix;
+      lastSent.current = { lat: f.lat, lng: f.lng, at: now };
+      supabase()
+        .rpc("report_location", { p_lat: f.lat, p_lng: f.lng, p_accuracy_m: f.accuracy, p_recorded_at: new Date(f.at).toISOString() })
+        .then(({ error }) => {
+          if (error) lastSent.current = null; // retry on the next tick
+        });
     };
     const first = setTimeout(tick, 0); // ping straight away so the job flips to 'arriving'
     const timer = setInterval(tick, PING_MS);
@@ -215,7 +235,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       clearTimeout(first);
       clearInterval(timer);
     };
-  }, [jobId, simulate]);
+  }, [jobId, simulate, onFix, onFixError]);
 
   // Keep the screen on during a job; the lock is dropped whenever the page is hidden, so re-request it.
   useEffect(() => {

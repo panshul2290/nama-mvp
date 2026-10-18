@@ -21,7 +21,7 @@ export async function gpsSuite(t: Target, r: Reporter) {
   const [before] = await view(C1.id);
   r.check("before any fix: no timestamp and reported stale", before?.last_seen_at === null && before.stale === true, before);
 
-  await t.as(D1.id, "select report_location(23.595, 58.195)");
+  await t.as(D1.id, "select report_location(23.595, 58.195, 8, now())");
   const [fresh] = await view(C1.id);
   const [{ skew }] = await t.admin<{ skew: number }>("select abs(extract(epoch from (now() - last_seen_at)))::float as skew from tankers where driver_id = $1", [D1.id]);
   r.check("report_location stores the fix with a server timestamp (within 5 s of now)", fresh?.last_seen_at !== null && skew < 5, { fresh, skew });
@@ -41,9 +41,28 @@ export async function gpsSuite(t: Target, r: Reporter) {
   r.check("another customer gets no row (RLS), so no location or freshness leaks", (await view(C2.id)).length === 0);
   await r.denies("anon cannot call location_stale()", () => t.as(null, "select location_stale(t) from tankers t limit 1"), "permission denied");
 
-  await t.as(D1.id, "select report_location(23.596, 58.196)");
+  await t.as(D1.id, "select report_location(23.596, 58.196, 8, now())");
   const [again] = await view(C1.id);
   r.check("a new fix clears the stale flag", again?.stale === false, again);
+
+  // Accuracy and timestamps on each fix.
+  const stored = async () =>
+    (await t.admin<{ last_lat: number; last_accuracy_m: number; fix_age: number }>(
+      "select last_lat, last_accuracy_m, extract(epoch from (now() - last_fix_at))::float as fix_age from tankers where driver_id = $1",
+      [D1.id],
+    ))[0];
+  await r.allows("a fix with accuracy 100 m is accepted", () => t.as(D1.id, "select report_location(23.597, 58.197, 100, now())"));
+  const s1 = await stored();
+  r.check("the fix's accuracy (m) and device timestamp are stored", s1.last_accuracy_m === 100 && s1.last_lat === 23.597 && s1.fix_age < 5, s1);
+  await r.denies("a fix with accuracy worse than 100 m is rejected", () => t.as(D1.id, "select report_location(23.5, 58.1, 100.5, now())"), "inaccurate_fix");
+  await r.denies("a fix without accuracy is rejected", () => t.as(D1.id, "select report_location(23.5, 58.1, null, now())"), "accuracy_required");
+  await r.denies("a fix timestamped more than 2 min ago is rejected", () => t.as(D1.id, "select report_location(23.5, 58.1, 8, now() - interval '3 minutes')"), "stale_fix");
+  await r.denies("a fix timestamped more than 5 min in the future is rejected", () => t.as(D1.id, "select report_location(23.5, 58.1, 8, now() + interval '10 minutes')"), "stale_fix");
+  await t.as(D1.id, "select report_location(23.598, 58.198, 6, now())");
+  await t.as(D1.id, "select report_location(23.111, 58.111, 6, now() - interval '30 seconds')");
+  const s2 = await stored();
+  r.check("an out-of-order (older) fix is ignored", s2.last_lat === 23.598 && s2.last_accuracy_m === 6, s2);
+  r.check("rejected fixes never changed the stored position", s2.last_lat !== 23.5, s2);
 
   // The tracking screen's initial fetch goes through PostgREST (supabase-js).
   if (t.apiClientFor) {

@@ -14,7 +14,8 @@
     "seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
     "db:apply": "node --env-file-if-exists=.env.local scripts/apply-migration.mjs",
     "test:db:supabase": "tsx --env-file-if-exists=.env.local supabase/tests/run.ts supabase",
-    "evidence": "node --env-file-if-exists=.env.local scripts/evidence.mjs"
+    "evidence": "node --env-file-if-exists=.env.local scripts/evidence.mjs",
+    "test:unit": "tsx tests/unit/tracking.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

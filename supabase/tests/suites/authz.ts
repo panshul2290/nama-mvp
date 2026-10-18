@@ -38,7 +38,7 @@ export async function authzSuite(t: Target, r: Reporter) {
     ["cancel_order", `'${oReq.id}'`],
     ["open_requests_near", "23.6, 58.2"],
     ["accept_order", `'${oReq.id}'`],
-    ["report_location", "23.6, 58.2"],
+    ["report_location", "23.6, 58.2, 8, now()"],
     ["mark_arrived", `'${oAcc.id}'`],
     ["mark_delivered", `'${oAcc.id}'`],
     ["price_quote", "'DW', 100"],
@@ -119,11 +119,11 @@ export async function authzSuite(t: Target, r: Reporter) {
   await r.denies("other customer: cancel C1's request → not_found", () => rows(C2.id, "select * from cancel_order($1)", [oReq.id]), "not_found");
   await r.denies("driver: cancel_order → not_found", () => rows(D2.id, "select * from cancel_order($1)", [oReq.id]), "not_found");
   await r.denies("customer: cancel an accepted order → cannot_cancel", () => rows(C1.id, "select * from cancel_order($1)", [oAcc.id]), "cannot_cancel");
-  await r.denies("customer: report_location → not_a_driver", () => rows(C1.id, "select report_location(23.6, 58.2)"), "not_a_driver");
+  await r.denies("customer: report_location → not_a_driver", () => rows(C1.id, "select report_location(23.6, 58.2, 8, now())"), "not_a_driver");
   await r.denies("customer: mark_arrived → invalid_transition", () => rows(C1.id, "select * from mark_arrived($1)", [oAcc.id]), "invalid_transition");
   await r.denies("other driver: mark_arrived on someone else's job → invalid_transition", () => rows(D2.id, "select * from mark_arrived($1)", [oAcc.id]), "invalid_transition");
   await r.denies("assigned driver: mark_delivered before arrived → invalid_transition", () => rows(D1.id, "select * from mark_delivered($1)", [oAcc.id]), "invalid_transition");
-  await r.allows("assigned driver: report_location", () => rows(D1.id, "select report_location(23.601, 58.201)"));
+  await r.allows("assigned driver: report_location", () => rows(D1.id, "select report_location(23.601, 58.201, 8, now())"));
   await r.allows("assigned driver: mark_arrived", () => rows(D1.id, "select status from mark_arrived($1)", [oAcc.id]), (x) => x[0]?.status === "arrived");
   await r.denies("other driver: mark_delivered → invalid_transition", () => rows(D2.id, "select * from mark_delivered($1)", [oAcc.id]), "invalid_transition");
   await r.allows("assigned driver: mark_delivered", () => rows(D1.id, "select status from mark_delivered($1)", [oAcc.id]), (x) => x[0]?.status === "delivered");

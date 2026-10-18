@@ -62,7 +62,7 @@ export async function lifecycleSuite(t: Target, r: Reporter) {
   await r.denies("busy driver cannot take a second job → driver_busy", () => t.as(D1.id, "select * from accept_order($1)", [o2.id]), "driver_busy");
   await r.denies("customer cannot cancel once accepted → cannot_cancel", () => t.as(C1.id, "select * from cancel_order($1)", [o1.id]), "cannot_cancel");
 
-  await t.as(D1.id, "select report_location(23.59, 58.17)");
+  await t.as(D1.id, "select report_location(23.59, 58.17, 8, now())");
   const [st] = await t.as<{ status: string }>(C1.id, "select status from orders where id = $1", [o1.id]);
   r.check("first GPS ping moves the job to arriving", st.status === "arriving", st);
   const [arr] = await t.as<{ status: string }>(D1.id, "select status from mark_arrived($1)", [o1.id]);
