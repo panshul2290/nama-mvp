@@ -1,9 +1,9 @@
 {
   "target": "supabase",
-  "started": "2026-10-18T05:01:03.251Z",
-  "runId": "mvdcxz1rxz07",
+  "started": "2026-10-18T08:49:24.771Z",
+  "runId": "mvdl3n7e4l0g",
   "parallel": true,
-  "pass": 241,
+  "pass": 372,
   "fail": 0,
   "skip": 2,
   "results": [
@@ -18,7 +18,7 @@
     {
       "section": "MIG migrations and schema",
       "id": "MIG-02",
-      "name": "every migration file is recorded as applied (0001, 0002, 0003, 0004, 0005)",
+      "name": "every migration file is recorded as applied (0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008)",
       "ok": true
     },
     {
@@ -630,7 +630,7 @@
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-32",
-      "name": "driver reads own tanker",
+      "name": "driver reads the tanker assigned to them",
       "ok": true
     },
     {
@@ -642,564 +642,612 @@
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-34",
-      "name": "driver toggles own is_online",
+      "name": "driver reads own active assignment",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-35",
-      "name": "driver cannot update another driver's tanker (0 rows)",
+      "name": "driver sees only their own assignment rows",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-36",
-      "name": "driver cannot write last_lat directly (only report_location)",
+      "name": "driver goes online through driver_set_online()",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-37",
-      "name": "driver cannot write last_lng directly (only report_location)",
+      "name": "driver cannot UPDATE tankers SET is_online = false directly",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-38",
-      "name": "driver cannot write last_seen_at directly (only report_location)",
+      "name": "driver cannot UPDATE tankers SET last_lat = 1 directly",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-39",
-      "name": "customer cannot register a tanker",
+      "name": "driver cannot UPDATE tankers SET last_lng = 1 directly",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-40",
-      "name": "customer reads own orders",
+      "name": "driver cannot UPDATE tankers SET last_seen_at = now() directly",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-41",
-      "name": "customer cannot read another customer's order (0 rows)",
+      "name": "driver cannot UPDATE tankers SET blocked = false directly",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-42",
-      "name": "other customer cannot read C1's orders (0 rows)",
+      "name": "driver cannot UPDATE tankers SET plate = 'X' directly",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-43",
-      "name": "driver sees an open request row (no address columns exist on orders)",
+      "name": "driver cannot INSERT a tanker directly",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-44",
-      "name": "driver sees own accepted job",
+      "name": "driver cannot write tanker_assignments directly",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-45",
-      "name": "other driver cannot see someone else's accepted job (0 rows)",
+      "name": "customer cannot register a tanker (driver_register_tanker → not_a_driver)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-46",
-      "name": "customers see no open requests of others (0 rows)",
+      "name": "customer cannot INSERT a tanker directly",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-47",
-      "name": "anon cannot UPDATE orders SET total = 0",
+      "name": "customer cannot go online (driver_set_online → not_a_driver)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-48",
-      "name": "anon cannot UPDATE orders SET water_charge = 0",
+      "name": "customer reads own orders",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-49",
-      "name": "anon cannot UPDATE orders SET delivery_fee = 0",
+      "name": "customer cannot read another customer's order (0 rows)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-50",
-      "name": "anon cannot UPDATE orders SET vat = 0",
+      "name": "other customer cannot read C1's orders (0 rows)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-51",
-      "name": "anon cannot UPDATE orders SET driver_earnings = 99",
+      "name": "driver sees an open request row (no address columns exist on orders)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-52",
-      "name": "anon cannot UPDATE orders SET order_no = 1",
+      "name": "driver sees own accepted job",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-53",
-      "name": "anon cannot UPDATE orders SET status = 'delivered'",
+      "name": "other driver cannot see someone else's accepted job (0 rows)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-54",
-      "name": "anon cannot UPDATE orders SET driver_id = null",
+      "name": "customers see no open requests of others (0 rows)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-55",
-      "name": "customer cannot UPDATE orders SET total = 0",
+      "name": "anon cannot UPDATE orders SET total = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-56",
-      "name": "customer cannot UPDATE orders SET water_charge = 0",
+      "name": "anon cannot UPDATE orders SET water_charge = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-57",
-      "name": "customer cannot UPDATE orders SET delivery_fee = 0",
+      "name": "anon cannot UPDATE orders SET delivery_fee = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-58",
-      "name": "customer cannot UPDATE orders SET vat = 0",
+      "name": "anon cannot UPDATE orders SET vat = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-59",
-      "name": "customer cannot UPDATE orders SET driver_earnings = 99",
+      "name": "anon cannot UPDATE orders SET driver_earnings = 99",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-60",
-      "name": "customer cannot UPDATE orders SET order_no = 1",
+      "name": "anon cannot UPDATE orders SET order_no = 1",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-61",
-      "name": "customer cannot UPDATE orders SET status = 'delivered'",
+      "name": "anon cannot UPDATE orders SET status = 'delivered'",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-62",
-      "name": "customer cannot UPDATE orders SET driver_id = null",
+      "name": "anon cannot UPDATE orders SET driver_id = null",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-63",
-      "name": "customer cannot INSERT an order with its own price/status/number",
+      "name": "customer cannot UPDATE orders SET total = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-64",
-      "name": "customer cannot DELETE orders",
+      "name": "customer cannot UPDATE orders SET water_charge = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-65",
-      "name": "other customer cannot UPDATE orders SET total = 0",
+      "name": "customer cannot UPDATE orders SET delivery_fee = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-66",
-      "name": "other customer cannot UPDATE orders SET water_charge = 0",
+      "name": "customer cannot UPDATE orders SET vat = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-67",
-      "name": "other customer cannot UPDATE orders SET delivery_fee = 0",
+      "name": "customer cannot UPDATE orders SET driver_earnings = 99",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-68",
-      "name": "other customer cannot UPDATE orders SET vat = 0",
+      "name": "customer cannot UPDATE orders SET order_no = 1",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-69",
-      "name": "other customer cannot UPDATE orders SET driver_earnings = 99",
+      "name": "customer cannot UPDATE orders SET status = 'delivered'",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-70",
-      "name": "other customer cannot UPDATE orders SET order_no = 1",
+      "name": "customer cannot UPDATE orders SET driver_id = null",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-71",
-      "name": "other customer cannot UPDATE orders SET status = 'delivered'",
+      "name": "customer cannot INSERT an order with its own price/status/number",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-72",
-      "name": "other customer cannot UPDATE orders SET driver_id = null",
+      "name": "customer cannot DELETE orders",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-73",
-      "name": "other customer cannot INSERT an order with its own price/status/number",
+      "name": "other customer cannot UPDATE orders SET total = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-74",
-      "name": "other customer cannot DELETE orders",
+      "name": "other customer cannot UPDATE orders SET water_charge = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-75",
-      "name": "driver cannot UPDATE orders SET total = 0",
+      "name": "other customer cannot UPDATE orders SET delivery_fee = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-76",
-      "name": "driver cannot UPDATE orders SET water_charge = 0",
+      "name": "other customer cannot UPDATE orders SET vat = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-77",
-      "name": "driver cannot UPDATE orders SET delivery_fee = 0",
+      "name": "other customer cannot UPDATE orders SET driver_earnings = 99",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-78",
-      "name": "driver cannot UPDATE orders SET vat = 0",
+      "name": "other customer cannot UPDATE orders SET order_no = 1",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-79",
-      "name": "driver cannot UPDATE orders SET driver_earnings = 99",
+      "name": "other customer cannot UPDATE orders SET status = 'delivered'",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-80",
-      "name": "driver cannot UPDATE orders SET order_no = 1",
+      "name": "other customer cannot UPDATE orders SET driver_id = null",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-81",
-      "name": "driver cannot UPDATE orders SET status = 'delivered'",
+      "name": "other customer cannot INSERT an order with its own price/status/number",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-82",
-      "name": "driver cannot UPDATE orders SET driver_id = null",
+      "name": "other customer cannot DELETE orders",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-83",
-      "name": "driver cannot INSERT an order with its own price/status/number",
+      "name": "driver cannot UPDATE orders SET total = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-84",
-      "name": "driver cannot DELETE orders",
+      "name": "driver cannot UPDATE orders SET water_charge = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-85",
-      "name": "other driver cannot UPDATE orders SET total = 0",
+      "name": "driver cannot UPDATE orders SET delivery_fee = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-86",
-      "name": "other driver cannot UPDATE orders SET water_charge = 0",
+      "name": "driver cannot UPDATE orders SET vat = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-87",
-      "name": "other driver cannot UPDATE orders SET delivery_fee = 0",
+      "name": "driver cannot UPDATE orders SET driver_earnings = 99",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-88",
-      "name": "other driver cannot UPDATE orders SET vat = 0",
+      "name": "driver cannot UPDATE orders SET order_no = 1",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-89",
-      "name": "other driver cannot UPDATE orders SET driver_earnings = 99",
+      "name": "driver cannot UPDATE orders SET status = 'delivered'",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-90",
-      "name": "other driver cannot UPDATE orders SET order_no = 1",
+      "name": "driver cannot UPDATE orders SET driver_id = null",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-91",
-      "name": "other driver cannot UPDATE orders SET status = 'delivered'",
+      "name": "driver cannot INSERT an order with its own price/status/number",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-92",
-      "name": "other driver cannot UPDATE orders SET driver_id = null",
+      "name": "driver cannot DELETE orders",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-93",
-      "name": "other driver cannot INSERT an order with its own price/status/number",
+      "name": "other driver cannot UPDATE orders SET total = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-94",
-      "name": "other driver cannot DELETE orders",
+      "name": "other driver cannot UPDATE orders SET water_charge = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-95",
-      "name": "customer reads own exact location",
+      "name": "other driver cannot UPDATE orders SET delivery_fee = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-96",
-      "name": "other customer cannot read it (0 rows)",
+      "name": "other driver cannot UPDATE orders SET vat = 0",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-97",
-      "name": "driver cannot see the exact address before acceptance (0 rows)",
+      "name": "other driver cannot UPDATE orders SET driver_earnings = 99",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-98",
-      "name": "driver cannot see it via the request they could accept either (D1, 0 rows)",
+      "name": "other driver cannot UPDATE orders SET order_no = 1",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-99",
-      "name": "assigned driver sees the exact address after acceptance",
+      "name": "other driver cannot UPDATE orders SET status = 'delivered'",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-100",
-      "name": "other driver cannot see the accepted job's address (0 rows)",
+      "name": "other driver cannot UPDATE orders SET driver_id = null",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-101",
-      "name": "anon cannot UPDATE order_locations",
+      "name": "other driver cannot INSERT an order with its own price/status/number",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-102",
-      "name": "customer cannot UPDATE order_locations",
+      "name": "other driver cannot DELETE orders",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-103",
-      "name": "other customer cannot UPDATE order_locations",
+      "name": "customer reads own exact location",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-104",
-      "name": "driver cannot UPDATE order_locations",
+      "name": "other customer cannot read it (0 rows)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-105",
-      "name": "other driver cannot UPDATE order_locations",
+      "name": "driver cannot see the exact address before acceptance (0 rows)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-106",
-      "name": "driver: open_requests_near returns the request without coordinates or address",
+      "name": "driver cannot see it via the request they could accept either (D1, 0 rows)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-107",
-      "name": "customer: open_requests_near → not_a_driver",
+      "name": "assigned driver sees the exact address after acceptance",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-108",
-      "name": "driver: place_order → not_a_customer",
+      "name": "other driver cannot see the accepted job's address (0 rows)",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-109",
-      "name": "customer: accept_order → not_a_driver",
+      "name": "anon cannot UPDATE order_locations",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-110",
-      "name": "busy driver: accept_order → driver_busy",
+      "name": "customer cannot UPDATE order_locations",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-111",
-      "name": "other driver: accept an already accepted order → already_taken",
+      "name": "other customer cannot UPDATE order_locations",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-112",
-      "name": "other customer: cancel C1's request → not_found",
+      "name": "driver cannot UPDATE order_locations",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-113",
-      "name": "driver: cancel_order → not_found",
+      "name": "other driver cannot UPDATE order_locations",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-114",
-      "name": "customer: cancel an accepted order → cannot_cancel",
+      "name": "driver: open_requests_near returns the request without coordinates or address",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-115",
-      "name": "customer: report_location → not_a_driver",
+      "name": "customer: open_requests_near → not_a_driver",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-116",
-      "name": "customer: mark_arrived → invalid_transition",
+      "name": "driver: place_order → not_a_customer",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-117",
-      "name": "other driver: mark_arrived on someone else's job → invalid_transition",
+      "name": "customer: accept_order → not_a_driver",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-118",
-      "name": "assigned driver: mark_delivered before arrived → invalid_transition",
+      "name": "busy driver: accept_order → driver_busy",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-119",
-      "name": "assigned driver: report_location",
+      "name": "other driver: accept an already accepted order → already_taken",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-120",
-      "name": "assigned driver: mark_arrived",
+      "name": "other customer: cancel C1's request → not_found",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-121",
-      "name": "other driver: mark_delivered → invalid_transition",
+      "name": "driver: cancel_order → not_found",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-122",
-      "name": "assigned driver: mark_delivered",
+      "name": "customer: cancel an accepted order → cannot_cancel",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-123",
-      "name": "customer: cancel own open request",
+      "name": "customer: report_location → not_a_driver",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-124",
-      "name": "signed-in user: price_quote",
+      "name": "customer: mark_arrived → invalid_transition",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-125",
-      "name": "after delivery, customer can no longer read the tanker (0 rows)",
+      "name": "other driver: mark_arrived on someone else's job → invalid_transition",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-126",
-      "name": "after delivery, driver can no longer read the exact address (0 rows)",
+      "name": "assigned driver: mark_delivered before arrived → invalid_transition",
       "ok": true
     },
     {
       "section": "AUTHZ authorization matrix",
       "id": "AUTHZ-127",
+      "name": "assigned driver: report_location",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-128",
+      "name": "assigned driver: mark_arrived",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-129",
+      "name": "other driver: mark_delivered → invalid_transition",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-130",
+      "name": "assigned driver: mark_delivered",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-131",
+      "name": "customer: cancel own open request",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-132",
+      "name": "signed-in user: price_quote",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-133",
+      "name": "after delivery, customer can no longer read the tanker (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-134",
+      "name": "after delivery, driver can no longer read the exact address (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-135",
       "name": "after delivery, driver can no longer read the customer's profile (0 rows)",
       "ok": true
     },
@@ -1464,6 +1512,745 @@
       "section": "PRIV location privacy",
       "id": "PRIV-19",
       "name": "… and the previous customer still can't either",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-01",
+      "name": "a driver with a tanker can't register a second one (already_assigned)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-02",
+      "name": "the database refuses a second active assignment for a driver (unique index)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-03",
+      "name": "the database refuses a second active assignment for a tanker (unique index)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-04",
+      "name": "registering a plate that already exists → plate_taken",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-05",
+      "name": "a driver without a tanker can't go online (no_tanker)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-06",
+      "name": "a driver without a tanker can't see open requests (no_tanker)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-07",
+      "name": "a driver without a tanker can't report a location (no_tanker)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-08",
+      "name": "a driver without a tanker can't accept (no_tanker)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-09",
+      "name": "a driver without a tanker sees no tanker rows",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-10",
+      "name": "accept_order records both driver and tanker on the order",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-11",
+      "name": "the database refuses a second active job for the same tanker (unique index)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-12",
+      "name": "after reassignment the new driver sees the same tanker with its last GPS fix",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-13",
+      "name": "the previous driver no longer sees the tanker",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-14",
+      "name": "the previous driver can no longer report locations for it (no_tanker)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-15",
+      "name": "the tanker's permit carries over: the new driver can go online",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-16",
+      "name": "the new driver's fixes update the same tanker row",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-17",
+      "name": "assignment history is kept (old row closed, new row active)",
+      "ok": true
+    },
+    {
+      "section": "ASSIGN tankers and driver assignments",
+      "id": "ASSIGN-18",
+      "name": "a new tanker without a permit can't go online (permit_invalid)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-01",
+      "name": "signing up with role nws_staff produces a customer (no staff_role)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-02",
+      "name": "a user can't make themselves staff by updating their profile",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-03",
+      "name": "anon → staff_block_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-04",
+      "name": "customer → staff_block_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-05",
+      "name": "driver → staff_block_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-06",
+      "name": "anon → staff_unblock_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-07",
+      "name": "customer → staff_unblock_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-08",
+      "name": "driver → staff_unblock_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-09",
+      "name": "anon → staff_assign_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-10",
+      "name": "customer → staff_assign_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-11",
+      "name": "driver → staff_assign_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-12",
+      "name": "anon → staff_unassign_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-13",
+      "name": "customer → staff_unassign_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-14",
+      "name": "driver → staff_unassign_tanker: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-15",
+      "name": "anon → staff_create_permit: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-16",
+      "name": "customer → staff_create_permit: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-17",
+      "name": "driver → staff_create_permit: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-18",
+      "name": "anon → staff_review_permit: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-19",
+      "name": "customer → staff_review_permit: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-20",
+      "name": "driver → staff_review_permit: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-21",
+      "name": "anon → staff_resubmit_permit: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-22",
+      "name": "customer → staff_resubmit_permit: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-23",
+      "name": "driver → staff_resubmit_permit: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-24",
+      "name": "anon → staff_set_role: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-25",
+      "name": "customer → staff_set_role: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-26",
+      "name": "driver → staff_set_role: refused",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-27",
+      "name": "refused calls write no audit rows",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-28",
+      "name": "anon can't read audit_log",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-29",
+      "name": "customer sees no audit rows",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-30",
+      "name": "driver sees no audit rows",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-31",
+      "name": "operator → staff_create_permit: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-32",
+      "name": "operator → staff_review_permit: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-33",
+      "name": "operator → staff_resubmit_permit: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-34",
+      "name": "operator → staff_set_role: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-35",
+      "name": "permit_officer → staff_block_tanker: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-36",
+      "name": "permit_officer → staff_unblock_tanker: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-37",
+      "name": "permit_officer → staff_assign_tanker: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-38",
+      "name": "permit_officer → staff_unassign_tanker: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-39",
+      "name": "permit_officer → staff_set_role: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-40",
+      "name": "admin → staff_block_tanker: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-41",
+      "name": "admin → staff_unblock_tanker: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-42",
+      "name": "admin → staff_assign_tanker: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-43",
+      "name": "admin → staff_unassign_tanker: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-44",
+      "name": "admin → staff_create_permit: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-45",
+      "name": "admin → staff_review_permit: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-46",
+      "name": "admin → staff_resubmit_permit: forbidden for this sub-role",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-47",
+      "name": "operator reads all orders, locations, tankers, assignments, permits and profiles",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-48",
+      "name": "permit_officer reads all orders, locations, tankers, assignments, permits and profiles",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-49",
+      "name": "admin reads all orders, locations, tankers, assignments, permits and profiles",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-50",
+      "name": "admin can't change their own staff_role (cannot_change_own_role)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-51",
+      "name": "admin can't remove their own staff role either",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-52",
+      "name": "admin can't edit their own role/staff_role columns directly",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-53",
+      "name": "admin can't edit their own role column directly",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-54",
+      "name": "staff_set_role requires a reason",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-55",
+      "name": "staff_set_role can't turn a driver into staff",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-56",
+      "name": "admin makes a user an operator",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-57",
+      "name": "… exactly one audit row, with before/after and actor",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-58",
+      "name": "admin removes the staff role again (back to customer), audited",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-59",
+      "name": "block requires a reason",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-60",
+      "name": "operator blocks a tanker; it is taken offline",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-61",
+      "name": "… exactly one audit row (tanker.block, before online/unblocked → after offline/blocked)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-62",
+      "name": "a blocked tanker can't go online (tanker_blocked)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-63",
+      "name": "a blocked tanker can't accept (tanker_blocked)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-64",
+      "name": "a blocked tanker sees no open requests",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-65",
+      "name": "blocking twice → already_blocked",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-66",
+      "name": "… unblock writes exactly one more audit row",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-67",
+      "name": "after unblocking, the tanker can go online again",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-68",
+      "name": "unassigning a tanker on a job is refused (tanker_on_job)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-69",
+      "name": "operator unassigns the tanker (one audit row)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-70",
+      "name": "assigning a driver who already has a tanker → driver_already_assigned",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-71",
+      "name": "assigning a tanker that already has a driver → tanker_already_assigned",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-72",
+      "name": "operator assigns it back (one audit row)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-73",
+      "name": "two operators assign the same tanker at once: exactly one succeeds, one active assignment",
+      "ok": true,
+      "note": "concurrent from a barrier"
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-74",
+      "name": "no permit: the tanker can't go online (permit_invalid)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-75",
+      "name": "permit officer creates a permit (pending) with one audit row",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-76",
+      "name": "pending permit: still can't go online",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-77",
+      "name": "rejecting needs a reason",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-78",
+      "name": "reject: one audit row, before pending → after rejected, with reason",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-79",
+      "name": "rejected permit: can't go online",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-80",
+      "name": "a rejected permit can't be approved directly (invalid_state)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-81",
+      "name": "rejection allows resubmission (back to pending, one audit row)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-82",
+      "name": "resubmitted (pending) permit: still can't go online",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-83",
+      "name": "approve: one audit row",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-84",
+      "name": "approved, unexpired permit: the tanker can go online",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-85",
+      "name": "expired permit: can't accept (permit_invalid), even while still online",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-86",
+      "name": "expired permit: no open requests are shown",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-87",
+      "name": "expired permit: can't go online",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-88",
+      "name": "an approved permit past its expiry reads 'expired'",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-89",
+      "name": "a permit for another service type doesn't count (permit_invalid)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-90",
+      "name": "operator can't UPDATE audit_log",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-91",
+      "name": "operator can't DELETE from audit_log",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-92",
+      "name": "operator can't INSERT into audit_log directly",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-93",
+      "name": "admin can't UPDATE audit_log",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-94",
+      "name": "admin can't DELETE from audit_log",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-95",
+      "name": "admin can't INSERT into audit_log directly",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-96",
+      "name": "customer can't UPDATE audit_log",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-97",
+      "name": "customer can't DELETE from audit_log",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-98",
+      "name": "customer can't INSERT into audit_log directly",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-99",
+      "name": "the database owner can't UPDATE audit rows either (audit_log_append_only)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-100",
+      "name": "the database owner can't DELETE audit rows either (audit_log_append_only)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-101",
+      "name": "TRUNCATE audit_log is refused (audit_log_append_only)",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-102",
+      "name": "the audit row is unchanged afterwards",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-103",
+      "name": "a driver reads their own tanker's permits",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-104",
+      "name": "a driver can't read other tankers' permits",
+      "ok": true
+    },
+    {
+      "section": "STAFF NWS staff portal",
+      "id": "STAFF-105",
+      "name": "a customer reads no permits",
       "ok": true
     },
     {

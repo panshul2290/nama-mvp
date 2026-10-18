@@ -1,11 +1,11 @@
 # Database test run — target: supabase
-started: 2026-10-18T05:01:03.251Z
-run id: mvdcxz1rxz07; parallel backends: true; fresh database: false; Postgres 17.11
-non-test data before: 4 users, 24 rows, md5 7e215dec9ee9da07df89ce211fc69599
+started: 2026-10-18T08:49:24.771Z
+run id: mvdl3n7e4l0g; parallel backends: true; fresh database: false; Postgres 17.11
+non-test data before: 7 users, 38 rows, md5 9884950596035990b88354a0590b1e90
 
 ## MIG migrations and schema
 SKIP  MIG-01  backfill order of pre-0002 orders  — needs a pre-0002 database; checked on the fresh PGlite build
-PASS  MIG-02  every migration file is recorded as applied (0001, 0002, 0003, 0004, 0005)
+PASS  MIG-02  every migration file is recorded as applied (0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008)
 PASS  MIG-03  orders.order_no is NOT NULL, UNIQUE, with assign + freeze triggers
 PASS  MIG-04  read-only scan: every order has a number and none repeat
 PASS  MIG-05  RLS is enabled on profiles, tankers, orders, order_locations
@@ -117,102 +117,110 @@ PASS  AUTHZ-28  other driver cannot INSERT a profile
 PASS  AUTHZ-29  customer reads the tanker on their active order (with location columns)
 PASS  AUTHZ-30  customer cannot read a tanker not on their active order (0 rows)
 PASS  AUTHZ-31  other customer cannot read the assigned tanker's location (0 rows)
-PASS  AUTHZ-32  driver reads own tanker
+PASS  AUTHZ-32  driver reads the tanker assigned to them
 PASS  AUTHZ-33  driver cannot read another driver's tanker (0 rows)
-PASS  AUTHZ-34  driver toggles own is_online
-PASS  AUTHZ-35  driver cannot update another driver's tanker (0 rows)
-PASS  AUTHZ-36  driver cannot write last_lat directly (only report_location)
-PASS  AUTHZ-37  driver cannot write last_lng directly (only report_location)
-PASS  AUTHZ-38  driver cannot write last_seen_at directly (only report_location)
-PASS  AUTHZ-39  customer cannot register a tanker
-PASS  AUTHZ-40  customer reads own orders
-PASS  AUTHZ-41  customer cannot read another customer's order (0 rows)
-PASS  AUTHZ-42  other customer cannot read C1's orders (0 rows)
-PASS  AUTHZ-43  driver sees an open request row (no address columns exist on orders)
-PASS  AUTHZ-44  driver sees own accepted job
-PASS  AUTHZ-45  other driver cannot see someone else's accepted job (0 rows)
-PASS  AUTHZ-46  customers see no open requests of others (0 rows)
-PASS  AUTHZ-47  anon cannot UPDATE orders SET total = 0
-PASS  AUTHZ-48  anon cannot UPDATE orders SET water_charge = 0
-PASS  AUTHZ-49  anon cannot UPDATE orders SET delivery_fee = 0
-PASS  AUTHZ-50  anon cannot UPDATE orders SET vat = 0
-PASS  AUTHZ-51  anon cannot UPDATE orders SET driver_earnings = 99
-PASS  AUTHZ-52  anon cannot UPDATE orders SET order_no = 1
-PASS  AUTHZ-53  anon cannot UPDATE orders SET status = 'delivered'
-PASS  AUTHZ-54  anon cannot UPDATE orders SET driver_id = null
-PASS  AUTHZ-55  customer cannot UPDATE orders SET total = 0
-PASS  AUTHZ-56  customer cannot UPDATE orders SET water_charge = 0
-PASS  AUTHZ-57  customer cannot UPDATE orders SET delivery_fee = 0
-PASS  AUTHZ-58  customer cannot UPDATE orders SET vat = 0
-PASS  AUTHZ-59  customer cannot UPDATE orders SET driver_earnings = 99
-PASS  AUTHZ-60  customer cannot UPDATE orders SET order_no = 1
-PASS  AUTHZ-61  customer cannot UPDATE orders SET status = 'delivered'
-PASS  AUTHZ-62  customer cannot UPDATE orders SET driver_id = null
-PASS  AUTHZ-63  customer cannot INSERT an order with its own price/status/number
-PASS  AUTHZ-64  customer cannot DELETE orders
-PASS  AUTHZ-65  other customer cannot UPDATE orders SET total = 0
-PASS  AUTHZ-66  other customer cannot UPDATE orders SET water_charge = 0
-PASS  AUTHZ-67  other customer cannot UPDATE orders SET delivery_fee = 0
-PASS  AUTHZ-68  other customer cannot UPDATE orders SET vat = 0
-PASS  AUTHZ-69  other customer cannot UPDATE orders SET driver_earnings = 99
-PASS  AUTHZ-70  other customer cannot UPDATE orders SET order_no = 1
-PASS  AUTHZ-71  other customer cannot UPDATE orders SET status = 'delivered'
-PASS  AUTHZ-72  other customer cannot UPDATE orders SET driver_id = null
-PASS  AUTHZ-73  other customer cannot INSERT an order with its own price/status/number
-PASS  AUTHZ-74  other customer cannot DELETE orders
-PASS  AUTHZ-75  driver cannot UPDATE orders SET total = 0
-PASS  AUTHZ-76  driver cannot UPDATE orders SET water_charge = 0
-PASS  AUTHZ-77  driver cannot UPDATE orders SET delivery_fee = 0
-PASS  AUTHZ-78  driver cannot UPDATE orders SET vat = 0
-PASS  AUTHZ-79  driver cannot UPDATE orders SET driver_earnings = 99
-PASS  AUTHZ-80  driver cannot UPDATE orders SET order_no = 1
-PASS  AUTHZ-81  driver cannot UPDATE orders SET status = 'delivered'
-PASS  AUTHZ-82  driver cannot UPDATE orders SET driver_id = null
-PASS  AUTHZ-83  driver cannot INSERT an order with its own price/status/number
-PASS  AUTHZ-84  driver cannot DELETE orders
-PASS  AUTHZ-85  other driver cannot UPDATE orders SET total = 0
-PASS  AUTHZ-86  other driver cannot UPDATE orders SET water_charge = 0
-PASS  AUTHZ-87  other driver cannot UPDATE orders SET delivery_fee = 0
-PASS  AUTHZ-88  other driver cannot UPDATE orders SET vat = 0
-PASS  AUTHZ-89  other driver cannot UPDATE orders SET driver_earnings = 99
-PASS  AUTHZ-90  other driver cannot UPDATE orders SET order_no = 1
-PASS  AUTHZ-91  other driver cannot UPDATE orders SET status = 'delivered'
-PASS  AUTHZ-92  other driver cannot UPDATE orders SET driver_id = null
-PASS  AUTHZ-93  other driver cannot INSERT an order with its own price/status/number
-PASS  AUTHZ-94  other driver cannot DELETE orders
-PASS  AUTHZ-95  customer reads own exact location
-PASS  AUTHZ-96  other customer cannot read it (0 rows)
-PASS  AUTHZ-97  driver cannot see the exact address before acceptance (0 rows)
-PASS  AUTHZ-98  driver cannot see it via the request they could accept either (D1, 0 rows)
-PASS  AUTHZ-99  assigned driver sees the exact address after acceptance
-PASS  AUTHZ-100  other driver cannot see the accepted job's address (0 rows)
-PASS  AUTHZ-101  anon cannot UPDATE order_locations
-PASS  AUTHZ-102  customer cannot UPDATE order_locations
-PASS  AUTHZ-103  other customer cannot UPDATE order_locations
-PASS  AUTHZ-104  driver cannot UPDATE order_locations
-PASS  AUTHZ-105  other driver cannot UPDATE order_locations
-PASS  AUTHZ-106  driver: open_requests_near returns the request without coordinates or address
-PASS  AUTHZ-107  customer: open_requests_near → not_a_driver
-PASS  AUTHZ-108  driver: place_order → not_a_customer
-PASS  AUTHZ-109  customer: accept_order → not_a_driver
-PASS  AUTHZ-110  busy driver: accept_order → driver_busy
-PASS  AUTHZ-111  other driver: accept an already accepted order → already_taken
-PASS  AUTHZ-112  other customer: cancel C1's request → not_found
-PASS  AUTHZ-113  driver: cancel_order → not_found
-PASS  AUTHZ-114  customer: cancel an accepted order → cannot_cancel
-PASS  AUTHZ-115  customer: report_location → not_a_driver
-PASS  AUTHZ-116  customer: mark_arrived → invalid_transition
-PASS  AUTHZ-117  other driver: mark_arrived on someone else's job → invalid_transition
-PASS  AUTHZ-118  assigned driver: mark_delivered before arrived → invalid_transition
-PASS  AUTHZ-119  assigned driver: report_location
-PASS  AUTHZ-120  assigned driver: mark_arrived
-PASS  AUTHZ-121  other driver: mark_delivered → invalid_transition
-PASS  AUTHZ-122  assigned driver: mark_delivered
-PASS  AUTHZ-123  customer: cancel own open request
-PASS  AUTHZ-124  signed-in user: price_quote
-PASS  AUTHZ-125  after delivery, customer can no longer read the tanker (0 rows)
-PASS  AUTHZ-126  after delivery, driver can no longer read the exact address (0 rows)
-PASS  AUTHZ-127  after delivery, driver can no longer read the customer's profile (0 rows)
+PASS  AUTHZ-34  driver reads own active assignment
+PASS  AUTHZ-35  driver sees only their own assignment rows
+PASS  AUTHZ-36  driver goes online through driver_set_online()
+PASS  AUTHZ-37  driver cannot UPDATE tankers SET is_online = false directly
+PASS  AUTHZ-38  driver cannot UPDATE tankers SET last_lat = 1 directly
+PASS  AUTHZ-39  driver cannot UPDATE tankers SET last_lng = 1 directly
+PASS  AUTHZ-40  driver cannot UPDATE tankers SET last_seen_at = now() directly
+PASS  AUTHZ-41  driver cannot UPDATE tankers SET blocked = false directly
+PASS  AUTHZ-42  driver cannot UPDATE tankers SET plate = 'X' directly
+PASS  AUTHZ-43  driver cannot INSERT a tanker directly
+PASS  AUTHZ-44  driver cannot write tanker_assignments directly
+PASS  AUTHZ-45  customer cannot register a tanker (driver_register_tanker → not_a_driver)
+PASS  AUTHZ-46  customer cannot INSERT a tanker directly
+PASS  AUTHZ-47  customer cannot go online (driver_set_online → not_a_driver)
+PASS  AUTHZ-48  customer reads own orders
+PASS  AUTHZ-49  customer cannot read another customer's order (0 rows)
+PASS  AUTHZ-50  other customer cannot read C1's orders (0 rows)
+PASS  AUTHZ-51  driver sees an open request row (no address columns exist on orders)
+PASS  AUTHZ-52  driver sees own accepted job
+PASS  AUTHZ-53  other driver cannot see someone else's accepted job (0 rows)
+PASS  AUTHZ-54  customers see no open requests of others (0 rows)
+PASS  AUTHZ-55  anon cannot UPDATE orders SET total = 0
+PASS  AUTHZ-56  anon cannot UPDATE orders SET water_charge = 0
+PASS  AUTHZ-57  anon cannot UPDATE orders SET delivery_fee = 0
+PASS  AUTHZ-58  anon cannot UPDATE orders SET vat = 0
+PASS  AUTHZ-59  anon cannot UPDATE orders SET driver_earnings = 99
+PASS  AUTHZ-60  anon cannot UPDATE orders SET order_no = 1
+PASS  AUTHZ-61  anon cannot UPDATE orders SET status = 'delivered'
+PASS  AUTHZ-62  anon cannot UPDATE orders SET driver_id = null
+PASS  AUTHZ-63  customer cannot UPDATE orders SET total = 0
+PASS  AUTHZ-64  customer cannot UPDATE orders SET water_charge = 0
+PASS  AUTHZ-65  customer cannot UPDATE orders SET delivery_fee = 0
+PASS  AUTHZ-66  customer cannot UPDATE orders SET vat = 0
+PASS  AUTHZ-67  customer cannot UPDATE orders SET driver_earnings = 99
+PASS  AUTHZ-68  customer cannot UPDATE orders SET order_no = 1
+PASS  AUTHZ-69  customer cannot UPDATE orders SET status = 'delivered'
+PASS  AUTHZ-70  customer cannot UPDATE orders SET driver_id = null
+PASS  AUTHZ-71  customer cannot INSERT an order with its own price/status/number
+PASS  AUTHZ-72  customer cannot DELETE orders
+PASS  AUTHZ-73  other customer cannot UPDATE orders SET total = 0
+PASS  AUTHZ-74  other customer cannot UPDATE orders SET water_charge = 0
+PASS  AUTHZ-75  other customer cannot UPDATE orders SET delivery_fee = 0
+PASS  AUTHZ-76  other customer cannot UPDATE orders SET vat = 0
+PASS  AUTHZ-77  other customer cannot UPDATE orders SET driver_earnings = 99
+PASS  AUTHZ-78  other customer cannot UPDATE orders SET order_no = 1
+PASS  AUTHZ-79  other customer cannot UPDATE orders SET status = 'delivered'
+PASS  AUTHZ-80  other customer cannot UPDATE orders SET driver_id = null
+PASS  AUTHZ-81  other customer cannot INSERT an order with its own price/status/number
+PASS  AUTHZ-82  other customer cannot DELETE orders
+PASS  AUTHZ-83  driver cannot UPDATE orders SET total = 0
+PASS  AUTHZ-84  driver cannot UPDATE orders SET water_charge = 0
+PASS  AUTHZ-85  driver cannot UPDATE orders SET delivery_fee = 0
+PASS  AUTHZ-86  driver cannot UPDATE orders SET vat = 0
+PASS  AUTHZ-87  driver cannot UPDATE orders SET driver_earnings = 99
+PASS  AUTHZ-88  driver cannot UPDATE orders SET order_no = 1
+PASS  AUTHZ-89  driver cannot UPDATE orders SET status = 'delivered'
+PASS  AUTHZ-90  driver cannot UPDATE orders SET driver_id = null
+PASS  AUTHZ-91  driver cannot INSERT an order with its own price/status/number
+PASS  AUTHZ-92  driver cannot DELETE orders
+PASS  AUTHZ-93  other driver cannot UPDATE orders SET total = 0
+PASS  AUTHZ-94  other driver cannot UPDATE orders SET water_charge = 0
+PASS  AUTHZ-95  other driver cannot UPDATE orders SET delivery_fee = 0
+PASS  AUTHZ-96  other driver cannot UPDATE orders SET vat = 0
+PASS  AUTHZ-97  other driver cannot UPDATE orders SET driver_earnings = 99
+PASS  AUTHZ-98  other driver cannot UPDATE orders SET order_no = 1
+PASS  AUTHZ-99  other driver cannot UPDATE orders SET status = 'delivered'
+PASS  AUTHZ-100  other driver cannot UPDATE orders SET driver_id = null
+PASS  AUTHZ-101  other driver cannot INSERT an order with its own price/status/number
+PASS  AUTHZ-102  other driver cannot DELETE orders
+PASS  AUTHZ-103  customer reads own exact location
+PASS  AUTHZ-104  other customer cannot read it (0 rows)
+PASS  AUTHZ-105  driver cannot see the exact address before acceptance (0 rows)
+PASS  AUTHZ-106  driver cannot see it via the request they could accept either (D1, 0 rows)
+PASS  AUTHZ-107  assigned driver sees the exact address after acceptance
+PASS  AUTHZ-108  other driver cannot see the accepted job's address (0 rows)
+PASS  AUTHZ-109  anon cannot UPDATE order_locations
+PASS  AUTHZ-110  customer cannot UPDATE order_locations
+PASS  AUTHZ-111  other customer cannot UPDATE order_locations
+PASS  AUTHZ-112  driver cannot UPDATE order_locations
+PASS  AUTHZ-113  other driver cannot UPDATE order_locations
+PASS  AUTHZ-114  driver: open_requests_near returns the request without coordinates or address
+PASS  AUTHZ-115  customer: open_requests_near → not_a_driver
+PASS  AUTHZ-116  driver: place_order → not_a_customer
+PASS  AUTHZ-117  customer: accept_order → not_a_driver
+PASS  AUTHZ-118  busy driver: accept_order → driver_busy
+PASS  AUTHZ-119  other driver: accept an already accepted order → already_taken
+PASS  AUTHZ-120  other customer: cancel C1's request → not_found
+PASS  AUTHZ-121  driver: cancel_order → not_found
+PASS  AUTHZ-122  customer: cancel an accepted order → cannot_cancel
+PASS  AUTHZ-123  customer: report_location → not_a_driver
+PASS  AUTHZ-124  customer: mark_arrived → invalid_transition
+PASS  AUTHZ-125  other driver: mark_arrived on someone else's job → invalid_transition
+PASS  AUTHZ-126  assigned driver: mark_delivered before arrived → invalid_transition
+PASS  AUTHZ-127  assigned driver: report_location
+PASS  AUTHZ-128  assigned driver: mark_arrived
+PASS  AUTHZ-129  other driver: mark_delivered → invalid_transition
+PASS  AUTHZ-130  assigned driver: mark_delivered
+PASS  AUTHZ-131  customer: cancel own open request
+PASS  AUTHZ-132  signed-in user: price_quote
+PASS  AUTHZ-133  after delivery, customer can no longer read the tanker (0 rows)
+PASS  AUTHZ-134  after delivery, driver can no longer read the exact address (0 rows)
+PASS  AUTHZ-135  after delivery, driver can no longer read the customer's profile (0 rows)
 
 ## RACE concurrency
 PASS  RACE-01  20 drivers call accept_order on the same order at once: exactly 1 succeeds  [concurrent (separate backends, released from a barrier); 15 of 20 were blocked at the barrier when it opened]
@@ -263,13 +271,141 @@ PASS  PRIV-17  accepted (second order): its customer sees the driver
 PASS  PRIV-18  accepted order cancelled (operator action): the customer can no longer see the driver
 PASS  PRIV-19  … and the previous customer still can't either
 
+## ASSIGN tankers and driver assignments
+PASS  ASSIGN-01  a driver with a tanker can't register a second one (already_assigned)
+PASS  ASSIGN-02  the database refuses a second active assignment for a driver (unique index)
+PASS  ASSIGN-03  the database refuses a second active assignment for a tanker (unique index)
+PASS  ASSIGN-04  registering a plate that already exists → plate_taken
+PASS  ASSIGN-05  a driver without a tanker can't go online (no_tanker)
+PASS  ASSIGN-06  a driver without a tanker can't see open requests (no_tanker)
+PASS  ASSIGN-07  a driver without a tanker can't report a location (no_tanker)
+PASS  ASSIGN-08  a driver without a tanker can't accept (no_tanker)
+PASS  ASSIGN-09  a driver without a tanker sees no tanker rows
+PASS  ASSIGN-10  accept_order records both driver and tanker on the order
+PASS  ASSIGN-11  the database refuses a second active job for the same tanker (unique index)
+PASS  ASSIGN-12  after reassignment the new driver sees the same tanker with its last GPS fix
+PASS  ASSIGN-13  the previous driver no longer sees the tanker
+PASS  ASSIGN-14  the previous driver can no longer report locations for it (no_tanker)
+PASS  ASSIGN-15  the tanker's permit carries over: the new driver can go online
+PASS  ASSIGN-16  the new driver's fixes update the same tanker row
+PASS  ASSIGN-17  assignment history is kept (old row closed, new row active)
+PASS  ASSIGN-18  a new tanker without a permit can't go online (permit_invalid)
+
+## STAFF NWS staff portal
+PASS  STAFF-01  signing up with role nws_staff produces a customer (no staff_role)
+PASS  STAFF-02  a user can't make themselves staff by updating their profile
+PASS  STAFF-03  anon → staff_block_tanker: refused
+PASS  STAFF-04  customer → staff_block_tanker: refused
+PASS  STAFF-05  driver → staff_block_tanker: refused
+PASS  STAFF-06  anon → staff_unblock_tanker: refused
+PASS  STAFF-07  customer → staff_unblock_tanker: refused
+PASS  STAFF-08  driver → staff_unblock_tanker: refused
+PASS  STAFF-09  anon → staff_assign_tanker: refused
+PASS  STAFF-10  customer → staff_assign_tanker: refused
+PASS  STAFF-11  driver → staff_assign_tanker: refused
+PASS  STAFF-12  anon → staff_unassign_tanker: refused
+PASS  STAFF-13  customer → staff_unassign_tanker: refused
+PASS  STAFF-14  driver → staff_unassign_tanker: refused
+PASS  STAFF-15  anon → staff_create_permit: refused
+PASS  STAFF-16  customer → staff_create_permit: refused
+PASS  STAFF-17  driver → staff_create_permit: refused
+PASS  STAFF-18  anon → staff_review_permit: refused
+PASS  STAFF-19  customer → staff_review_permit: refused
+PASS  STAFF-20  driver → staff_review_permit: refused
+PASS  STAFF-21  anon → staff_resubmit_permit: refused
+PASS  STAFF-22  customer → staff_resubmit_permit: refused
+PASS  STAFF-23  driver → staff_resubmit_permit: refused
+PASS  STAFF-24  anon → staff_set_role: refused
+PASS  STAFF-25  customer → staff_set_role: refused
+PASS  STAFF-26  driver → staff_set_role: refused
+PASS  STAFF-27  refused calls write no audit rows
+PASS  STAFF-28  anon can't read audit_log
+PASS  STAFF-29  customer sees no audit rows
+PASS  STAFF-30  driver sees no audit rows
+PASS  STAFF-31  operator → staff_create_permit: forbidden for this sub-role
+PASS  STAFF-32  operator → staff_review_permit: forbidden for this sub-role
+PASS  STAFF-33  operator → staff_resubmit_permit: forbidden for this sub-role
+PASS  STAFF-34  operator → staff_set_role: forbidden for this sub-role
+PASS  STAFF-35  permit_officer → staff_block_tanker: forbidden for this sub-role
+PASS  STAFF-36  permit_officer → staff_unblock_tanker: forbidden for this sub-role
+PASS  STAFF-37  permit_officer → staff_assign_tanker: forbidden for this sub-role
+PASS  STAFF-38  permit_officer → staff_unassign_tanker: forbidden for this sub-role
+PASS  STAFF-39  permit_officer → staff_set_role: forbidden for this sub-role
+PASS  STAFF-40  admin → staff_block_tanker: forbidden for this sub-role
+PASS  STAFF-41  admin → staff_unblock_tanker: forbidden for this sub-role
+PASS  STAFF-42  admin → staff_assign_tanker: forbidden for this sub-role
+PASS  STAFF-43  admin → staff_unassign_tanker: forbidden for this sub-role
+PASS  STAFF-44  admin → staff_create_permit: forbidden for this sub-role
+PASS  STAFF-45  admin → staff_review_permit: forbidden for this sub-role
+PASS  STAFF-46  admin → staff_resubmit_permit: forbidden for this sub-role
+PASS  STAFF-47  operator reads all orders, locations, tankers, assignments, permits and profiles
+PASS  STAFF-48  permit_officer reads all orders, locations, tankers, assignments, permits and profiles
+PASS  STAFF-49  admin reads all orders, locations, tankers, assignments, permits and profiles
+PASS  STAFF-50  admin can't change their own staff_role (cannot_change_own_role)
+PASS  STAFF-51  admin can't remove their own staff role either
+PASS  STAFF-52  admin can't edit their own role/staff_role columns directly
+PASS  STAFF-53  admin can't edit their own role column directly
+PASS  STAFF-54  staff_set_role requires a reason
+PASS  STAFF-55  staff_set_role can't turn a driver into staff
+PASS  STAFF-56  admin makes a user an operator
+PASS  STAFF-57  … exactly one audit row, with before/after and actor
+PASS  STAFF-58  admin removes the staff role again (back to customer), audited
+PASS  STAFF-59  block requires a reason
+PASS  STAFF-60  operator blocks a tanker; it is taken offline
+PASS  STAFF-61  … exactly one audit row (tanker.block, before online/unblocked → after offline/blocked)
+PASS  STAFF-62  a blocked tanker can't go online (tanker_blocked)
+PASS  STAFF-63  a blocked tanker can't accept (tanker_blocked)
+PASS  STAFF-64  a blocked tanker sees no open requests
+PASS  STAFF-65  blocking twice → already_blocked
+PASS  STAFF-66  … unblock writes exactly one more audit row
+PASS  STAFF-67  after unblocking, the tanker can go online again
+PASS  STAFF-68  unassigning a tanker on a job is refused (tanker_on_job)
+PASS  STAFF-69  operator unassigns the tanker (one audit row)
+PASS  STAFF-70  assigning a driver who already has a tanker → driver_already_assigned
+PASS  STAFF-71  assigning a tanker that already has a driver → tanker_already_assigned
+PASS  STAFF-72  operator assigns it back (one audit row)
+PASS  STAFF-73  two operators assign the same tanker at once: exactly one succeeds, one active assignment  [concurrent from a barrier]
+PASS  STAFF-74  no permit: the tanker can't go online (permit_invalid)
+PASS  STAFF-75  permit officer creates a permit (pending) with one audit row
+PASS  STAFF-76  pending permit: still can't go online
+PASS  STAFF-77  rejecting needs a reason
+PASS  STAFF-78  reject: one audit row, before pending → after rejected, with reason
+PASS  STAFF-79  rejected permit: can't go online
+PASS  STAFF-80  a rejected permit can't be approved directly (invalid_state)
+PASS  STAFF-81  rejection allows resubmission (back to pending, one audit row)
+PASS  STAFF-82  resubmitted (pending) permit: still can't go online
+PASS  STAFF-83  approve: one audit row
+PASS  STAFF-84  approved, unexpired permit: the tanker can go online
+PASS  STAFF-85  expired permit: can't accept (permit_invalid), even while still online
+PASS  STAFF-86  expired permit: no open requests are shown
+PASS  STAFF-87  expired permit: can't go online
+PASS  STAFF-88  an approved permit past its expiry reads 'expired'
+PASS  STAFF-89  a permit for another service type doesn't count (permit_invalid)
+PASS  STAFF-90  operator can't UPDATE audit_log
+PASS  STAFF-91  operator can't DELETE from audit_log
+PASS  STAFF-92  operator can't INSERT into audit_log directly
+PASS  STAFF-93  admin can't UPDATE audit_log
+PASS  STAFF-94  admin can't DELETE from audit_log
+PASS  STAFF-95  admin can't INSERT into audit_log directly
+PASS  STAFF-96  customer can't UPDATE audit_log
+PASS  STAFF-97  customer can't DELETE from audit_log
+PASS  STAFF-98  customer can't INSERT into audit_log directly
+PASS  STAFF-99  the database owner can't UPDATE audit rows either (audit_log_append_only)
+PASS  STAFF-100  the database owner can't DELETE audit rows either (audit_log_append_only)
+PASS  STAFF-101  TRUNCATE audit_log is refused (audit_log_append_only)
+PASS  STAFF-102  the audit row is unchanged afterwards
+PASS  STAFF-103  a driver reads their own tanker's permits
+PASS  STAFF-104  a driver can't read other tankers' permits
+PASS  STAFF-105  a customer reads no permits
+
 ## CLEANUP
-non-test data after:  4 users, 24 rows, md5 7e215dec9ee9da07df89ce211fc69599
+non-test data after:  7 users, 38 rows, md5 9884950596035990b88354a0590b1e90
 
 ## SAFE live-project safety
 PASS  SAFE-01  non-test users and rows are byte-for-byte unchanged by the run
-deleted 47 test users (47 from this run, 0 leftovers)
-remaining rows for those users: {"users":0,"profiles":0,"tankers":0,"orders":0,"locations":0}
+deleted 46 test tankers (+0 unassigned TST tankers) with their permits
+deleted 69 test users (69 from this run, 0 leftovers)
+remaining rows for those users: {"users":0,"profiles":0,"assignments":0,"test_tankers":0,"orders":0,"locations":0}
 
-241 passed, 0 failed, 2 skipped
-finished: 2026-10-18T05:07:28.872Z
+372 passed, 0 failed, 2 skipped
+finished: 2026-10-18T08:56:54.342Z
