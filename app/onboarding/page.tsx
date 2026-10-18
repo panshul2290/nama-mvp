@@ -6,6 +6,7 @@ import { SERVICE_SHORT } from "@/components/OrderBits";
 import { Loading } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
 import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
+import { friendlyError } from "@/lib/errors";
 import { supabase } from "@/lib/supabase/client";
 
 const CAPACITIES = [3000, 5000, 7000, 10000];
@@ -30,8 +31,7 @@ export default function DriverOnboarding() {
     if (!profile) return;
     supabase()
       .from("tankers")
-      .select("driver_id")
-      .eq("driver_id", profile.id)
+      .select("id")
       .maybeSingle()
       .then(({ data }) => {
         if (data) router.replace("/driver");
@@ -43,11 +43,11 @@ export default function DriverOnboarding() {
     if (!profile) return;
     setBusy(true);
     setError(null);
-    const { error } = await supabase()
-      .from("tankers")
-      .insert({ driver_id: profile.id, plate: plate.trim().toUpperCase(), service_type: type, capacity_gal: capacity });
+    // Interim: drivers register their own tanker. Assignment will move to the tanker
+    // company portal, with NWS operator assignment kept as an override.
+    const { error } = await supabase().rpc("driver_register_tanker", { p_plate: plate, p_service_type: type, p_capacity_gal: capacity });
     setBusy(false);
-    if (error) return setError(error.code === "23505" ? "That plate is already registered." : error.message);
+    if (error) return setError(friendlyError(error));
     router.replace("/driver");
   }
 

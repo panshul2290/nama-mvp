@@ -28,7 +28,7 @@ export default function OrderTracking() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loc, setLoc] = useState<OrderLocation | null>(null);
   // fixAt: when the fix reached the server, on this device's clock (server age at fetch, or the moment a realtime update arrived).
-  const [tankerFix, setTankerFix] = useState<{ driverId: string; pos: LngLat; fixAt: number } | null>(null);
+  const [tankerFix, setTankerFix] = useState<{ tankerId: string; pos: LngLat; fixAt: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -67,24 +67,24 @@ export default function OrderTracking() {
   }, [profile.id, id, load]);
 
   // Tanker position, only while a driver is on the job (RLS allows nothing else).
-  const driverId = order && ON_JOB.includes(order.status) ? order.driver_id : null;
+  const tankerId = order && ON_JOB.includes(order.status) ? order.tanker_id : null;
   useEffect(() => {
-    if (!driverId) return;
+    if (!tankerId) return;
     const db = supabase();
     let seen: string | null | undefined; // last_seen_at of the fix we're showing
     const apply = (t: Partial<Tanker>, ageS: number) => {
       if (t.last_lat == null || t.last_lng == null || t.last_seen_at === seen) return; // not a new fix (e.g. online toggle)
       seen = t.last_seen_at;
-      setTankerFix({ driverId, pos: { lat: t.last_lat, lng: t.last_lng }, fixAt: Date.now() - ageS * 1000 });
+      setTankerFix({ tankerId, pos: { lat: t.last_lat, lng: t.last_lng }, fixAt: Date.now() - ageS * 1000 });
     };
     db.from("tankers")
       .select("last_lat, last_lng, last_seen_at, location_age_s")
-      .eq("driver_id", driverId)
+      .eq("id", tankerId)
       .maybeSingle<Partial<Tanker> & { location_age_s: number | null }>()
       .then(({ data }) => data && apply(data, data.location_age_s ?? 0));
     const ch = db
-      .channel(`tanker-${driverId}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tankers", filter: `driver_id=eq.${driverId}` }, (payload) =>
+      .channel(`tanker-${tankerId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tankers", filter: `id=eq.${tankerId}` }, (payload) =>
         apply(payload.new as Tanker, 0),
       )
       .subscribe();
@@ -93,10 +93,10 @@ export default function OrderTracking() {
       clearInterval(tick);
       db.removeChannel(ch);
     };
-  }, [driverId]);
+  }, [tankerId]);
 
   // Road ETA from the tanker to the delivery point (computed before any early return: hooks rule).
-  const etaFrom = order && ON_JOB.includes(order.status) && tankerFix?.driverId === order.driver_id ? tankerFix.pos : null;
+  const etaFrom = order && ON_JOB.includes(order.status) && tankerFix?.tankerId === order.tanker_id ? tankerFix.pos : null;
   const etaTo = loc ? { lat: loc.lat, lng: loc.lng } : null;
   const eta = useRoadEta(order?.status === "arrived" ? null : etaFrom, etaTo);
 
@@ -129,7 +129,7 @@ export default function OrderTracking() {
 
   const code = orderNo(order.order_no);
   const dest = loc ? { lat: loc.lat, lng: loc.lng } : null;
-  const fix = driverId && tankerFix?.driverId === driverId ? tankerFix : null;
+  const fix = tankerId && tankerFix?.tankerId === tankerId ? tankerFix : null;
   const tanker = fix?.pos ?? null;
   const ageS = fix ? Math.max(0, (now - fix.fixAt) / 1000) : null;
   const delayed = ageS != null && ageS > STALE_AFTER_S;

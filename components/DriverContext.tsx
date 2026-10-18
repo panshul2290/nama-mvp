@@ -124,7 +124,8 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   useEffect(() => {
     if (!profile) return;
     const db = supabase();
-    Promise.all([db.from("tankers").select("*").eq("driver_id", profile.id).maybeSingle<Tanker>(), loadJob(profile.id)]).then(
+    // RLS returns only the tanker assigned to this driver (tanker_assignments).
+    Promise.all([db.from("tankers").select("*").maybeSingle<Tanker>(), loadJob(profile.id)]).then(
       ([{ data: t }, j]) => {
         if (!t) return router.replace("/onboarding");
         setTanker(t);
@@ -168,11 +169,14 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     if (!tanker || job) return;
     const next = !tanker.is_online;
     setTanker({ ...tanker, is_online: next });
-    const { error } = await supabase().from("tankers").update({ is_online: next }).eq("driver_id", tanker.driver_id);
+    // The database refuses if the tanker is blocked or has no valid permit.
+    const { data, error } = await supabase().rpc("driver_set_online", { p_online: next }).single<Tanker>();
     if (error) {
       setTanker({ ...tanker, is_online: !next });
       toast.show(friendlyError(error));
+      return;
     }
+    setTanker(data);
   }, [tanker, job, toast]);
 
   const acceptJob = useCallback(

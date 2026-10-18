@@ -1,6 +1,7 @@
 import type { RuleStatus, ServiceType } from "./pricing";
 
-export type Role = "customer" | "driver";
+export type Role = "customer" | "driver" | "nws_staff";
+export type StaffRole = "operator" | "permit_officer" | "admin";
 
 export type OrderStatus = "requested" | "accepted" | "arriving" | "arrived" | "delivered" | "cancelled";
 
@@ -9,12 +10,14 @@ export const ACTIVE_STATUSES: OrderStatus[] = ["requested", "accepted", "arrivin
 export type Profile = {
   id: string;
   role: Role;
+  staff_role?: StaffRole | null;
   full_name: string;
   phone: string | null;
 };
 
+// Tankers are identified by id; drivers link to them through tanker_assignments.
 export type Tanker = {
-  driver_id: string;
+  id: string;
   plate: string;
   service_type: ServiceType;
   capacity_gal: number;
@@ -22,6 +25,8 @@ export type Tanker = {
   last_lat: number | null;
   last_lng: number | null;
   last_seen_at: string | null;
+  blocked?: boolean;
+  blocked_reason?: string | null;
 };
 
 export type Order = {
@@ -30,6 +35,8 @@ export type Order = {
   order_no: number;
   customer_id: string;
   driver_id: string | null;
+  /** The tanker that served the order (set on acceptance). */
+  tanker_id: string | null;
   service_type: ServiceType;
   gallons: number;
   area: string;
