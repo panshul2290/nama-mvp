@@ -45,12 +45,14 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    ```bash
    npm run seed
    ```
-   | Role | Email | Password |
-   |---|---|---|
-   | Customer | `customer@nama.test` | `Tanker-test-2026` |
-   | Driver | `driver@nama.test` | `Tanker-test-2026` (tanker `4521 TK`, DW, 5,000 gal) |
+   First set `SEED_PASSWORD` in `.env.local` (at least 12 characters, no default). The script fails without it. Both accounts use that password, and the script never prints it.
 
-   Set `SEED_PASSWORD` to change the password. The script is safe to re-run.
+   | Role | Email |
+   |---|---|
+   | Customer | `customer@nama.test` |
+   | Driver | `driver@nama.test` (tanker `4521 TK`, DW, 5,000 gal) |
+
+   The script is safe to re-run; it resets both accounts to the current `SEED_PASSWORD`.
 
 6. **Run**
    ```bash

@@ -6,10 +6,19 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const password = process.env.SEED_PASSWORD || "Tanker-test-2026";
+// No default: the seeded accounts' password must come from .env.local and is never printed.
+const password = process.env.SEED_PASSWORD;
 
 if (!url || !serviceKey) {
   console.error("Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local first.");
+  process.exit(1);
+}
+if (!password) {
+  console.error("Set SEED_PASSWORD in .env.local (the password for both seeded accounts). There is no default.");
+  process.exit(1);
+}
+if (password.length < 12) {
+  console.error("SEED_PASSWORD must be at least 12 characters.");
   process.exit(1);
 }
 
@@ -56,9 +65,9 @@ async function main() {
   const { error } = await admin.from("tankers").upsert({ driver_id: driverId, ...TANKER, is_online: false }, { onConflict: "driver_id" });
   if (error) throw error;
 
-  console.log("Seeded:");
-  console.log(`  customer  ${USERS[0].email}  /  ${password}`);
-  console.log(`  driver    ${USERS[1].email}  /  ${password}   tanker ${TANKER.plate} · ${TANKER.service_type} · ${TANKER.capacity_gal} gal`);
+  console.log("Seeded (password: SEED_PASSWORD in .env.local):");
+  console.log(`  customer  ${USERS[0].email}`);
+  console.log(`  driver    ${USERS[1].email}   tanker ${TANKER.plate} · ${TANKER.service_type} · ${TANKER.capacity_gal} gal`);
 }
 
 main().catch((e) => {
