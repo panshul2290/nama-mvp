@@ -213,10 +213,13 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     };
   }, [jobId]);
 
-  // Location reporting during a job: every 10 s while moving (>15 m), at most every 30 s
-  // otherwise, with accuracy and the fix's own timestamp. Same path for real and simulated fixes.
+  // Location reporting while online (so NWS operators see idle tankers) and during a job:
+  // every 10 s while moving (>15 m), at most every 30 s otherwise, with accuracy and the fix's
+  // own timestamp. Same path for real and simulated fixes. Restarts when a job starts, so the
+  // first fix goes out straight away and flips the job to 'arriving'.
+  const reporting = online || onJob;
   useEffect(() => {
-    if (!jobId) return;
+    if (!reporting) return;
     lastSent.current = null;
     const tick = () => {
       const now = Date.now();
@@ -233,13 +236,13 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
           if (error) lastSent.current = null; // retry on the next tick
         });
     };
-    const first = setTimeout(tick, 0); // send straight away so the job flips to 'arriving'
+    const first = setTimeout(tick, 0);
     const timer = setInterval(tick, PING_MS);
     return () => {
       clearTimeout(first);
       clearInterval(timer);
     };
-  }, [jobId, onFix, onFixError]);
+  }, [reporting, jobId, onFix, onFixError]);
 
   // ---------------------------------------------------------------- demo trip simulator
   const startSimulation = useCallback(() => {

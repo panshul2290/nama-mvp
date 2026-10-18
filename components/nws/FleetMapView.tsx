@@ -35,7 +35,8 @@ export default function FleetMapView({ tankers, orders, onSelect }: { tankers: M
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const ready = useRef(false);
-  const fitted = useRef(false);
+  const known = useRef(new Set<string>()); // ids already framed
+  const userMoved = useRef(false); // the operator panned or zoomed: stop auto-framing
   const onSel = useRef(onSelect);
   const data = useRef({ tankers, orders });
   const applyRef = useRef<() => void>(() => undefined);
@@ -48,6 +49,10 @@ export default function FleetMapView({ tankers, orders, onSelect }: { tankers: M
     if (!box.current) return;
     const m = new maplibregl.Map({ container: box.current, style: STYLE, center: [58.38, 23.59], zoom: 10.5, attributionControl: { compact: true } });
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    // Only user gestures (and the zoom buttons) carry an originalEvent; fitBounds doesn't.
+    m.on("movestart", (e) => {
+      if ((e as { originalEvent?: Event }).originalEvent) userMoved.current = true;
+    });
     m.on("load", () => {
       m.addSource("orders", { type: "geojson", data: fc([]) });
       m.addSource("tankers", { type: "geojson", data: fc([]) });
@@ -85,7 +90,8 @@ export default function FleetMapView({ tankers, orders, onSelect }: { tankers: M
     map.current = m;
     return () => {
       ready.current = false;
-      fitted.current = false;
+      known.current = new Set();
+      userMoved.current = false;
       m.remove();
       map.current = null;
     };
@@ -108,12 +114,16 @@ export default function FleetMapView({ tankers, orders, onSelect }: { tankers: M
       (m.getSource("orders") as maplibregl.GeoJSONSource).setData(
         fc(orders.map((o) => ({ type: "Feature", geometry: { type: "Point", coordinates: [o.lng, o.lat] }, properties: { id: o.id, label: o.label, color: COLORS[o.type] } }))),
       );
+      // Frame everything whenever a new tanker or order appears (not on every GPS move),
+      // until the operator takes over the view.
       const pts = [...tankers, ...orders];
-      if (!fitted.current && pts.length) {
-        fitted.current = true;
+      const first = known.current.size === 0;
+      const added = pts.filter((p) => !known.current.has(p.id));
+      for (const p of added) known.current.add(p.id);
+      if (added.length && !userMoved.current) {
         const b = new maplibregl.LngLatBounds([pts[0].lng, pts[0].lat], [pts[0].lng, pts[0].lat]);
         for (const p of pts) b.extend([p.lng, p.lat]);
-        m.fitBounds(b, { padding: 80, maxZoom: 13, duration: 0 });
+        m.fitBounds(b, { padding: 80, maxZoom: 13, duration: first ? 0 : 600 });
       }
     };
     applyRef.current = apply;
