@@ -7,12 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:db": "tsx supabase/tests/db.test.ts",
+    "test:db": "tsx supabase/tests/run.ts pglite",
     "postinstall": "node scripts/copy-maplibre-worker.mjs",
     "predev": "node scripts/copy-maplibre-worker.mjs",
     "prebuild": "node scripts/copy-maplibre-worker.mjs",
     "seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
-    "db:apply": "node --env-file-if-exists=.env.local scripts/apply-migration.mjs"
+    "db:apply": "node --env-file-if-exists=.env.local scripts/apply-migration.mjs",
+    "test:db:supabase": "tsx --env-file-if-exists=.env.local supabase/tests/run.ts supabase"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.10",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
