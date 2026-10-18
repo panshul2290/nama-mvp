@@ -1,11 +1,11 @@
 {
   "target": "pglite",
-  "started": "2026-10-18T04:24:46.241Z",
+  "started": "2026-10-18T05:00:54.403Z",
   "runId": "pglite",
   "parallel": false,
-  "pass": 183,
+  "pass": 235,
   "fail": 0,
-  "skip": 2,
+  "skip": 5,
   "results": [
     {
       "section": "MIG migrations and schema",
@@ -90,7 +90,7 @@
     {
       "section": "PRICE pricing",
       "id": "PRICE-06",
-      "name": "lib/pricing.ts matches price_quote() on 63 type/volume pairs",
+      "name": "lib/pricing.ts reproduces price_quote() amounts and line statuses from the rules table (63 type/volume pairs)",
       "ok": true
     },
     {
@@ -265,6 +265,180 @@
       "section": "ONUM order numbers",
       "id": "ONUM-12",
       "name": "RPCs return order_no (open_requests_near)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-01",
+      "name": "confirmed (tender tariff table): DW ≤650 gal 1 baisa, WW 1 baisa, TE 0.05 baisa (+ the 650 gal threshold)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-02",
+      "name": "pending clarification: DW >650 gal basis (Q05: slab vs whole volume) and VAT application (Q07)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-03",
+      "name": "assumptions: base fees DW 3.5 / WW 6 / TE 8, driver share 0.85, peak 1.2, priority 1.5, monthly 0.10, yearly 0.15, cancel fee 1",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-04",
+      "name": "BILLING_MODE defaults to demo",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-05",
+      "name": "demo: DW 600 gal is priced; water confirmed, fee assumption, VAT pending, total pending, earnings assumption",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-06",
+      "name": "demo: DW 3,000 gal (slab) = 11.760 and its water line is pending (Q05)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-07",
+      "name": "demo: WW 3,000 gal water line is confirmed",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-08",
+      "name": "driver's open-request list reports the earnings status (assumption)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-09",
+      "name": "changing a rule changes the price (fee_dw_omr 3.5 → 4: DW 600 = 4.830)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-10",
+      "name": "switching Q05 to whole_volume prices DW 3,000 gal water at 9.000 (3 baisa on every gallon)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-11",
+      "name": "a price supplied on insert is replaced by the rules, even for a privileged role",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-12",
+      "name": "prices are frozen after insert (privileged update → price_immutable)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-13",
+      "name": "production: an order using unconfirmed rules is refused with a clear error",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-14",
+      "name": "production: the error also names the Q05 rules for DW above 650 gal",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-15",
+      "name": "production: the trigger also refuses a privileged direct insert",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-16",
+      "name": "production: once every rule the order uses is confirmed, it is priced (DW 600 gal)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-17",
+      "name": "production: DW 3,000 gal is still refused while Q05 is pending — and only the Q05 rules are listed",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-18",
+      "name": "BILLING_MODE only accepts demo or production",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-19",
+      "name": "after the production-mode checks, BILLING_MODE and rule statuses are back as they were (rolled back)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-20",
+      "name": "anon cannot read pricing_rules",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-21",
+      "name": "signed-in users can read pricing_rules (for the quote screen)",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-22",
+      "name": "customer cannot change a pricing rule",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-23",
+      "name": "customer cannot mark a rule confirmed",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-24",
+      "name": "customer cannot add a pricing rule",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-25",
+      "name": "customer cannot change BILLING_MODE",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-26",
+      "name": "driver cannot change a pricing rule",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-27",
+      "name": "driver cannot mark a rule confirmed",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-28",
+      "name": "driver cannot add a pricing rule",
+      "ok": true
+    },
+    {
+      "section": "RULES pricing rules and billing mode",
+      "id": "RULES-29",
+      "name": "driver cannot change BILLING_MODE",
       "ok": true
     },
     {
@@ -1077,13 +1251,13 @@
     {
       "section": "GPS location freshness",
       "id": "GPS-04",
-      "name": "fix 59 s old → stale = false",
+      "name": "fix 55 s old → stale = false",
       "ok": true
     },
     {
       "section": "GPS location freshness",
       "id": "GPS-05",
-      "name": "fix 61 s old → stale = true",
+      "name": "fix 65 s old → stale = true",
       "ok": true
     },
     {
@@ -1119,10 +1293,172 @@
     {
       "section": "GPS location freshness",
       "id": "GPS-11",
+      "name": "a fix with accuracy 100 m is accepted",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-12",
+      "name": "the fix's accuracy (m) and device timestamp are stored",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-13",
+      "name": "a fix with accuracy worse than 100 m is rejected",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-14",
+      "name": "a fix without accuracy is rejected",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-15",
+      "name": "a fix timestamped more than 2 min ago is rejected",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-16",
+      "name": "a fix timestamped more than 5 min in the future is rejected",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-17",
+      "name": "an out-of-order (older) fix is ignored",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-18",
+      "name": "rejected fixes never changed the stored position",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-19",
       "name": "REST API returns location_stale",
       "ok": true,
       "skipped": true,
       "detail": "PGlite has no PostgREST; covered by the Supabase run"
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-01",
+      "name": "a customer cannot report a live location (report_location → not_a_driver)",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-02",
+      "name": "no table lets a signed-in user (or anon) write a coordinate column directly",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-03",
+      "name": "a customer cannot create a tanker row (the only table holding live positions)",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-04",
+      "name": "a customer cannot write order_locations directly",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-05",
+      "name": "customer screens never send their position (source check)",
+      "ok": true,
+      "skipped": true,
+      "detail": "covered by npm run test:unit (tests/unit/privacy.test.ts)"
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-06",
+      "name": "open request: the customer cannot see any driver's location yet",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-07",
+      "name": "accepted: the order's customer sees the driver's location",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-08",
+      "name": "accepted: another customer does not",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-09",
+      "name": "accepted: another driver does not",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-10",
+      "name": "accepted: anon does not",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-11",
+      "name": "arrived: the order's customer still sees it",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-12",
+      "name": "Realtime: only the active order's customer receives location updates",
+      "ok": true,
+      "skipped": true,
+      "detail": "PGlite has no Realtime server; covered by the Supabase run"
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-13",
+      "name": "delivered: the customer can no longer see the driver's location",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-14",
+      "name": "Realtime: no updates after delivery",
+      "ok": true,
+      "skipped": true,
+      "detail": "covered by the Supabase run"
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-15",
+      "name": "cancelled request: the customer sees no driver location",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-16",
+      "name": "accepted (second order): its customer sees the driver",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-17",
+      "name": "accepted order cancelled (operator action): the customer can no longer see the driver",
+      "ok": true
+    },
+    {
+      "section": "PRIV location privacy",
+      "id": "PRIV-18",
+      "name": "… and the previous customer still can't either",
+      "ok": true
     }
   ]
 }

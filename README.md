@@ -123,16 +123,58 @@ A **partial unique index** on `orders(driver_id) WHERE status IN ('accepted','ar
 Users can edit only `full_name` and `phone` on their profile (a column-level grant), so nobody can change their own role. GPS columns on `tankers` are writable only through `report_location`.
 
 ### Realtime
-- **Customer:** Postgres Changes on its order row (status) and on the assigned tanker row (position). The tanker marker glides between 10 s fixes.
+- **Customer:** Postgres Changes on its order row (status) and on the assigned tanker row (position). The tanker marker glides between fixes.
 - **Driver:** Postgres Changes `INSERT` on `orders` for new requests, plus updates on its own job.
 - **Gap filler:** once a request is accepted or cancelled, RLS hides it from other drivers, so they never receive that UPDATE. The accepting driver and the cancelling customer send a Broadcast `gone` message on the `open-requests` channel, and the list also refreshes every 15 s. Broadcast is only a UI hint. Correctness comes from the atomic accept.
 - If you enable **Realtime → Settings → "Private channels only"**, the `open-requests` broadcast stops working (the 15 s refresh still runs). Either leave public channels on, or add a `realtime.messages` policy for authenticated users.
 
+### Live tracking
+- **Driver phone:**
+  - **Screen on:** while a job is active, the app holds a Screen Wake Lock and re-requests it when the page becomes visible again.
+  - **Paused banner:** if location stops (permission denied, page hidden, or no fix for 30 s), a red **"Tracking paused — keep this screen open"** banner appears on every driver tab.
+- **Sending rules (`lib/tracking.ts`):**
+  - Every 10 s while moving (more than 15 m from the last sent fix); otherwise at most every 30 s.
+  - Each fix carries accuracy (m) and the device timestamp. Fixes worse than 100 m are dropped on the phone and rejected by `report_location` too, as are stale or out-of-order fixes.
+- **Customer screen:**
+  - **Freshness:** a "Last updated X ago" label under the tanker marker. After 60 s without an update the marker greys out and "Live location delayed" appears. The age is anchored to the server (`location_age_s`), not the customer's clock.
+  - **ETA:** road routing via OSRM through one function, `routeEta()` in `lib/routing.ts`. The base URL is `NEXT_PUBLIC_OSRM_URL`, defaulting to `router.project-osrm.org` for the demo only. It recalculates at most every 30 s and falls back to a straight-line estimate when routing fails.
+- **Demo simulator:** with `NEXT_PUBLIC_DEMO_MODE=true`, the driver's Trip tab offers **Simulate trip**. It plays back an OSRM road route in Muscat, from about 3 km away to the customer, feeding positions through the same fix handler and send rules as a real phone.
+- **Privacy:**
+  - Customers never send a live position. Their GPS is read only to pre-fill the delivery pin, and the only coordinates they send are that pin, via `place_order`.
+  - A driver's position is visible only to the customer of the active order (accepted, arriving or arrived), through RLS on `tankers`, which Realtime also honours. It stops being visible on delivery or cancellation.
+  - In demo mode, the public OSRM server receives tanker and delivery coordinates.
+
+### Testing live tracking on two phones
+Phones only allow GPS and the wake lock on HTTPS (or `localhost`), so serve the app over HTTPS on your LAN:
+
+1. On the computer: `npx next dev --experimental-https -H 0.0.0.0`. It prints a `https://<your-LAN-IP>:3000` URL. Add that URL and `/auth/callback` under Supabase **Authentication → URL Configuration**.
+2. Put both phones on the same Wi-Fi and open the URL. Accept the self-signed certificate warning; the browser asks once.
+3. **Phone A (customer):** sign in as `customer@nama.test` and allow location, which only pre-fills the pin. Request a tanker.
+4. **Phone B (driver):** sign in as `driver@nama.test`, allow location, go **Online** on Jobs and accept the request. Keep the Trip tab open: the screen should stay on.
+5. Walk or drive with phone B. Phone A shows the tanker moving, "Last updated … ago" and a road ETA, without reloading.
+6. **Failure paths:**
+   - Lock phone B or switch apps: when you come back, phone B shows **Tracking paused**.
+   - After 60 s without updates, phone A greys the tanker out and shows **Live location delayed**.
+   - Deny location on phone B: the banner says so.
+7. Without walking: set `NEXT_PUBLIC_DEMO_MODE=true`, restart, and tap **Simulate trip** on phone B.
+8. Finish with **Mark arrived** and **Mark delivered**. Phone A stops seeing the tanker.
+
 ## Tests
 ```bash
-npm run test:db
+npm run test:unit            # sending rules, OSRM fallback, customer-privacy source check
+npm run test:db              # all database suites on PGlite (fresh database from the migrations)
+npm run test:db:supabase     # the same suites on the Supabase project (test-prefixed users, deleted afterwards)
+npm run evidence             # both database runs + docs/evidence/test-report.md
 ```
-Runs the migrations in [PGlite](https://pglite.dev) (Postgres in WASM) against a stub of Supabase's `auth` schema and roles. It checks RLS for each role, every RPC and transition, the one-active-job index, the "already taken" path, JS/SQL price parity, and order numbers: the backfill order, uniqueness, that customers and drivers can't set or change them, and that the RPCs return them. Concurrency is exercised sequentially there. The race guarantee comes from Postgres row locking on the conditional `UPDATE`.
+The database suites cover:
+- the authorization matrix (anon, customer, other customer, driver, other driver × every table and RPC)
+- the order lifecycle and order numbers
+- pricing rules and `BILLING_MODE`
+- races: 20 drivers on one order, and one driver on two orders
+- GPS freshness and accuracy
+- location privacy, including Realtime on Supabase
+
+The Supabase run fingerprints every non-test row before and after, and fails if anything changed. See [docs/evidence/test-report.md](docs/evidence/test-report.md).
 
 `npm run lint` and `npm run build` should both be clean.
 
@@ -149,8 +191,10 @@ lib/                                pricing, Supabase clients, types, geo, error
 proxy.ts                            session refresh + optimistic redirects (Next 16 "proxy")
 supabase/migrations/0001_init.sql   schema, RLS, RPCs, realtime publication
 supabase/migrations/0002_order_no.sql  sequential order numbers (TO-48200…)
+supabase/migrations/0003…0005       GPS freshness, pricing rules + BILLING_MODE, fix accuracy
 scripts/apply-migration.mjs         npm run db:apply: ordered, tracked migrations
-supabase/tests/db.test.ts           PGlite test suite
+supabase/tests/                     portable DB suites (PGlite + Supabase); tests/unit/ client rules
+docs/evidence/                      test report, raw output, architecture, prototype labelling
 scripts/seed.ts                     test customer + driver (service-role key)
 ```
 
@@ -158,4 +202,5 @@ scripts/seed.ts                     test customer + driver (service-role key)
 - No payments, ratings, push notifications, scheduling or admin screens. Customers can cancel only before acceptance.
 - `open_requests_near` uses straight-line (haversine) distance, not road distance. Distances are rounded to 0.1 km.
 - Tiles come from `tile.openstreetmap.org`, and the area name is suggested by OSM Nominatim from the customer's browser (the pin's coordinates are sent to it). Both are fine for development under their usage policies. For production, use a tile and geocoding provider.
-- GPS pings run in the foreground tab. A production driver app needs a native wrapper for background location.
+- Location is sent only while the driver app is in the foreground with the screen on (the wake lock helps; browsers stop GPS in the background). A production driver app needs a native wrapper for background location.
+- `router.project-osrm.org` is a public demo server with no availability guarantee; use a self-hosted OSRM (`NEXT_PUBLIC_OSRM_URL`) beyond demos.

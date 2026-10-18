@@ -1,5 +1,5 @@
 # Database test run — target: pglite
-started: 2026-10-18T04:24:46.241Z
+started: 2026-10-18T05:00:54.403Z
 run id: pglite; parallel backends: false; fresh database: true; Postgres 18.6
 
 ## MIG migrations and schema
@@ -18,7 +18,7 @@ PASS  PRICE-02  price_quote DW 1000 gal = 5.460 OMR (water/fee/VAT/total/earning
 PASS  PRICE-03  price_quote DW 3000 gal = 11.760 OMR (water/fee/VAT/total/earnings)
 PASS  PRICE-04  price_quote WW 3000 gal = 9.450 OMR (water/fee/VAT/total/earnings)
 PASS  PRICE-05  price_quote TE 10000 gal = 8.925 OMR (water/fee/VAT/total/earnings)
-PASS  PRICE-06  lib/pricing.ts matches price_quote() on 63 type/volume pairs
+PASS  PRICE-06  lib/pricing.ts reproduces price_quote() amounts and line statuses from the rules table (63 type/volume pairs)
 
 ## LIFE order lifecycle
 PASS  LIFE-01  place_order prices on the server (DW 1,000 gal = 5.460) and starts as requested
@@ -52,6 +52,37 @@ PASS  ONUM-09  driver cannot setval the sequence
 PASS  ONUM-10  order_no is frozen even for privileged updates
 PASS  ONUM-11  RPCs return order_no (cancel_order)
 PASS  ONUM-12  RPCs return order_no (open_requests_near)
+
+## RULES pricing rules and billing mode
+PASS  RULES-01  confirmed (tender tariff table): DW ≤650 gal 1 baisa, WW 1 baisa, TE 0.05 baisa (+ the 650 gal threshold)
+PASS  RULES-02  pending clarification: DW >650 gal basis (Q05: slab vs whole volume) and VAT application (Q07)
+PASS  RULES-03  assumptions: base fees DW 3.5 / WW 6 / TE 8, driver share 0.85, peak 1.2, priority 1.5, monthly 0.10, yearly 0.15, cancel fee 1
+PASS  RULES-04  BILLING_MODE defaults to demo
+PASS  RULES-05  demo: DW 600 gal is priced; water confirmed, fee assumption, VAT pending, total pending, earnings assumption
+PASS  RULES-06  demo: DW 3,000 gal (slab) = 11.760 and its water line is pending (Q05)
+PASS  RULES-07  demo: WW 3,000 gal water line is confirmed
+PASS  RULES-08  driver's open-request list reports the earnings status (assumption)
+PASS  RULES-09  changing a rule changes the price (fee_dw_omr 3.5 → 4: DW 600 = 4.830)
+PASS  RULES-10  switching Q05 to whole_volume prices DW 3,000 gal water at 9.000 (3 baisa on every gallon)
+PASS  RULES-11  a price supplied on insert is replaced by the rules, even for a privileged role
+PASS  RULES-12  prices are frozen after insert (privileged update → price_immutable)
+PASS  RULES-13  production: an order using unconfirmed rules is refused with a clear error
+PASS  RULES-14  production: the error also names the Q05 rules for DW above 650 gal
+PASS  RULES-15  production: the trigger also refuses a privileged direct insert
+PASS  RULES-16  production: once every rule the order uses is confirmed, it is priced (DW 600 gal)
+PASS  RULES-17  production: DW 3,000 gal is still refused while Q05 is pending — and only the Q05 rules are listed
+PASS  RULES-18  BILLING_MODE only accepts demo or production
+PASS  RULES-19  after the production-mode checks, BILLING_MODE and rule statuses are back as they were (rolled back)
+PASS  RULES-20  anon cannot read pricing_rules
+PASS  RULES-21  signed-in users can read pricing_rules (for the quote screen)
+PASS  RULES-22  customer cannot change a pricing rule
+PASS  RULES-23  customer cannot mark a rule confirmed
+PASS  RULES-24  customer cannot add a pricing rule
+PASS  RULES-25  customer cannot change BILLING_MODE
+PASS  RULES-26  driver cannot change a pricing rule
+PASS  RULES-27  driver cannot mark a rule confirmed
+PASS  RULES-28  driver cannot add a pricing rule
+PASS  RULES-29  driver cannot change BILLING_MODE
 
 ## AUTHZ authorization matrix
 PASS  AUTHZ-01  anon cannot SELECT profiles
@@ -192,16 +223,44 @@ PASS  RACE-04  one driver accepts two orders at once (5 rounds): always exactly 
 PASS  GPS-01  before any fix: no timestamp and reported stale
 PASS  GPS-02  report_location stores the fix with a server timestamp (within 5 s of now)
 PASS  GPS-03  a fresh fix is not stale
-PASS  GPS-04  fix 59 s old → stale = false
-PASS  GPS-05  fix 61 s old → stale = true
+PASS  GPS-04  fix 55 s old → stale = false
+PASS  GPS-05  fix 65 s old → stale = true
 PASS  GPS-06  fix 600 s old → stale = true
 PASS  GPS-07  the driver sees the same staleness on their own tanker
 PASS  GPS-08  another customer gets no row (RLS), so no location or freshness leaks
 PASS  GPS-09  anon cannot call location_stale()
 PASS  GPS-10  a new fix clears the stale flag
-SKIP  GPS-11  REST API returns location_stale  — PGlite has no PostgREST; covered by the Supabase run
+PASS  GPS-11  a fix with accuracy 100 m is accepted
+PASS  GPS-12  the fix's accuracy (m) and device timestamp are stored
+PASS  GPS-13  a fix with accuracy worse than 100 m is rejected
+PASS  GPS-14  a fix without accuracy is rejected
+PASS  GPS-15  a fix timestamped more than 2 min ago is rejected
+PASS  GPS-16  a fix timestamped more than 5 min in the future is rejected
+PASS  GPS-17  an out-of-order (older) fix is ignored
+PASS  GPS-18  rejected fixes never changed the stored position
+SKIP  GPS-19  REST API returns location_stale  — PGlite has no PostgREST; covered by the Supabase run
+
+## PRIV location privacy
+PASS  PRIV-01  a customer cannot report a live location (report_location → not_a_driver)
+PASS  PRIV-02  no table lets a signed-in user (or anon) write a coordinate column directly
+PASS  PRIV-03  a customer cannot create a tanker row (the only table holding live positions)
+PASS  PRIV-04  a customer cannot write order_locations directly
+SKIP  PRIV-05  customer screens never send their position (source check)  — covered by npm run test:unit (tests/unit/privacy.test.ts)
+PASS  PRIV-06  open request: the customer cannot see any driver's location yet
+PASS  PRIV-07  accepted: the order's customer sees the driver's location
+PASS  PRIV-08  accepted: another customer does not
+PASS  PRIV-09  accepted: another driver does not
+PASS  PRIV-10  accepted: anon does not
+PASS  PRIV-11  arrived: the order's customer still sees it
+SKIP  PRIV-12  Realtime: only the active order's customer receives location updates  — PGlite has no Realtime server; covered by the Supabase run
+PASS  PRIV-13  delivered: the customer can no longer see the driver's location
+SKIP  PRIV-14  Realtime: no updates after delivery  — covered by the Supabase run
+PASS  PRIV-15  cancelled request: the customer sees no driver location
+PASS  PRIV-16  accepted (second order): its customer sees the driver
+PASS  PRIV-17  accepted order cancelled (operator action): the customer can no longer see the driver
+PASS  PRIV-18  … and the previous customer still can't either
 
 ## CLEANUP
 
-183 passed, 0 failed, 2 skipped
-finished: 2026-10-18T04:24:51.239Z
+235 passed, 0 failed, 5 skipped
+finished: 2026-10-18T05:00:59.802Z

@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Generated | 2026-10-18T04:29:34.289Z (UTC) |
-| Git commit | `54a2389c4eb2abea1e944cc9a8de8201b4ab1db6` |
+| Generated | 2026-10-18T05:07:28.993Z (UTC) |
+| Git commit | `f62e99e6bda432ceed97fd9374fac1b98d99c8d9` |
 | Node.js | v24.16.0 on win32 |
 | PGlite | 0.5.10 (Postgres compiled to WASM, single connection) |
 | Supabase | project region `ap-northeast-1`, Postgres 17.11, reached through the Supavisor transaction pooler |
@@ -13,8 +13,8 @@
 
 | Target | Started | Passed | Failed | Skipped | Exit |
 |---|---|---|---|---|---|
-| pglite | 2026-10-18T04:24:46.241Z | 183 | 0 | 2 | 0 |
-| supabase | 2026-10-18T04:24:54.137Z | 186 | 0 | 1 | 0 |
+| pglite | 2026-10-18T05:00:54.403Z | 235 | 0 | 5 | 0 |
+| supabase | 2026-10-18T05:01:03.251Z | 241 | 0 | 2 | 0 |
 
 Raw output: [raw/pglite.txt](raw/pglite.txt), [raw/supabase.txt](raw/supabase.txt) (and the matching `.json`).
 
@@ -40,7 +40,7 @@ Raw output: [raw/pglite.txt](raw/pglite.txt), [raw/supabase.txt](raw/supabase.tx
 | MIG-07 | no RPC is executable by anon; all are executable by signed-in users | PASS | PASS |
 | MIG-08 | the order-number sequence is not usable by anon or signed-in users | PASS | PASS |
 | MIG-01 | backfill order of pre-0002 orders | — | SKIP (needs a pre-0002 database; checked on the fresh PGlite build) |
-| MIG-02 | every migration file is recorded as applied (0001, 0002, 0003) | — | PASS |
+| MIG-02 | every migration file is recorded as applied (0001, 0002, 0003, 0004, 0005) | — | PASS |
 
 ### PRICE pricing
 
@@ -51,7 +51,7 @@ Raw output: [raw/pglite.txt](raw/pglite.txt), [raw/supabase.txt](raw/supabase.tx
 | PRICE-03 | price_quote DW 3000 gal = 11.760 OMR (water/fee/VAT/total/earnings) | PASS | PASS |
 | PRICE-04 | price_quote WW 3000 gal = 9.450 OMR (water/fee/VAT/total/earnings) | PASS | PASS |
 | PRICE-05 | price_quote TE 10000 gal = 8.925 OMR (water/fee/VAT/total/earnings) | PASS | PASS |
-| PRICE-06 | lib/pricing.ts matches price_quote() on 63 type/volume pairs | PASS | PASS |
+| PRICE-06 | lib/pricing.ts reproduces price_quote() amounts and line statuses from the rules table (63 type/volume pairs) | PASS | PASS |
 
 ### LIFE order lifecycle
 
@@ -91,6 +91,40 @@ Raw output: [raw/pglite.txt](raw/pglite.txt), [raw/supabase.txt](raw/supabase.tx
 | ONUM-10 | order_no is frozen even for privileged updates | PASS | PASS |
 | ONUM-11 | RPCs return order_no (cancel_order) | PASS | PASS |
 | ONUM-12 | RPCs return order_no (open_requests_near) | PASS | PASS |
+
+### RULES pricing rules and billing mode
+
+| ID | Check | PGlite | Supabase |
+|---|---|---|---|
+| RULES-01 | confirmed (tender tariff table): DW ≤650 gal 1 baisa, WW 1 baisa, TE 0.05 baisa (+ the 650 gal threshold) | PASS | PASS |
+| RULES-02 | pending clarification: DW >650 gal basis (Q05: slab vs whole volume) and VAT application (Q07) | PASS | PASS |
+| RULES-03 | assumptions: base fees DW 3.5 / WW 6 / TE 8, driver share 0.85, peak 1.2, priority 1.5, monthly 0.10, yearly 0.15, cancel fee 1 | PASS | PASS |
+| RULES-04 | BILLING_MODE defaults to demo | PASS | PASS |
+| RULES-05 | demo: DW 600 gal is priced; water confirmed, fee assumption, VAT pending, total pending, earnings assumption | PASS | PASS |
+| RULES-06 | demo: DW 3,000 gal (slab) = 11.760 and its water line is pending (Q05) | PASS | PASS |
+| RULES-07 | demo: WW 3,000 gal water line is confirmed | PASS | PASS |
+| RULES-08 | driver's open-request list reports the earnings status (assumption) | PASS | PASS |
+| RULES-09 | changing a rule changes the price (fee_dw_omr 3.5 → 4: DW 600 = 4.830) | PASS | PASS |
+| RULES-10 | switching Q05 to whole_volume prices DW 3,000 gal water at 9.000 (3 baisa on every gallon) | PASS | PASS |
+| RULES-11 | a price supplied on insert is replaced by the rules, even for a privileged role | PASS | PASS |
+| RULES-12 | prices are frozen after insert (privileged update → price_immutable) | PASS | PASS |
+| RULES-13 | production: an order using unconfirmed rules is refused with a clear error | PASS | PASS |
+| RULES-14 | production: the error also names the Q05 rules for DW above 650 gal | PASS | PASS |
+| RULES-15 | production: the trigger also refuses a privileged direct insert | PASS | PASS |
+| RULES-16 | production: once every rule the order uses is confirmed, it is priced (DW 600 gal) | PASS | PASS |
+| RULES-17 | production: DW 3,000 gal is still refused while Q05 is pending — and only the Q05 rules are listed | PASS | PASS |
+| RULES-18 | BILLING_MODE only accepts demo or production | PASS | PASS |
+| RULES-19 | after the production-mode checks, BILLING_MODE and rule statuses are back as they were (rolled back) | PASS | PASS |
+| RULES-20 | anon cannot read pricing_rules | PASS | PASS |
+| RULES-21 | signed-in users can read pricing_rules (for the quote screen) | PASS | PASS |
+| RULES-22 | customer cannot change a pricing rule | PASS | PASS |
+| RULES-23 | customer cannot mark a rule confirmed | PASS | PASS |
+| RULES-24 | customer cannot add a pricing rule | PASS | PASS |
+| RULES-25 | customer cannot change BILLING_MODE | PASS | PASS |
+| RULES-26 | driver cannot change a pricing rule | PASS | PASS |
+| RULES-27 | driver cannot mark a rule confirmed | PASS | PASS |
+| RULES-28 | driver cannot add a pricing rule | PASS | PASS |
+| RULES-29 | driver cannot change BILLING_MODE | PASS | PASS |
 
 ### AUTHZ authorization matrix
 
@@ -240,16 +274,50 @@ Raw output: [raw/pglite.txt](raw/pglite.txt), [raw/supabase.txt](raw/supabase.tx
 | GPS-01 | before any fix: no timestamp and reported stale | PASS | PASS |
 | GPS-02 | report_location stores the fix with a server timestamp (within 5 s of now) | PASS | PASS |
 | GPS-03 | a fresh fix is not stale | PASS | PASS |
-| GPS-04 | fix 59 s old → stale = false | PASS | PASS |
-| GPS-05 | fix 61 s old → stale = true | PASS | PASS |
+| GPS-04 | fix 55 s old → stale = false | PASS | PASS |
+| GPS-05 | fix 65 s old → stale = true | PASS | PASS |
 | GPS-06 | fix 600 s old → stale = true | PASS | PASS |
 | GPS-07 | the driver sees the same staleness on their own tanker | PASS | PASS |
 | GPS-08 | another customer gets no row (RLS), so no location or freshness leaks | PASS | PASS |
 | GPS-09 | anon cannot call location_stale() | PASS | PASS |
 | GPS-10 | a new fix clears the stale flag | PASS | PASS |
-| GPS-11 | REST API returns location_stale | SKIP (PGlite has no PostgREST; covered by the Supabase run) | — |
-| GPS-11 | REST API (as the customer): tankers?select=…,location_stale returns stale = true for a 61 s old fix | — | PASS |
-| GPS-12 | REST API (as another customer): no row returned | — | PASS |
+| GPS-11 | a fix with accuracy 100 m is accepted | PASS | PASS |
+| GPS-12 | the fix's accuracy (m) and device timestamp are stored | PASS | PASS |
+| GPS-13 | a fix with accuracy worse than 100 m is rejected | PASS | PASS |
+| GPS-14 | a fix without accuracy is rejected | PASS | PASS |
+| GPS-15 | a fix timestamped more than 2 min ago is rejected | PASS | PASS |
+| GPS-16 | a fix timestamped more than 5 min in the future is rejected | PASS | PASS |
+| GPS-17 | an out-of-order (older) fix is ignored | PASS | PASS |
+| GPS-18 | rejected fixes never changed the stored position | PASS | PASS |
+| GPS-19 | REST API returns location_stale | SKIP (PGlite has no PostgREST; covered by the Supabase run) | — |
+| GPS-19 | REST API (as the customer): tankers?select=…,location_stale returns stale = true for a 61 s old fix | — | PASS |
+| GPS-20 | REST API (as another customer): no row returned | — | PASS |
+
+### PRIV location privacy
+
+| ID | Check | PGlite | Supabase |
+|---|---|---|---|
+| PRIV-01 | a customer cannot report a live location (report_location → not_a_driver) | PASS | PASS |
+| PRIV-02 | no table lets a signed-in user (or anon) write a coordinate column directly | PASS | PASS |
+| PRIV-03 | a customer cannot create a tanker row (the only table holding live positions) | PASS | PASS |
+| PRIV-04 | a customer cannot write order_locations directly | PASS | PASS |
+| PRIV-05 | customer screens never send their position (source check) | SKIP (covered by npm run test:unit (tests/unit/privacy.test.ts)) | SKIP (covered by npm run test:unit (tests/unit/privacy.test.ts)) |
+| PRIV-06 | open request: the customer cannot see any driver's location yet | PASS | PASS |
+| PRIV-07 | accepted: the order's customer sees the driver's location | PASS | PASS |
+| PRIV-08 | accepted: another customer does not | PASS | PASS |
+| PRIV-09 | accepted: another driver does not | PASS | PASS |
+| PRIV-10 | accepted: anon does not | PASS | PASS |
+| PRIV-11 | arrived: the order's customer still sees it | PASS | PASS |
+| PRIV-12 | Realtime: only the active order's customer receives location updates | SKIP (PGlite has no Realtime server; covered by the Supabase run) | — |
+| PRIV-14 | delivered: the customer can no longer see the driver's location | PASS | PASS |
+| PRIV-14 | Realtime: no updates after delivery | SKIP (covered by the Supabase run) | — |
+| PRIV-16 | cancelled request: the customer sees no driver location | PASS | PASS |
+| PRIV-17 | accepted (second order): its customer sees the driver | PASS | PASS |
+| PRIV-18 | accepted order cancelled (operator action): the customer can no longer see the driver | PASS | PASS |
+| PRIV-19 | … and the previous customer still can't either | PASS | PASS |
+| PRIV-12 | Realtime: the active order's customer receives the driver's location updates | — | PASS |
+| PRIV-13 | Realtime: another customer subscribed to the same driver receives nothing | — | PASS |
+| PRIV-15 | Realtime: after delivery, the customer receives no further location updates | — | PASS |
 
 ### SAFE live-project safety
 
