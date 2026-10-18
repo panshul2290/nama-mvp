@@ -167,6 +167,7 @@ Users can edit only `full_name` and `phone` on their profile (a column-level gra
   - **Screen on:** while a job is active, the app holds a Screen Wake Lock and re-requests it when the page becomes visible again.
   - **Paused banner:** if location stops (permission denied, page hidden, or no fix for 30 s), a red **"Tracking paused — keep this screen open"** banner appears on every driver tab.
 - **Sending rules (`lib/tracking.ts`):**
+  - The phone reports whenever the driver is **online**, not only during a job, so the NWS Live operations board shows where idle tankers are. Going offline stops it.
   - Every 10 s while moving (more than 15 m from the last sent fix); otherwise at most every 30 s.
   - Each fix carries accuracy (m) and the device timestamp. Fixes worse than 100 m are dropped on the phone and rejected by `report_location` too, as are stale or out-of-order fixes.
 - **Customer screen:**
@@ -175,7 +176,7 @@ Users can edit only `full_name` and `phone` on their profile (a column-level gra
 - **Demo simulator:** with `NEXT_PUBLIC_DEMO_MODE=true`, the driver's Trip tab offers **Simulate trip**. It plays back an OSRM road route in Muscat, from about 3 km away to the customer, feeding positions through the same fix handler and send rules as a real phone.
 - **Privacy:**
   - Customers never send a live position. Their GPS is read only to pre-fill the delivery pin, and the only coordinates they send are that pin, via `place_order`.
-  - A driver's position is visible only to the customer of the active order (accepted, arriving or arrived), through RLS on `tankers`, which Realtime also honours. It stops being visible on delivery or cancellation.
+  - A driver's position is visible only to the customer of the active order (accepted, arriving or arrived), through RLS on `tankers`, which Realtime also honours. It stops being visible on delivery or cancellation. Positions sent while idle are visible to NWS staff only.
   - In demo mode, the public OSRM server receives tanker and delivery coordinates.
 
 ### Testing live tracking on two phones
@@ -192,6 +193,11 @@ Phones only allow GPS and the wake lock on HTTPS (or `localhost`), so serve the 
    - Deny location on phone B: the banner says so.
 7. Without walking: set `NEXT_PUBLIC_DEMO_MODE=true`, restart, and tap **Simulate trip** on phone B.
 8. Finish with **Mark arrived** and **Mark delivered**. Phone A stops seeing the tanker.
+
+### Demo activity for the NWS board
+`npm run demo` drives the seeded accounts through one full job so the Live operations board has something on it: 4521 TK goes online and waits (about 40 s), the customer requests DW 3,000 gal in Al Khuwair, the driver accepts after 20 s, drives a simulated road route (about 3.6 km, reporting every 10 s), arrives, delivers and goes offline. It takes about 8 minutes. `npm run demo -- --idle` just keeps the tanker online and reporting from one spot until Ctrl+C.
+
+It signs in with the publishable key and `SEED_PASSWORD` and calls the same RPCs as the app, so RLS and the permit and block rules apply; it never uses the service-role key. Ctrl+C sets the tanker offline and cancels or finishes the order it created. Orders it creates are real rows for the seeded customer. Don't run it while you're using `driver@nama.test` on a phone.
 
 ## Tests
 ```bash
