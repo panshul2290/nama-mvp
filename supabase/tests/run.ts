@@ -11,6 +11,7 @@ import { gpsSuite } from "./suites/gps";
 import { lifecycleSuite } from "./suites/lifecycle";
 import { beforeMigration, migrationsSuite } from "./suites/migrations";
 import { pricingSuite } from "./suites/pricing";
+import { privacySuite } from "./suites/privacy";
 
 const which = (process.argv[2] ?? "pglite") as "pglite" | "supabase";
 const outDir = process.argv[3]; // optional: write raw output + JSON here
@@ -48,7 +49,7 @@ async function main() {
   const before = t.name === "supabase" ? (await fingerprint())[0] : null;
   if (before) out(`non-test data before: ${before.users} users, ${before.rows} rows, md5 ${before.md5}`);
   try {
-    for (const suite of [migrationsSuite, lifecycleSuite, pricingSuite, authzSuite, concurrencySuite, gpsSuite]) {
+    for (const suite of [migrationsSuite, lifecycleSuite, pricingSuite, authzSuite, concurrencySuite, gpsSuite, privacySuite]) {
       try {
         await suite(t, r);
       } catch (e) {

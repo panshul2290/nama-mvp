@@ -19,7 +19,7 @@ export async function makeWorld(t: Target, prefix: string): Promise<World> {
   const D1 = await t.createUser(`${prefix}-d1`, { role: "driver", full_name: "Test Driver One" });
   const D2 = await t.createUser(`${prefix}-d2`, { role: "driver", full_name: "Test Driver Two" });
   const D3 = await t.createUser(`${prefix}-d3`, { role: "driver", full_name: "Test Driver Three" });
-  const plate = (label: string) => plateFor(t, `${prefix.slice(0, 3).toUpperCase()}${label}`);
+  const plate = (label: string) => plateFor(t, `${prefix.slice(0, 4).toUpperCase()}${label}`);
   for (const [d, label, type, cap] of [
     [D1, "D1", "DW", 3000],
     [D2, "D2", "DW", 5000],

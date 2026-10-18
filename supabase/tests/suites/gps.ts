@@ -27,9 +27,11 @@ export async function gpsSuite(t: Target, r: Reporter) {
   r.check("report_location stores the fix with a server timestamp (within 5 s of now)", fresh?.last_seen_at !== null && skew < 5, { fresh, skew });
   r.check("a fresh fix is not stale", fresh?.stale === false && (fresh.age ?? 99) <= 5, fresh);
 
+  // 55 / 65 s rather than 59 / 61: the read happens in a later round trip, which
+  // over a remote connection can add a second or more to the age.
   for (const [secs, want] of [
-    [59, false],
-    [61, true],
+    [55, false],
+    [65, true],
     [600, true],
   ] as const) {
     await t.admin("update tankers set last_seen_at = now() - make_interval(secs => $2) where driver_id = $1", [D1.id, secs]);
