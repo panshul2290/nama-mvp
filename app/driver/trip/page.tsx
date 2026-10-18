@@ -16,7 +16,7 @@ const STEP_LABEL: Record<string, [string, "act" | "ok"]> = {
 };
 
 export default function TripPage() {
-  const { job, me, advance, acting, gpsError, simulate, setSimulate } = useDriver();
+  const { job, me, advance, acting, simulate, setSimulate, wakeLock } = useDriver();
 
   if (!job) {
     return (
@@ -98,8 +98,6 @@ export default function TripPage() {
           </div>
         </div>
 
-        {gpsError && !simulate && <div className="banner badb">Location is off — the customer can’t see you moving. Allow location access.</div>}
-
         {arrived ? (
           <button className="cta" disabled={acting} onClick={() => advance("mark_delivered")}>
             {acting ? "Saving…" : "Mark delivered"}
@@ -131,7 +129,10 @@ export default function TripPage() {
             </a>
           )}
         </div>
-        <p className="tr-note">Sharing your location every 10 seconds while on this job.</p>
+        <p className="tr-note">
+          Sharing your location while on this job.{" "}
+          {wakeLock === "held" ? "The screen will stay on." : wakeLock === "off" ? "" : "Keep the screen on yourself — this browser can’t hold it on."}
+        </p>
       </div>
     </main>
   );

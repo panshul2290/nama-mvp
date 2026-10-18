@@ -13,6 +13,15 @@ import { supabase } from "@/lib/supabase/client";
 import type { LngLat, Order, OrderLocation, Profile, Tanker } from "@/lib/types";
 
 const PING_MS = 10_000;
+/** No usable fix for this long during a job → "Tracking paused". */
+const NO_FIX_MS = 30_000;
+
+export type TrackingIssue = "denied" | "hidden" | "nofix";
+const ISSUE_TEXT: Record<TrackingIssue, string> = {
+  denied: "Location permission is off. Allow location for this site in your browser settings.",
+  hidden: "The app is in the background, so your location isn’t being shared.",
+  nofix: "No GPS fix for 30 seconds. Check that location is on and you have a clear view of the sky.",
+};
 export const SIMULATION = process.env.NEXT_PUBLIC_ENABLE_SIMULATION === "true";
 
 export type Job = { order: Order; loc: OrderLocation | null; customer: Pick<Profile, "full_name" | "phone"> | null };
@@ -33,6 +42,8 @@ type DriverState = {
   gpsError: boolean;
   simulate: boolean;
   setSimulate: (v: boolean) => void;
+  /** Screen Wake Lock state during a job: held, unsupported, or failed. */
+  wakeLock: "held" | "unsupported" | "failed" | "off";
   today: { earned: number; jobs: number };
   toast: (m: string) => void;
 };
@@ -59,6 +70,10 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   const [gpsError, setGpsError] = useState(false);
   const [simulate, setSimulate] = useState(SIMULATION);
   const [simPos, setSimPos] = useState<LngLat | null>(null);
+  const [trackingIssue, setTrackingIssue] = useState<TrackingIssue | null>(null);
+  const [wakeLock, setWakeLock] = useState<"held" | "unsupported" | "failed" | "off">("off");
+  const deniedRef = useRef(false);
+  const lastFixAt = useRef(0);
 
   const online = tanker?.is_online ?? false;
   const onJob = Boolean(job);
@@ -120,10 +135,15 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     if (!(online || onJob) || !navigator.geolocation) return;
     const watch = navigator.geolocation.watchPosition(
       (p) => {
+        deniedRef.current = false;
+        lastFixAt.current = Date.now();
         setGpsError(false);
         setGps({ lat: p.coords.latitude, lng: p.coords.longitude });
       },
-      () => setGpsError(true),
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) deniedRef.current = true;
+        setGpsError(true);
+      },
       { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 },
     );
     return () => navigator.geolocation.clearWatch(watch);
@@ -184,6 +204,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       if (simulate && destRef.current) {
         pos = simulateStep(pos ?? gpsStart(destRef.current, gpsRef.current), destRef.current);
         meRef.current = pos;
+        lastFixAt.current = Date.now();
         setSimPos(pos);
       }
       if (pos) supabase().rpc("report_location", { p_lat: pos.lat, p_lng: pos.lng }).then();
@@ -195,6 +216,55 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       clearInterval(timer);
     };
   }, [jobId, simulate]);
+
+  // Keep the screen on during a job; the lock is dropped whenever the page is hidden, so re-request it.
+  useEffect(() => {
+    if (!jobId) return;
+    if (!("wakeLock" in navigator)) {
+      const t = setTimeout(() => setWakeLock("unsupported"), 0);
+      return () => clearTimeout(t);
+    }
+    let lock: WakeLockSentinel | null = null;
+    let cancelled = false;
+    const acquire = async () => {
+      if (cancelled || document.visibilityState !== "visible") return;
+      try {
+        lock = await navigator.wakeLock.request("screen");
+        if (cancelled) return void lock.release();
+        setWakeLock("held");
+        lock.addEventListener("release", () => !cancelled && setWakeLock("off"));
+      } catch {
+        if (!cancelled) setWakeLock("failed");
+      }
+    };
+    const onVisible = () => document.visibilityState === "visible" && acquire();
+    acquire();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      lock?.release().catch(() => undefined);
+    };
+  }, [jobId]);
+
+  // Watch for location updates stopping during a job.
+  useEffect(() => {
+    if (!jobId) return;
+    const startedAt = Date.now();
+    const check = () => {
+      const hidden = document.visibilityState === "hidden";
+      const sinceFix = Date.now() - Math.max(lastFixAt.current, startedAt);
+      setTrackingIssue(deniedRef.current ? "denied" : hidden ? "hidden" : sinceFix > NO_FIX_MS ? "nofix" : null);
+    };
+    const first = setTimeout(check, 0);
+    const timer = setInterval(check, 2_000);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [jobId]);
 
   const advance = useCallback(
     async (fn: "mark_arrived" | "mark_delivered") => {
@@ -236,10 +306,17 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
         gpsError,
         simulate,
         setSimulate,
+        wakeLock,
         today,
         toast: toast.show,
       }}
     >
+      {job && trackingIssue && (
+        <div className="track-paused" role="alert">
+          <b>Tracking paused — keep this screen open</b>
+          <small>{ISSUE_TEXT[trackingIssue]}</small>
+        </div>
+      )}
       {children}
       {toast.node}
     </Ctx>
