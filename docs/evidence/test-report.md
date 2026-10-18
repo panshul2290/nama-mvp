@@ -2,19 +2,19 @@
 
 | | |
 |---|---|
-| Generated | 2026-10-18T04:24:11.426Z (UTC) |
-| Git commit | `746c5054b1522e1eeccdbce6b22251a2ab632efd` (working tree had uncommitted changes outside docs/evidence) |
+| Generated | 2026-10-18T04:29:34.289Z (UTC) |
+| Git commit | `54a2389c4eb2abea1e944cc9a8de8201b4ab1db6` |
 | Node.js | v24.16.0 on win32 |
 | PGlite | 0.5.10 (Postgres compiled to WASM, single connection) |
-| Supabase | project region `ap-northeast-1`, Postgres ?, reached through the Supavisor transaction pooler |
+| Supabase | project region `ap-northeast-1`, Postgres 17.11, reached through the Supavisor transaction pooler |
 | Command | `npm run evidence` (runs `supabase/tests/run.ts` against each target) |
 
 ## Summary
 
 | Target | Started | Passed | Failed | Skipped | Exit |
 |---|---|---|---|---|---|
-| pglite | 2026-10-18T04:18:50.944Z | 183 | 0 | 2 | 0 |
-| supabase | 2026-10-18T04:18:56.383Z | 186 | 0 | 1 | 0 |
+| pglite | 2026-10-18T04:24:46.241Z | 183 | 0 | 2 | 0 |
+| supabase | 2026-10-18T04:24:54.137Z | 186 | 0 | 1 | 0 |
 
 Raw output: [raw/pglite.txt](raw/pglite.txt), [raw/supabase.txt](raw/supabase.txt) (and the matching `.json`).
 

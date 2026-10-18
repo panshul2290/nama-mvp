@@ -1,6 +1,6 @@
 # Database test run — target: supabase
-started: 2026-10-18T04:18:56.383Z
-run id: mvdbftaxiwl8; parallel backends: true; fresh database: false
+started: 2026-10-18T04:24:54.137Z
+run id: mvdbnhciwpqr; parallel backends: true; fresh database: false; Postgres 17.11
 non-test data before: 3 users, 22 rows, md5 b72708c1754fc990e376956d4e8a9475
 
 ## MIG migrations and schema
@@ -212,4 +212,4 @@ deleted 37 test users (37 from this run, 0 leftovers)
 remaining rows for those users: {"users":0,"profiles":0,"tankers":0,"orders":0,"locations":0}
 
 186 passed, 0 failed, 1 skipped
-finished: 2026-10-18T04:23:35.279Z
+finished: 2026-10-18T04:29:34.212Z
