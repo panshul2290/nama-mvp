@@ -41,6 +41,10 @@ type Props = {
   pick?: { value: LngLat; onChange: (p: LngLat) => void };
   destination?: LngLat | null;
   tanker?: LngLat | null;
+  /** Small label under the tanker marker, e.g. "Last updated 12 s ago". */
+  tankerNote?: string;
+  /** Grey the tanker marker out (location delayed). */
+  tankerStale?: boolean;
   me?: LngLat | null;
   /** Keep destination + tanker/me in view as they change. */
   follow?: boolean;
@@ -50,7 +54,7 @@ type Props = {
   padBottom?: number;
 };
 
-export default function MapView({ center, pick, destination, tanker, me, follow, hint, onLocate, padBottom = 0 }: Props) {
+export default function MapView({ center, pick, destination, tanker, tankerNote, tankerStale, me, follow, hint, onLocate, padBottom = 0 }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const pickMarker = useRef<maplibregl.Marker | null>(null);
@@ -140,7 +144,8 @@ export default function MapView({ center, pick, destination, tanker, me, follow,
       return;
     }
     if (!tankerMarker.current) {
-      tankerMarker.current = new maplibregl.Marker({ element: el("truck", TRUCK_SVG) }).setLngLat(toArr(tanker)).addTo(m);
+      const wrap = el("tkr", `<div class="truck">${TRUCK_SVG}</div><div class="tkr-label"></div>`);
+      tankerMarker.current = new maplibregl.Marker({ element: wrap }).setLngLat(toArr(tanker)).addTo(m);
       return;
     }
     const mk = tankerMarker.current;
@@ -155,6 +160,15 @@ export default function MapView({ center, pick, destination, tanker, me, follow,
     };
     anim.current = requestAnimationFrame(step);
   }, [tanker?.lat, tanker?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tanker label and delayed state.
+  useEffect(() => {
+    const node = tankerMarker.current?.getElement();
+    if (!node) return;
+    node.classList.toggle("stale", Boolean(tankerStale));
+    const label = node.querySelector(".tkr-label");
+    if (label) label.textContent = tankerNote ?? "";
+  });
 
   // Driver's own position.
   useEffect(() => {

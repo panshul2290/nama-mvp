@@ -334,6 +334,15 @@ button.st { border: 0; }
 .pin svg { display: block; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3)); }
 .truck { width: 34px; height: 34px; border-radius: 50%; background: var(--deep, #0b2a33); border: 3px solid #fff; display: grid; place-items: center; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35); }
 .truck svg { width: 18px; height: 18px; }
+.tkr { position: relative; width: 34px; height: 34px; }
+.tkr-label {
+  position: absolute; top: 38px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+  background: #fff; color: #0e2329; border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.tkr-label:empty { display: none; }
+.tkr.stale .truck { background: #9aa6a9; box-shadow: none; }
+.tkr.stale .tkr-label { color: #5b6f74; }
 .me { width: 18px; height: 18px; border-radius: 50%; background: #17b3c6; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(23, 179, 198, 0.25); }
 
 @media (prefers-reduced-motion: reduce) {

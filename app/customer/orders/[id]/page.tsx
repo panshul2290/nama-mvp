@@ -13,6 +13,7 @@ import { useToast } from "@/components/useToast";
 import { errorCode, friendlyError } from "@/lib/errors";
 import { announceGone } from "@/lib/feed";
 import { DEFAULT_CENTER, distanceKm } from "@/lib/geo";
+import { agoText, STALE_AFTER_S } from "@/lib/gps";
 import { etaMinutes, hhmm, initials, kmText, orderNo } from "@/lib/format";
 import { supabase } from "@/lib/supabase/client";
 import type { LngLat, Order, OrderLocation, Tanker } from "@/lib/types";
@@ -25,7 +26,9 @@ export default function OrderTracking() {
   const toast = useToast();
   const [order, setOrder] = useState<Order | null>(null);
   const [loc, setLoc] = useState<OrderLocation | null>(null);
-  const [tankerFix, setTankerFix] = useState<{ driverId: string; pos: LngLat } | null>(null);
+  // fixAt: when the fix reached the server, on this device's clock (server age at fetch, or the moment a realtime update arrived).
+  const [tankerFix, setTankerFix] = useState<{ driverId: string; pos: LngLat; fixAt: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const { rules } = usePricingRules();
@@ -67,17 +70,26 @@ export default function OrderTracking() {
   useEffect(() => {
     if (!driverId) return;
     const db = supabase();
-    const apply = (t: Partial<Tanker>) => {
-      if (t.last_lat != null && t.last_lng != null) setTankerFix({ driverId, pos: { lat: t.last_lat, lng: t.last_lng } });
+    let seen: string | null | undefined; // last_seen_at of the fix we're showing
+    const apply = (t: Partial<Tanker>, ageS: number) => {
+      if (t.last_lat == null || t.last_lng == null || t.last_seen_at === seen) return; // not a new fix (e.g. online toggle)
+      seen = t.last_seen_at;
+      setTankerFix({ driverId, pos: { lat: t.last_lat, lng: t.last_lng }, fixAt: Date.now() - ageS * 1000 });
     };
-    db.from("tankers").select("last_lat, last_lng").eq("driver_id", driverId).maybeSingle().then(({ data }) => data && apply(data));
+    db.from("tankers")
+      .select("last_lat, last_lng, last_seen_at, location_age_s")
+      .eq("driver_id", driverId)
+      .maybeSingle<Partial<Tanker> & { location_age_s: number | null }>()
+      .then(({ data }) => data && apply(data, data.location_age_s ?? 0));
     const ch = db
       .channel(`tanker-${driverId}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tankers", filter: `driver_id=eq.${driverId}` }, (payload) =>
-        apply(payload.new as Tanker),
+        apply(payload.new as Tanker, 0),
       )
       .subscribe();
+    const tick = setInterval(() => setNow(Date.now()), 5_000);
     return () => {
+      clearInterval(tick);
       db.removeChannel(ch);
     };
   }, [driverId]);
@@ -111,7 +123,10 @@ export default function OrderTracking() {
 
   const code = orderNo(order.order_no);
   const dest = loc ? { lat: loc.lat, lng: loc.lng } : null;
-  const tanker = driverId && tankerFix?.driverId === driverId ? tankerFix.pos : null;
+  const fix = driverId && tankerFix?.driverId === driverId ? tankerFix : null;
+  const tanker = fix?.pos ?? null;
+  const ageS = fix ? Math.max(0, (now - fix.fixAt) / 1000) : null;
+  const delayed = ageS != null && ageS > STALE_AFTER_S;
   const away = tanker && dest ? distanceKm(tanker, dest) : null;
   const place = [order.area, loc?.address].filter(Boolean).join(" · ");
   const subtitle = `${SERVICE_SHORT[order.service_type]} · ${order.gallons.toLocaleString()} gal · ${place}`;
@@ -155,7 +170,15 @@ export default function OrderTracking() {
   return (
     <main className="screen flush">
       <div className="tr-map">
-        <Map center={dest ?? DEFAULT_CENTER} destination={dest} tanker={tanker} follow padBottom={30} />
+        <Map
+          center={dest ?? DEFAULT_CENTER}
+          destination={dest}
+          tanker={tanker}
+          tankerNote={ageS != null ? `Last updated ${agoText(ageS)}` : undefined}
+          tankerStale={delayed}
+          follow
+          padBottom={30}
+        />
         {order.status === "requested" && <span className="radar" aria-hidden="true" />}
         <Link href="/customer" className="tr-chip">
           <Icon name="back" />
@@ -185,6 +208,12 @@ export default function OrderTracking() {
               {away != null && order.status !== "arrived" && <small>about {etaMinutes(away)} min away</small>}
             </div>
             <StatusPill status={order.status} />
+          </div>
+        )}
+
+        {delayed && (
+          <div className="banner" role="status">
+            <b>Live location delayed</b> — last update {agoText(ageS ?? 0)}. The driver’s phone may have lost signal; the order is still active.
           </div>
         )}
 
