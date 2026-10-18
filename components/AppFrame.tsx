@@ -43,6 +43,9 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     router.replace("/login");
   }
 
+  // The NWS staff portal is a desktop layout of its own (no phone frame).
+  if (path.startsWith("/nws")) return <>{children}</>;
+
   return (
     <div className="page">
       <header className="ph-bar">

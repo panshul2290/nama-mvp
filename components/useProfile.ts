@@ -17,7 +17,7 @@ export function useProfile(expected?: Role) {
       const db = supabase();
       const { data: auth } = await db.auth.getUser();
       if (!auth.user) return router.replace("/login");
-      const { data } = await db.from("profiles").select("id, role, full_name, phone").eq("id", auth.user.id).single();
+      const { data } = await db.from("profiles").select("id, role, staff_role, full_name, phone").eq("id", auth.user.id).single();
       if (cancelled) return;
       if (!data) return router.replace("/login");
       if (expected && data.role !== expected) return router.replace("/");
