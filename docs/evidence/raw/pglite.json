@@ -1,0 +1,1125 @@
+{
+  "target": "pglite",
+  "started": "2026-10-18T04:07:39.351Z",
+  "runId": "pglite",
+  "parallel": false,
+  "pass": 183,
+  "fail": 0,
+  "skip": 2,
+  "results": [
+    {
+      "section": "MIG migrations and schema",
+      "id": "MIG-01",
+      "name": "orders that existed before 0002 were numbered 48200… in created_at order",
+      "ok": true
+    },
+    {
+      "section": "MIG migrations and schema",
+      "id": "MIG-02",
+      "name": "migrations recorded in supabase_migrations.schema_migrations",
+      "ok": true,
+      "skipped": true,
+      "detail": "PGlite applies files directly; tracking is checked on Supabase"
+    },
+    {
+      "section": "MIG migrations and schema",
+      "id": "MIG-03",
+      "name": "orders.order_no is NOT NULL, UNIQUE, with assign + freeze triggers",
+      "ok": true
+    },
+    {
+      "section": "MIG migrations and schema",
+      "id": "MIG-04",
+      "name": "read-only scan: every order has a number and none repeat",
+      "ok": true
+    },
+    {
+      "section": "MIG migrations and schema",
+      "id": "MIG-05",
+      "name": "RLS is enabled on profiles, tankers, orders, order_locations",
+      "ok": true
+    },
+    {
+      "section": "MIG migrations and schema",
+      "id": "MIG-06",
+      "name": "orders and tankers are in the supabase_realtime publication",
+      "ok": true
+    },
+    {
+      "section": "MIG migrations and schema",
+      "id": "MIG-07",
+      "name": "no RPC is executable by anon; all are executable by signed-in users",
+      "ok": true
+    },
+    {
+      "section": "MIG migrations and schema",
+      "id": "MIG-08",
+      "name": "the order-number sequence is not usable by anon or signed-in users",
+      "ok": true
+    },
+    {
+      "section": "PRICE pricing",
+      "id": "PRICE-01",
+      "name": "price_quote DW 650 gal = 4.358 OMR (water/fee/VAT/total/earnings)",
+      "ok": true
+    },
+    {
+      "section": "PRICE pricing",
+      "id": "PRICE-02",
+      "name": "price_quote DW 1000 gal = 5.460 OMR (water/fee/VAT/total/earnings)",
+      "ok": true
+    },
+    {
+      "section": "PRICE pricing",
+      "id": "PRICE-03",
+      "name": "price_quote DW 3000 gal = 11.760 OMR (water/fee/VAT/total/earnings)",
+      "ok": true
+    },
+    {
+      "section": "PRICE pricing",
+      "id": "PRICE-04",
+      "name": "price_quote WW 3000 gal = 9.450 OMR (water/fee/VAT/total/earnings)",
+      "ok": true
+    },
+    {
+      "section": "PRICE pricing",
+      "id": "PRICE-05",
+      "name": "price_quote TE 10000 gal = 8.925 OMR (water/fee/VAT/total/earnings)",
+      "ok": true
+    },
+    {
+      "section": "PRICE pricing",
+      "id": "PRICE-06",
+      "name": "lib/pricing.ts matches price_quote() on 63 type/volume pairs",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-01",
+      "name": "place_order prices on the server (DW 1,000 gal = 5.460) and starts as requested",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-02",
+      "name": "the order gets an order_no ≥ 48200",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-03",
+      "name": "offline driver sees no requests",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-04",
+      "name": "online matching driver sees the request",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-05",
+      "name": "driver of another service type does not",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-06",
+      "name": "capacity filter: 3,000-gal tanker doesn't see a 4,000-gal request; 5,000-gal tanker does",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-07",
+      "name": "ineligible driver accepting it → not_eligible",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-08",
+      "name": "first driver accepts; plate and name are snapshotted on the order",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-09",
+      "name": "second driver → already_taken",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-10",
+      "name": "busy driver cannot take a second job → driver_busy",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-11",
+      "name": "customer cannot cancel once accepted → cannot_cancel",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-12",
+      "name": "first GPS ping moves the job to arriving",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-13",
+      "name": "arrived → delivered",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-14",
+      "name": "customer keeps the plate snapshot after delivery",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-15",
+      "name": "driver is free for the next job after delivery",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-16",
+      "name": "customer cancels an open request",
+      "ok": true
+    },
+    {
+      "section": "LIFE order lifecycle",
+      "id": "LIFE-17",
+      "name": "a cancelled request can't be accepted → already_taken",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-01",
+      "name": "25 orders in a row get 25 distinct, increasing numbers",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-02",
+      "name": "no two orders in the database share a number",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-03",
+      "name": "a number supplied on insert is ignored, even by a privileged role (no duplicate possible)",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-04",
+      "name": "customer cannot change an order_no",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-05",
+      "name": "customer cannot call nextval on the sequence",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-06",
+      "name": "customer cannot setval the sequence",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-07",
+      "name": "driver cannot change an order_no",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-08",
+      "name": "driver cannot call nextval on the sequence",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-09",
+      "name": "driver cannot setval the sequence",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-10",
+      "name": "order_no is frozen even for privileged updates",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-11",
+      "name": "RPCs return order_no (cancel_order)",
+      "ok": true
+    },
+    {
+      "section": "ONUM order numbers",
+      "id": "ONUM-12",
+      "name": "RPCs return order_no (open_requests_near)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-01",
+      "name": "anon cannot SELECT profiles",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-02",
+      "name": "anon cannot SELECT tankers",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-03",
+      "name": "anon cannot SELECT orders",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-04",
+      "name": "anon cannot SELECT order_locations",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-05",
+      "name": "anon cannot INSERT orders",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-06",
+      "name": "anon cannot call place_order()",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-07",
+      "name": "anon cannot call cancel_order()",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-08",
+      "name": "anon cannot call open_requests_near()",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-09",
+      "name": "anon cannot call accept_order()",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-10",
+      "name": "anon cannot call report_location()",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-11",
+      "name": "anon cannot call mark_arrived()",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-12",
+      "name": "anon cannot call mark_delivered()",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-13",
+      "name": "anon cannot call price_quote()",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-14",
+      "name": "customer reads own profile",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-15",
+      "name": "customer cannot read other customer's profile (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-16",
+      "name": "customer cannot read the driver's profile (0 rows; name comes from the order snapshot)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-17",
+      "name": "driver reads the customer on their active job",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-18",
+      "name": "other driver cannot read that customer (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-19",
+      "name": "customer updates own full_name",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-20",
+      "name": "customer cannot update another profile (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-21",
+      "name": "customer cannot change own role",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-22",
+      "name": "customer cannot INSERT a profile",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-23",
+      "name": "other customer cannot change own role",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-24",
+      "name": "other customer cannot INSERT a profile",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-25",
+      "name": "driver cannot change own role",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-26",
+      "name": "driver cannot INSERT a profile",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-27",
+      "name": "other driver cannot change own role",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-28",
+      "name": "other driver cannot INSERT a profile",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-29",
+      "name": "customer reads the tanker on their active order (with location columns)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-30",
+      "name": "customer cannot read a tanker not on their active order (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-31",
+      "name": "other customer cannot read the assigned tanker's location (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-32",
+      "name": "driver reads own tanker",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-33",
+      "name": "driver cannot read another driver's tanker (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-34",
+      "name": "driver toggles own is_online",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-35",
+      "name": "driver cannot update another driver's tanker (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-36",
+      "name": "driver cannot write last_lat directly (only report_location)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-37",
+      "name": "driver cannot write last_lng directly (only report_location)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-38",
+      "name": "driver cannot write last_seen_at directly (only report_location)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-39",
+      "name": "customer cannot register a tanker",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-40",
+      "name": "customer reads own orders",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-41",
+      "name": "customer cannot read another customer's order (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-42",
+      "name": "other customer cannot read C1's orders (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-43",
+      "name": "driver sees an open request row (no address columns exist on orders)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-44",
+      "name": "driver sees own accepted job",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-45",
+      "name": "other driver cannot see someone else's accepted job (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-46",
+      "name": "customers see no open requests of others (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-47",
+      "name": "anon cannot UPDATE orders SET total = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-48",
+      "name": "anon cannot UPDATE orders SET water_charge = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-49",
+      "name": "anon cannot UPDATE orders SET delivery_fee = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-50",
+      "name": "anon cannot UPDATE orders SET vat = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-51",
+      "name": "anon cannot UPDATE orders SET driver_earnings = 99",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-52",
+      "name": "anon cannot UPDATE orders SET order_no = 1",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-53",
+      "name": "anon cannot UPDATE orders SET status = 'delivered'",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-54",
+      "name": "anon cannot UPDATE orders SET driver_id = null",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-55",
+      "name": "customer cannot UPDATE orders SET total = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-56",
+      "name": "customer cannot UPDATE orders SET water_charge = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-57",
+      "name": "customer cannot UPDATE orders SET delivery_fee = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-58",
+      "name": "customer cannot UPDATE orders SET vat = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-59",
+      "name": "customer cannot UPDATE orders SET driver_earnings = 99",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-60",
+      "name": "customer cannot UPDATE orders SET order_no = 1",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-61",
+      "name": "customer cannot UPDATE orders SET status = 'delivered'",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-62",
+      "name": "customer cannot UPDATE orders SET driver_id = null",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-63",
+      "name": "customer cannot INSERT an order with its own price/status/number",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-64",
+      "name": "customer cannot DELETE orders",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-65",
+      "name": "other customer cannot UPDATE orders SET total = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-66",
+      "name": "other customer cannot UPDATE orders SET water_charge = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-67",
+      "name": "other customer cannot UPDATE orders SET delivery_fee = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-68",
+      "name": "other customer cannot UPDATE orders SET vat = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-69",
+      "name": "other customer cannot UPDATE orders SET driver_earnings = 99",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-70",
+      "name": "other customer cannot UPDATE orders SET order_no = 1",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-71",
+      "name": "other customer cannot UPDATE orders SET status = 'delivered'",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-72",
+      "name": "other customer cannot UPDATE orders SET driver_id = null",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-73",
+      "name": "other customer cannot INSERT an order with its own price/status/number",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-74",
+      "name": "other customer cannot DELETE orders",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-75",
+      "name": "driver cannot UPDATE orders SET total = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-76",
+      "name": "driver cannot UPDATE orders SET water_charge = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-77",
+      "name": "driver cannot UPDATE orders SET delivery_fee = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-78",
+      "name": "driver cannot UPDATE orders SET vat = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-79",
+      "name": "driver cannot UPDATE orders SET driver_earnings = 99",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-80",
+      "name": "driver cannot UPDATE orders SET order_no = 1",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-81",
+      "name": "driver cannot UPDATE orders SET status = 'delivered'",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-82",
+      "name": "driver cannot UPDATE orders SET driver_id = null",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-83",
+      "name": "driver cannot INSERT an order with its own price/status/number",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-84",
+      "name": "driver cannot DELETE orders",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-85",
+      "name": "other driver cannot UPDATE orders SET total = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-86",
+      "name": "other driver cannot UPDATE orders SET water_charge = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-87",
+      "name": "other driver cannot UPDATE orders SET delivery_fee = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-88",
+      "name": "other driver cannot UPDATE orders SET vat = 0",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-89",
+      "name": "other driver cannot UPDATE orders SET driver_earnings = 99",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-90",
+      "name": "other driver cannot UPDATE orders SET order_no = 1",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-91",
+      "name": "other driver cannot UPDATE orders SET status = 'delivered'",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-92",
+      "name": "other driver cannot UPDATE orders SET driver_id = null",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-93",
+      "name": "other driver cannot INSERT an order with its own price/status/number",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-94",
+      "name": "other driver cannot DELETE orders",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-95",
+      "name": "customer reads own exact location",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-96",
+      "name": "other customer cannot read it (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-97",
+      "name": "driver cannot see the exact address before acceptance (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-98",
+      "name": "driver cannot see it via the request they could accept either (D1, 0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-99",
+      "name": "assigned driver sees the exact address after acceptance",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-100",
+      "name": "other driver cannot see the accepted job's address (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-101",
+      "name": "anon cannot UPDATE order_locations",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-102",
+      "name": "customer cannot UPDATE order_locations",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-103",
+      "name": "other customer cannot UPDATE order_locations",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-104",
+      "name": "driver cannot UPDATE order_locations",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-105",
+      "name": "other driver cannot UPDATE order_locations",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-106",
+      "name": "driver: open_requests_near returns the request without coordinates or address",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-107",
+      "name": "customer: open_requests_near → not_a_driver",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-108",
+      "name": "driver: place_order → not_a_customer",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-109",
+      "name": "customer: accept_order → not_a_driver",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-110",
+      "name": "busy driver: accept_order → driver_busy",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-111",
+      "name": "other driver: accept an already accepted order → already_taken",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-112",
+      "name": "other customer: cancel C1's request → not_found",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-113",
+      "name": "driver: cancel_order → not_found",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-114",
+      "name": "customer: cancel an accepted order → cannot_cancel",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-115",
+      "name": "customer: report_location → not_a_driver",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-116",
+      "name": "customer: mark_arrived → invalid_transition",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-117",
+      "name": "other driver: mark_arrived on someone else's job → invalid_transition",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-118",
+      "name": "assigned driver: mark_delivered before arrived → invalid_transition",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-119",
+      "name": "assigned driver: report_location",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-120",
+      "name": "assigned driver: mark_arrived",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-121",
+      "name": "other driver: mark_delivered → invalid_transition",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-122",
+      "name": "assigned driver: mark_delivered",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-123",
+      "name": "customer: cancel own open request",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-124",
+      "name": "signed-in user: price_quote",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-125",
+      "name": "after delivery, customer can no longer read the tanker (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-126",
+      "name": "after delivery, driver can no longer read the exact address (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "AUTHZ authorization matrix",
+      "id": "AUTHZ-127",
+      "name": "after delivery, driver can no longer read the customer's profile (0 rows)",
+      "ok": true
+    },
+    {
+      "section": "RACE concurrency",
+      "id": "RACE-01",
+      "name": "20 drivers accept the same order (serialised on PGlite's single connection — logic only, not a race): exactly 1 succeeds",
+      "ok": true
+    },
+    {
+      "section": "RACE concurrency",
+      "id": "RACE-02",
+      "name": "… and the other 19 get already_taken",
+      "ok": true
+    },
+    {
+      "section": "RACE concurrency",
+      "id": "RACE-03",
+      "name": "the order row is accepted and belongs to the single winner",
+      "ok": true
+    },
+    {
+      "section": "RACE concurrency",
+      "id": "RACE-04",
+      "name": "one driver accepts two orders at once, 5 rounds (serialised on PGlite's single connection — logic only, not a race): always exactly one active job, the other call gets driver_busy",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-01",
+      "name": "before any fix: no timestamp and reported stale",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-02",
+      "name": "report_location stores the fix with a server timestamp (within 5 s of now)",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-03",
+      "name": "a fresh fix is not stale",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-04",
+      "name": "fix 59 s old → stale = false",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-05",
+      "name": "fix 61 s old → stale = true",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-06",
+      "name": "fix 600 s old → stale = true",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-07",
+      "name": "the driver sees the same staleness on their own tanker",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-08",
+      "name": "another customer gets no row (RLS), so no location or freshness leaks",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-09",
+      "name": "anon cannot call location_stale()",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-10",
+      "name": "a new fix clears the stale flag",
+      "ok": true
+    },
+    {
+      "section": "GPS location freshness",
+      "id": "GPS-11",
+      "name": "REST API returns location_stale",
+      "ok": true,
+      "skipped": true,
+      "detail": "PGlite has no PostgREST; covered by the Supabase run"
+    }
+  ]
+}

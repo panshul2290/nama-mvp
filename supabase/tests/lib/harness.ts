@@ -263,7 +263,7 @@ export async function supabaseTarget(): Promise<Target> {
 
 // ---------------------------------------------------------------- reporting
 
-export type Result = { section: string; id: string; name: string; ok: boolean; detail?: string; skipped?: boolean };
+export type Result = { section: string; id: string; name: string; ok: boolean; detail?: string; skipped?: boolean; note?: string };
 
 export class Reporter {
   results: Result[] = [];
@@ -275,11 +275,12 @@ export class Reporter {
     this.n = 0;
     this.out(`\n## ${section}`);
   }
-  check(name: string, ok: boolean, detail?: unknown) {
+  /** `note` is context worth keeping even on success (e.g. how a race was run). */
+  check(name: string, ok: boolean, detail?: unknown, note?: string) {
     const id = `${this.section.split(" ")[0]}-${String(++this.n).padStart(2, "0")}`;
     const d = detail === undefined ? undefined : typeof detail === "string" ? detail : JSON.stringify(detail);
-    this.results.push({ section: this.section, id, name, ok, detail: ok ? undefined : d });
-    this.out(`${ok ? "PASS" : "FAIL"}  ${id}  ${name}${ok || !d ? "" : `  — ${d.slice(0, 300)}`}`);
+    this.results.push({ section: this.section, id, name, ok, detail: ok ? undefined : d, note });
+    this.out(`${ok ? "PASS" : "FAIL"}  ${id}  ${name}${note ? `  [${note}]` : ""}${ok || !d ? "" : `  — ${d.slice(0, 300)}`}`);
   }
   skip(name: string, why: string) {
     const id = `${this.section.split(" ")[0]}-${String(++this.n).padStart(2, "0")}`;

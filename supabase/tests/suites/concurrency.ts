@@ -82,8 +82,9 @@ export async function concurrencySuite(t: Target, r: Reporter) {
   const wins = outcomes.filter((o) => o.ok).length;
   const taken = outcomes.filter((o) => !o.ok && o.msg.includes("already_taken")).length;
   const other = outcomes.filter((o) => !o.ok && !o.msg.includes("already_taken")).map((o) => o.msg);
-  r.check(`20 drivers accept the same order (${label}${t.parallel ? `; ${waiting} were blocked at the barrier when released` : ""}): exactly 1 succeeds`, wins === 1, { wins, taken, other });
-  r.check("… and the other 19 get already_taken", taken === 19, { wins, taken, other });
+  const note = `${label}${t.parallel ? `; ${waiting} of 20 were blocked at the barrier when it opened` : ""}`;
+  r.check("20 drivers call accept_order on the same order at once: exactly 1 succeeds", wins === 1, { wins, taken, other }, note);
+  r.check("… and the other 19 get already_taken", taken === 19, { wins, taken, other }, note);
   const winner = drivers[outcomes.findIndex((o) => o.ok)];
   const [row] = await t.admin<{ status: string; driver_id: string }>("select status, driver_id from orders where id = $1", [order.id]);
   r.check("the order row is accepted and belongs to the single winner", row.status === "accepted" && row.driver_id === winner?.id, row);
@@ -111,5 +112,5 @@ export async function concurrencySuite(t: Target, r: Reporter) {
       await t.as(solo.id, "select * from mark_delivered($1)", [job.id]);
     }
   }
-  r.check(`one driver accepts two orders at once, ${ROUNDS} rounds (${label}): always exactly one active job, the other call gets driver_busy`, good === ROUNDS, detail);
+  r.check(`one driver accepts two orders at once (${ROUNDS} rounds): always exactly one active job; the other call gets driver_busy`, good === ROUNDS, detail, `${label}; per round: ${JSON.stringify(detail)}`);
 }
