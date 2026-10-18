@@ -5,8 +5,9 @@ import { SIMULATION, useDriver } from "@/components/DriverContext";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { RuleTag, SERVICE_SHORT } from "@/components/OrderBits";
-import { etaMinutes, kmText, orderNo } from "@/lib/format";
-import { DEFAULT_CENTER, distanceKm } from "@/lib/geo";
+import { kmText, orderNo } from "@/lib/format";
+import { useRoadEta } from "@/components/useRoadEta";
+import { DEFAULT_CENTER } from "@/lib/geo";
 import { omrValue } from "@/lib/pricing";
 
 const STEP_LABEL: Record<string, [string, "act" | "ok"]> = {
@@ -17,6 +18,7 @@ const STEP_LABEL: Record<string, [string, "act" | "ok"]> = {
 
 export default function TripPage() {
   const { job, me, advance, acting, simulate, setSimulate, wakeLock } = useDriver();
+  const eta = useRoadEta(job && job.order.status !== "arrived" ? me : null, job?.loc ? { lat: job.loc.lat, lng: job.loc.lng } : null);
 
   if (!job) {
     return (
@@ -41,7 +43,6 @@ export default function TripPage() {
 
   const o = job.order;
   const dest = job.loc ? { lat: job.loc.lat, lng: job.loc.lng } : null;
-  const away = me && dest ? distanceKm(me, dest) : null;
   const [label, tone] = STEP_LABEL[o.status] ?? ["On the job", "act"];
   const arrived = o.status === "arrived";
 
@@ -60,7 +61,11 @@ export default function TripPage() {
         <span className={`st ${tone}`}>{label}</span>
         <h3 className="tj-t">{job.loc?.address || o.area}</h3>
         <small className="mut">
-          {arrived ? "You’re at the delivery point" : away != null ? `${kmText(away)} to go · about ${etaMinutes(away)} min` : "Waiting for GPS…"}
+          {arrived
+            ? "You’re at the delivery point"
+            : eta
+              ? `${kmText(eta.km)} to go · about ${eta.minutes} min${eta.source === "osrm" ? " by road" : " (straight-line estimate)"}`
+              : "Waiting for GPS…"}
         </small>
 
         <div className="tj-box">

@@ -17,7 +17,5 @@ export function initials(name: string | null | undefined): string {
 
 export const kmText = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`);
 
-// Rough city driving estimate at ~25 km/h.
-export const etaMinutes = (km: number) => Math.max(1, Math.round((km / 25) * 60));
 
 export const hhmm = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");

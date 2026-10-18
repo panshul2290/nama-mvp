@@ -12,9 +12,10 @@ import { BackButton, Loading } from "@/components/Shell";
 import { useToast } from "@/components/useToast";
 import { errorCode, friendlyError } from "@/lib/errors";
 import { announceGone } from "@/lib/feed";
-import { DEFAULT_CENTER, distanceKm } from "@/lib/geo";
+import { DEFAULT_CENTER } from "@/lib/geo";
+import { useRoadEta } from "@/components/useRoadEta";
 import { agoText, STALE_AFTER_S } from "@/lib/gps";
-import { etaMinutes, hhmm, initials, kmText, orderNo } from "@/lib/format";
+import { hhmm, initials, kmText, orderNo } from "@/lib/format";
 import { supabase } from "@/lib/supabase/client";
 import type { LngLat, Order, OrderLocation, Tanker } from "@/lib/types";
 
@@ -94,6 +95,11 @@ export default function OrderTracking() {
     };
   }, [driverId]);
 
+  // Road ETA from the tanker to the delivery point (computed before any early return: hooks rule).
+  const etaFrom = order && ON_JOB.includes(order.status) && tankerFix?.driverId === order.driver_id ? tankerFix.pos : null;
+  const etaTo = loc ? { lat: loc.lat, lng: loc.lng } : null;
+  const eta = useRoadEta(order?.status === "arrived" ? null : etaFrom, etaTo);
+
   async function cancel() {
     setBusy(true);
     const { data, error } = await supabase().rpc("cancel_order", { p_order_id: id }).single<Order>();
@@ -127,7 +133,6 @@ export default function OrderTracking() {
   const tanker = fix?.pos ?? null;
   const ageS = fix ? Math.max(0, (now - fix.fixAt) / 1000) : null;
   const delayed = ageS != null && ageS > STALE_AFTER_S;
-  const away = tanker && dest ? distanceKm(tanker, dest) : null;
   const place = [order.area, loc?.address].filter(Boolean).join(" · ");
   const subtitle = `${SERVICE_SHORT[order.service_type]} · ${order.gallons.toLocaleString()} gal · ${place}`;
 
@@ -203,9 +208,13 @@ export default function OrderTracking() {
             <div>
               <small>{order.status === "arrived" ? "Your tanker" : "Tanker is"}</small>
               <strong>
-                {order.status === "arrived" ? "At your door" : away != null ? kmText(away) : order.status === "accepted" ? "Starting" : "On the way"}
+                {order.status === "arrived" ? "At your door" : eta ? kmText(eta.km) : order.status === "accepted" ? "Starting" : "On the way"}
               </strong>
-              {away != null && order.status !== "arrived" && <small>about {etaMinutes(away)} min away</small>}
+              {eta && order.status !== "arrived" && (
+                <small>
+                  about {eta.minutes} min {eta.source === "osrm" ? "by road" : "(straight-line estimate)"}
+                </small>
+              )}
             </div>
             <StatusPill status={order.status} />
           </div>
