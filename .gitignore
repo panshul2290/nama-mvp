@@ -45,3 +45,6 @@ next-env.d.ts
 
 # copied from node_modules on install
 /public/maplibre-gl-worker.mjs
+
+# local database backups (contain auth data: never commit)
+/backups/
