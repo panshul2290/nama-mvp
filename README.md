@@ -50,7 +50,10 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    | Role | Email |
    |---|---|
    | Customer | `customer@nama.test` |
-   | Driver | `driver@nama.test` (tanker `4521 TK`, DW, 5,000 gal) |
+   | Driver | `driver@nama.test` (tanker `4521 TK`, DW, 5,000 gal, approved 12-month DW permit) |
+   | NWS admin | `nws-admin@nama.test` |
+   | NWS operator | `nws-operator@nama.test` |
+   | NWS permit officer | `nws-permits@nama.test` |
 
    The script is safe to re-run; it resets both accounts to the current `SEED_PASSWORD`.
 
@@ -77,14 +80,43 @@ Geolocation needs a secure context. `localhost` works. To test on a phone over y
 ### Data model (`supabase/migrations/`)
 | Table | Purpose |
 |---|---|
-| `profiles` | one per auth user; `role` = `customer` \| `driver`; created by a trigger from sign-up metadata |
-| `tankers` | one per driver: plate, `service_type` (DW/WW/TE), `capacity_gal`, `is_online`, last GPS fix |
-| `orders` | **`order_no`** (shown as `TO-<order_no>`), service, gallons, **area**, price lines (`numeric(10,3)` OMR), status, driver name and plate snapshot, per-status timestamps |
+| `profiles` | one per auth user; `role` = `customer` \| `driver` \| `nws_staff` (+ `staff_role` for staff); created by a trigger from sign-up metadata, which can never produce staff |
+| `tankers` | keyed by `id`: plate, `service_type` (DW/WW/TE), `capacity_gal`, `is_online`, GPS (`last_lat`, `last_lng`, `last_accuracy_m`, `last_fix_at`, `last_seen_at`), block state |
+| `tanker_assignments` | which driver drives which tanker: `driver_id`, `tanker_id`, `assigned_at`, `unassigned_at`; at most one active assignment per driver and per tanker. **Driver assignment will move to the tanker company portal; NWS operator assignment stays as an override.** Until then, driver onboarding registers a tanker and assigns it to the driver |
+| `permits` | per tanker: `permit_no`, `type`, `issued_at`, `expires_at`, `status` (pending/approved/rejected; "expired" is derived), reviewer and reason |
+| `audit_log` | every staff action: actor, action, target, before/after, reason, time; append-only for everyone |
+| `orders` | **`order_no`** (shown as `TO-<order_no>`), service, gallons, **area**, price lines (`numeric(10,3)` OMR), status, `driver_id` + `tanker_id`, driver name and plate snapshot, per-status timestamps |
 | `order_locations` | the **exact** lat/lng and address, kept apart so RLS can hide it until a driver accepts |
 
 Order numbers (`0002_order_no.sql`) come from the `orders_order_no_seq` sequence, starting at 48200. A trigger assigns the next number on every insert and ignores any value supplied, and another rejects changes. Clients have no access to the sequence, and the column is `NOT NULL` and `UNIQUE`. Orders that existed before the migration were numbered in `created_at` order.
 
 Status: `requested → accepted → arriving → arrived → delivered`, or `requested → cancelled`. `arriving` is set automatically by the driver's first GPS ping after accepting.
+
+Permits, blocks and GPS belong to the **tanker**, so they stay with it when it's reassigned to another driver. A tanker can go online or accept a job only if it isn't blocked and has an approved, unexpired permit for its own service type. This is enforced in the database (an online trigger, `accept_order` and `open_requests_near`), not just in the UI.
+
+### NWS staff portal (`/nws`, `0008_nws_staff.sql`)
+A desktop portal for NWS staff, styled after the prototype's staff screens.
+
+- **Screens:**
+  - **Live operations:** a map of online tankers and active orders, coloured by service. Tankers with no fix for over 60 s are grey. Counters update through Realtime.
+  - **Orders:** filters and TO-number search. The detail page shows a status timeline, the driver, the tanker, and price lines with their rule tags.
+  - **Fleet:** each tanker with its driver, last fix age and permit status. Operators can block, unblock, assign and unassign.
+  - **Permits:** create, approve, reject with a reason, and resubmit after rejection, with a warning for permits expiring within 30 days.
+  - **Pricing rules:** read-only, including `BILLING_MODE`.
+  - **Audit log:** searchable, with before/after values.
+- **Roles** (`profiles.staff_role`, strict):
+
+  | Staff role | Can do |
+  |---|---|
+  | `operator` | block/unblock tankers (reason required), and the driver-assignment override |
+  | `permit_officer` | create, approve, reject (reason required) and resubmit permits |
+  | `admin` | grant or remove staff roles. An admin can't change their own role |
+
+- **How writes work:**
+  - Staff can read everything.
+  - Every staff write is a `SECURITY DEFINER` RPC that checks the sub-role and writes exactly one `audit_log` row.
+  - `audit_log` has no INSERT, UPDATE or DELETE grants, and a trigger rejects UPDATE, DELETE and TRUNCATE even for the database owner.
+- **Accounts:** staff can't be created by sign-up; only `npm run seed` or an admin assigns the role. Seeded staff accounts (password: `SEED_PASSWORD`): `nws-admin@nama.test`, `nws-operator@nama.test`, `nws-permits@nama.test`. Staff sign in at `/login` and land on `/nws`.
 
 ### Pricing (`0004_pricing_rules.sql`)
 Every tariff figure is a row in `public.pricing_rules` (`rule_key`, `value`, `status`, `source`, `notes`). Nothing is hard-coded in SQL or in `lib/pricing.ts`.
