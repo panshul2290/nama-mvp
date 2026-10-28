@@ -1,5 +1,7 @@
-// Creates the test customer, driver (with an assigned, permitted tanker) and the
-// three NWS staff accounts (admin, operator, permit officer). Safe to re-run.
+// Creates the demo accounts: customers, drivers (Salim gets his assigned,
+// permitted tanker here; the rest of the fleet comes from `npm run seed:demo`),
+// tanker company owners, business (B2B) users and NWS staff for every role.
+// Safe to re-run.
 //   npm run seed
 // This is the only code that uses the service-role key. It runs locally in
 // Node and is never bundled into the Next.js app.
@@ -28,13 +30,39 @@ const admin = createClient(url, serviceKey, { auth: { persistSession: false, aut
 const USERS = [
   { email: "customer@nama.test", role: "customer", full_name: "Fatma Al Lawati", phone: "+968 9124 4512" },
   { email: "driver@nama.test", role: "driver", full_name: "Salim Al Habsi", phone: "+968 9555 0142" },
+  // More households for realistic history.
+  { email: "customer2@nama.test", role: "customer", full_name: "Rashid Al Maskari", phone: "+968 9233 1180" },
+  { email: "customer3@nama.test", role: "customer", full_name: "Maryam Al Farsi", phone: "+968 9677 2041" },
+  { email: "customer4@nama.test", role: "customer", full_name: "Sultan Al Hosni", phone: "+968 9910 5523" },
+  { email: "customer5@nama.test", role: "customer", full_name: "Noor Al Rashdi", phone: "+968 9340 7716" },
+  { email: "customer6@nama.test", role: "customer", full_name: "Badr Al Saadi", phone: "+968 9822 3390" },
+  { email: "customer7@nama.test", role: "customer", full_name: "Huda Al Mahrouqi", phone: "+968 9145 6604" },
+  { email: "customer8@nama.test", role: "customer", full_name: "Talal Al Shukaili", phone: "+968 9701 8827" },
+  // The rest of the fleet's drivers.
+  { email: "driver2@nama.test", role: "driver", full_name: "Hamed Al Balushi", phone: "+968 9555 0231" },
+  { email: "driver3@nama.test", role: "driver", full_name: "Yousuf Al Rawahi", phone: "+968 9555 0377" },
+  { email: "driver4@nama.test", role: "driver", full_name: "Nasser Al Kindi", phone: "+968 9555 0418" },
+  { email: "driver5@nama.test", role: "driver", full_name: "Khalid Al Siyabi", phone: "+968 9555 0590" },
+  { email: "driver6@nama.test", role: "driver", full_name: "Said Al Amri", phone: "+968 9555 0626" },
+  { email: "driver7@nama.test", role: "driver", full_name: "Ali Al Hinai", phone: "+968 9555 0784" },
+  // Tanker company owners (Company portal).
+  { email: "owner@nama.test", role: "owner", full_name: "Mohammed Al Harthy", phone: "+968 9900 1122" },
+  { email: "owner2@nama.test", role: "owner", full_name: "Ahmed Al Busaidi", phone: "+968 9900 3344" },
+  // Business portal (Al Noor Hotel): account admin, site manager, finance.
+  { email: "business@nama.test", role: "business", full_name: "Aisha Al Zadjali", phone: "+968 2456 7700" },
+  { email: "business-site@nama.test", role: "business", full_name: "Imran Qureshi", phone: "+968 2456 7711" },
+  { email: "business-finance@nama.test", role: "business", full_name: "Laila Al Jabri", phone: "+968 2456 7722" },
 ] as const;
 
 // NWS staff. Sign-up can never create staff; the seed (service role) or an admin assigns it.
 const STAFF = [
-  { email: "nws-admin@nama.test", staff_role: "admin", full_name: "NWS Admin" },
-  { email: "nws-operator@nama.test", staff_role: "operator", full_name: "NWS Operator" },
-  { email: "nws-permits@nama.test", staff_role: "permit_officer", full_name: "NWS Permit Officer" },
+  { email: "nws-admin@nama.test", staff_role: "admin", full_name: "Salma Al Kharusi" },
+  { email: "nws-operator@nama.test", staff_role: "operator", full_name: "Zahir Al Wahaibi" },
+  { email: "nws-permits@nama.test", staff_role: "permit_officer", full_name: "Asma Al Toobi" },
+  { email: "nws-inspector@nama.test", staff_role: "inspector", full_name: "Hilal Al Sinani" },
+  { email: "nws-complaints@nama.test", staff_role: "complaints_agent", full_name: "Rahma Al Mamari" },
+  { email: "nws-finance@nama.test", staff_role: "finance", full_name: "Waleed Al Lamki" },
+  { email: "nws-viewer@nama.test", staff_role: "viewer", full_name: "BI Read-only" },
 ] as const;
 
 const TANKER = { plate: "4521 TK", service_type: "DW", capacity_gal: 5000 } as const;
@@ -128,8 +156,9 @@ async function ensurePermit(tankerId: string, reviewerId: string) {
 }
 
 async function main() {
-  await ensureUser(USERS[0]);
-  const driverId = await ensureUser(USERS[1]);
+  const ids: Record<string, string> = {};
+  for (const u of USERS) ids[u.email] = await ensureUser(u);
+  const driverId = ids["driver@nama.test"];
   const staffIds: Record<string, string> = {};
   for (const s of STAFF) staffIds[s.staff_role] = await ensureStaff(s);
 
@@ -139,8 +168,7 @@ async function main() {
   const permit = await ensurePermit(tankerId, staffIds.permit_officer);
 
   console.log("Seeded (password for every account: SEED_PASSWORD in .env.local):");
-  console.log(`  customer        ${USERS[0].email}`);
-  console.log(`  driver          ${USERS[1].email}   tanker ${TANKER.plate} · ${TANKER.service_type} · ${TANKER.capacity_gal} gal · permit ${permit}`);
+  for (const u of USERS) console.log(`  ${u.role.padEnd(15)} ${u.email}${u.email === "driver@nama.test" ? `   tanker ${TANKER.plate} · ${TANKER.service_type} · ${TANKER.capacity_gal} gal · permit ${permit}` : ""}`);
   for (const s of STAFF) console.log(`  ${s.staff_role.padEnd(15)} ${s.email}`);
 }
 

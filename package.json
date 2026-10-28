@@ -12,11 +12,13 @@
     "predev": "node scripts/copy-maplibre-worker.mjs",
     "prebuild": "node scripts/copy-maplibre-worker.mjs",
     "seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
+    "seed:demo": "node --env-file-if-exists=.env.local scripts/seed-demo.mjs",
     "demo": "tsx --env-file-if-exists=.env.local scripts/demo-activity.mts",
     "db:apply": "node --env-file-if-exists=.env.local scripts/apply-migration.mjs",
     "test:db:supabase": "tsx --env-file-if-exists=.env.local supabase/tests/run.ts supabase",
     "evidence": "node --env-file-if-exists=.env.local scripts/evidence.mjs",
-    "test:unit": "tsx tests/unit/tracking.test.ts && tsx tests/unit/privacy.test.ts"
+    "test:unit": "tsx tests/unit/tracking.test.ts && tsx tests/unit/privacy.test.ts",
+    "verify:seed": "tsx scripts/verify-demo-seed.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

@@ -614,10 +614,13 @@ begin
     while d < current_date loop d := (d + step)::date; end loop;
     while d <= current_date + 7 and d < c.end_date loop
       s := (d + case c.slot when 'evening' then time '18:00' else time '08:00' end) at time zone 'Asia/Muscat';
-      if s > now() and not exists (select 1 from public.orders where contract_id = c.id and slot_start = s) then
+      if s > now() and not exists (select 1 from public.orders where contract_id = c.id and slot_start = s)
+         and (c.customer_id is not null or exists (select 1 from public.profiles where org_id = c.org_id and org_role = 'admin')) then
         insert into public.orders (customer_id, org_id, service_type, gallons, area, property_id, contract_id, zone_id, status, slot_start, slot_end, slot_label,
                                    slot_peak, channel, billing, pay_method, payment_status)
-        values (c.customer_id, c.org_id, c.service_type, c.gallons, coalesce(nullif(c.area, ''), 'Contract delivery'), c.property_id, c.id,
+        -- Business contracts are booked under the account admin.
+        values (coalesce(c.customer_id, (select id from public.profiles where org_id = c.org_id and org_role = 'admin' order by created_at limit 1)),
+                c.org_id, c.service_type, c.gallons, coalesce(nullif(c.area, ''), 'Contract delivery'), c.property_id, c.id,
                 (public.zone_at(c.lat, c.lng, true)).id, 'scheduled', s, s + interval '2 hours',
                 to_char(d, 'Dy DD Mon') || case c.slot when 'evening' then ' · 6–8 pm' else ' · 8–10 am' end,
                 c.slot = 'evening', 'contract', 'account', 'account', 'on_account')
