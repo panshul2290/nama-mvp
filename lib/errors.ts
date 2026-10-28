@@ -96,6 +96,13 @@ const MESSAGES: Record<string, string> = {
   invalid_stage: "That stage isn't valid.",
   invalid_result: "Choose pass or fail.",
   unknown_penalty_rule: "Unknown penalty rule.",
+  company_suspended: "Your tanker company is suspended by NWS, so its tankers can't go online or take jobs.",
+  pod_required: "Capture the proof of delivery (photo and signature) to finish this job.",
+  use_confirm_discharge: "Wastewater jobs finish with proof of collection and then discharge at an approved plant.",
+  reschedule_changes_price: "That slot has a different price (evening peak). Cancel and book the new slot instead.",
+  permit_review_incomplete: "The application isn't ready for approval: complete the document check and a passed inspection first.",
+  invitation_pending: "An invitation to that email is already waiting to be accepted.",
+  invitation_expired: "This invitation has expired. Ask for a new one.",
   no_penalty_rule_for_alert: "The penalty framework has no rule for this alert type. Issue a penalty from Permits → Violations instead.",
 };
 

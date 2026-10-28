@@ -1,7 +1,7 @@
 // Tankers and driver assignments (0007): tankers.id is the key, drivers link
 // through tanker_assignments, and GPS / permits / blocks stay with the tanker.
 import type { Reporter, Target } from "../lib/harness";
-import { giveTanker, makeWorld, placeOrder, plateFor, setOnline } from "../lib/world";
+import { giveTanker, makeWorld, placeOrder, plateFor, setOnline, deliver } from "../lib/world";
 
 export async function assignmentsSuite(t: Target, r: Reporter) {
   r.start("ASSIGN tankers and driver assignments");
@@ -42,7 +42,7 @@ export async function assignmentsSuite(t: Target, r: Reporter) {
   // ---- GPS stays with the tanker across reassignment
   await t.as(D1.id, "select report_location(23.611, 58.211, 7, now())");
   await t.as(D1.id, "select * from mark_arrived($1)", [anyOrder.id]);
-  await t.as(D1.id, "select * from mark_delivered($1)", [anyOrder.id]);
+  await deliver(t, D1.id, anyOrder.id);
   // Reassign tanker D1 → D4 (as the operator override would; done directly here as a fixture).
   await t.admin("update tanker_assignments set unassigned_at = now() where tanker_id = $1 and unassigned_at is null", [w.tk.D1]);
   await t.admin("insert into tanker_assignments (driver_id, tanker_id) values ($1, $2)", [D4.id, w.tk.D1]);

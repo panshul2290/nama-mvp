@@ -2,7 +2,7 @@
 // Roles: anon, customer (C1), other customer (C2), driver (D1, assigned to C1's
 // accepted order), other driver (D2).
 import type { Reporter, Target, Uid } from "../lib/harness";
-import { makeWorld, placeOrder, setOnline } from "../lib/world";
+import { makeWorld, placeOrder, setOnline, deliver } from "../lib/world";
 
 export async function authzSuite(t: Target, r: Reporter) {
   r.start("AUTHZ authorization matrix");
@@ -132,7 +132,8 @@ export async function authzSuite(t: Target, r: Reporter) {
   await r.allows("assigned driver: report_location", () => rows(D1.id, "select report_location(23.601, 58.201, 8, now())"));
   await r.allows("assigned driver: mark_arrived", () => rows(D1.id, "select status from mark_arrived($1)", [oAcc.id]), (x) => x[0]?.status === "arrived");
   await r.denies("other driver: mark_delivered → invalid_transition", () => rows(D2.id, "select * from mark_delivered($1)", [oAcc.id]), "invalid_transition");
-  await r.allows("assigned driver: mark_delivered", () => rows(D1.id, "select status from mark_delivered($1)", [oAcc.id]), (x) => x[0]?.status === "delivered");
+  await r.denies("assigned driver: mark_delivered without proof of delivery → pod_required", () => rows(D1.id, "select * from mark_delivered($1)", [oAcc.id]), "pod_required");
+  await r.allows("assigned driver: complete with proof of delivery (submit_pod)", () => deliver(t, D1.id, oAcc.id), (x) => x?.status === "delivered");
   await r.allows("customer: cancel own open request", () => rows(C1.id, "select status from cancel_order($1)", [oReq.id]), (x) => x[0]?.status === "cancelled");
   await r.allows("signed-in user: price_quote", () => rows(C2.id, "select total from price_quote('DW', 1000)"), one);
 

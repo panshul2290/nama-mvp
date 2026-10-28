@@ -67,8 +67,12 @@ export async function platformSuite(t: Target, r: Reporter) {
   r.check("filling charges the company's filling credit by the water charge", Number(fillCredit[0].s) === -Number(paid.water_charge), fillCredit);
   await one(D1.id, "select * from mark_arrived($1)", [paid.id]);
   await r.denies("submit_pod without signature (and not 'no signature') → signature_required",
-    () => one(D1.id, "select * from submit_pod($1, 1000, null, 'hash-1')", [paid.id]), "signature_required");
-  const del = await one<Row>(D1.id, "select * from submit_pod($1, 1000, null, 'hash-1', '<svg/>')", [paid.id]);
+    () => one(D1.id, "select * from submit_pod($1, 1000, $2, 'hash-1')", [paid.id, `${D1.id}/sig-check.jpg`]), "signature_required");
+  await r.denies("submit_pod without an uploaded photo → photo_required",
+    () => one(D1.id, "select * from submit_pod($1, 1000, null, 'hash-1', '<svg/>')", [paid.id]), "photo_required");
+  await r.denies("submit_pod with a photo in someone else's folder → photo_required",
+    () => one(D1.id, "select * from submit_pod($1, 1000, $2, 'hash-1', '<svg/>')", [paid.id, `${C1.id}/x.jpg`]), "photo_required");
+  const del = await one<Row>(D1.id, "select * from submit_pod($1, 1000, $2, 'hash-1', '<svg/>')", [paid.id, await t.evidencePhoto(D1.id)]);
   r.check("submit_pod completes a DW job (delivered) and captures the payment", del.status === "delivered" && del.payment_status === "captured", del);
   const earn = await t.admin<{ s: string }>("select sum(amount)::text s from company_tx where order_id = $1 and kind = 'earning'", [paid.id]);
   r.check("settlement credits the driver earnings to the tanker company", Number(earn[0].s) === Number(paid.driver_earnings), earn);
@@ -88,8 +92,10 @@ export async function platformSuite(t: Target, r: Reporter) {
   const p2 = await order(C1.id, "DW", 1000, "card");
   await one(D1.id, "select * from accept_order($1)", [p2.id]);
   await one(D1.id, "select * from mark_arrived($1)", [p2.id]);
-  await one(D1.id, "select * from submit_pod($1, 800, null, 'hash-2', null, true)", [p2.id]);
+  const walletBeforeShort = await wallet(C1.id);
+  await one(D1.id, "select * from submit_pod($1, 800, $2, 'hash-2', null, true)", [p2.id, await t.evidencePhoto(D1.id)]);
   const pen = await t.admin<{ rule_code: string; amount: string; id: string }>("select rule_code, amount::text, id from penalties where order_id = $1", [p2.id]);
+  r.check("delivering 20% short refunds 20% of the order to the customer", Math.abs((await wallet(C1.id)) - walletBeforeShort - Number(p2.total) * 0.2) < 0.002, { before: walletBeforeShort, after: await wallet(C1.id), total: p2.total });
   r.check("delivering 20% short issues the short-volume penalty", pen[0]?.rule_code === "short_volume" && pen[0]?.amount === "10.000", pen);
   await one(D1.id, "select * from dispute_penalty($1, 'TEST meter was faulty')", [pen[0].id]);
   const cancelled = await one<Row>(OP.id, "select * from staff_decide_penalty($1, 'cancel', 'TEST meter fault confirmed')", [pen[0].id]);
@@ -110,7 +116,7 @@ export async function platformSuite(t: Target, r: Reporter) {
   await one(D3.id, "select * from accept_order($1)", [ww.id]);
   await r.denies("confirm_fill on wastewater → no_fill_for_wastewater", () => one(D3.id, "select * from confirm_fill($1)", [ww.id]), "no_fill_for_wastewater");
   await one(D3.id, "select * from mark_arrived($1)", [ww.id]);
-  const col = await one<Row>(D3.id, "select * from submit_pod($1, 3000, null, 'hash-3', '<svg/>')", [ww.id]);
+  const col = await one<Row>(D3.id, "select * from submit_pod($1, 3000, $2, 'hash-3', '<svg/>')", [ww.id, await t.evidencePhoto(D3.id)]);
   r.check("WW proof of collection → collected (job still active)", col.status === "collected", col.status);
   await r.denies("a driver with a collected job can't accept another", async () => {
     const x = await order(C2.id, "WW", 1000, "card");
@@ -188,7 +194,10 @@ export async function platformSuite(t: Target, r: Reporter) {
   const tk = await one<Row>(OW.id, "select * from owner_register_tanker($1, 'DW', 4000)", [w.plate("OWN1")]);
   r.check("owner registers a tanker; it gets an IVMS device", tk.company_id === comp.id && (await t.admin("select 1 from devices where tanker_id = $1", [tk.id])).length === 1, tk);
   const DX = await t.createUser("plat-dx", { role: "driver", full_name: "Test Company Driver" });
-  await one(OW.id, "select * from owner_add_driver($1)", [DX.email]);
+  const dinv = await one<Row>(OW.id, "select * from owner_add_driver($1)", [DX.email]);
+  r.check("adding a driver sends an invitation; nothing changes until the driver accepts", dinv.status === "pending" && (await t.admin<{ company_id: string | null }>("select company_id from profiles where id = $1", [DX.id]))[0].company_id === null, dinv);
+  await r.denies("someone else can't accept the driver's invitation", () => one(C2.id, "select * from respond_invitation($1, true)", [dinv.id]), "not_found");
+  await one(DX.id, "select * from respond_invitation($1, true)", [dinv.id]);
   await one(OW.id, "select * from owner_assign_driver($1, $2)", [DX.id, tk.id]);
   r.check("owner adds a driver by email and assigns them the tanker", (await t.as(DX.id, "select id from tankers")).length === 1);
   r.check("another company's owner data is invisible to this owner", (await t.as(OW.id, "select 1 from company_tx where company_id = $1", [co.id])).length === 0);
@@ -207,7 +216,8 @@ export async function platformSuite(t: Target, r: Reporter) {
   const org = await one<Row>(BA.id, "select * from org_register('TST Hotel', $1, 'commercial')", [`TSTB${t.runId.slice(-5)}`]);
   await one(FIN.id, "select * from staff_org_action($1, 'activate', 'TEST verified')", [org.id]);
   await one(FIN.id, "select * from staff_org_action($1, 'raise_limit', 'TEST credit approved', 500)", [org.id]);
-  await one(BA.id, "select * from org_add_member($1, 'site_manager')", [BM.email]);
+  const binv = await one<Row>(BA.id, "select * from org_add_member($1, 'site_manager')", [BM.email]);
+  await one(BM.id, "select * from respond_invitation($1, true)", [binv.id]);
   const [site] = await t.as<{ id: string }>(BA.id, "select id from save_property(null, 'TEST hotel main', 'TEST', 'Seeb', $1, $2, 20000)", [LAT, LNG]);
   const bulk = await t.as<Row>(BM.id, "select * from org_create_orders($1, 'DW', 5000, 3, null, null, null, 'PO-TEST-1')", [site.id]);
   r.check("site manager's bulk order above the approval limit waits for approval", bulk.length === 3 && bulk.every((o) => o.status === "pending_approval" && o.billing === "account"), bulk.map((o) => o.status));

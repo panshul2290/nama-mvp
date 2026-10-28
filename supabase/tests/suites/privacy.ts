@@ -4,7 +4,7 @@
 //     and stops being visible once that order is delivered or cancelled.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Reporter, Target } from "../lib/harness";
-import { makeWorld, placeOrder, setOnline } from "../lib/world";
+import { makeWorld, placeOrder, setOnline, deliver } from "../lib/world";
 
 const sees = async (t: Target, viewer: string | null, tanker: string) =>
   (await t.as<{ last_lat: number }>(viewer, "select last_lat from tankers where id = $1", [tanker]).catch(() => [])).length > 0;
@@ -89,7 +89,7 @@ export async function privacySuite(t: Target, r: Reporter) {
     r.skip("Realtime: only the active order's customer receives location updates", "PGlite has no Realtime server; covered by the Supabase run");
   }
 
-  await t.as(D1.id, "select * from mark_delivered($1)", [o.id]);
+  await deliver(t, D1.id, o.id);
   r.check("delivered: the customer can no longer see the driver's location", !(await sees(t, C1.id, w.tk.D1)));
   if (realtimeClients) {
     const after = await realtimeEvents(realtimeClients.c1, w.tk.D1, () => pings(23.64));

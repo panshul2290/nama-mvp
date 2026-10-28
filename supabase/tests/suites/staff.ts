@@ -1,6 +1,6 @@
 // NWS staff (0008): sub-roles, staff RPCs, audit log, blocks and permits.
 import type { Reporter, Target, Uid } from "../lib/harness";
-import { giveTanker, makeWorld, placeOrder, plateFor, setOnline } from "../lib/world";
+import { giveTanker, makeWorld, placeOrder, plateFor, setOnline, deliver } from "../lib/world";
 import { raceFromBarrier } from "./concurrency";
 
 type Row = Record<string, unknown>;
@@ -126,7 +126,7 @@ export async function staffSuite(t: Target, r: Reporter) {
   await t.as(D1.id, "select * from accept_order($1)", [job.id]);
   await r.denies("unassigning a tanker on a job is refused (tanker_on_job)", () => t.as(OP.id, "select * from staff_unassign_tanker($1, 'TEST reason')", [w.tk.D1]), "tanker_on_job");
   await t.as(D1.id, "select * from mark_arrived($1)", [job.id]);
-  await t.as(D1.id, "select * from mark_delivered($1)", [job.id]);
+  await deliver(t, D1.id, job.id);
   const nu = await auditCount(w.tk.D1);
   await t.as(OP.id, "select * from staff_unassign_tanker($1, 'TEST driver left')", [w.tk.D1]);
   r.check("operator unassigns the tanker (one audit row)", (await auditCount(w.tk.D1)) === nu + 1 && (await lastAudit(w.tk.D1)).action === "tanker.unassign");

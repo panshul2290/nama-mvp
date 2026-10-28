@@ -5,7 +5,7 @@
 // so the accept_order UPDATEs genuinely overlap. On PGlite (one connection) the
 // same calls run one after another — logic check only, labelled as such.
 import type { Reporter, Session, Target } from "../lib/harness";
-import { giveTanker, placeOrder, plateFor, setOnline } from "../lib/world";
+import { giveTanker, placeOrder, plateFor, setOnline, deliver } from "../lib/world";
 
 type Outcome = { ok: boolean; msg: string };
 
@@ -109,7 +109,7 @@ export async function concurrencySuite(t: Target, r: Reporter) {
     const [job] = await t.admin<{ id: string }>("select id from orders where driver_id = $1 and status = 'accepted'", [solo.id]);
     if (job) {
       await t.as(solo.id, "select * from mark_arrived($1)", [job.id]);
-      await t.as(solo.id, "select * from mark_delivered($1)", [job.id]);
+      await deliver(t, solo.id, job.id);
     }
   }
   r.check(`one driver accepts two orders at once (${ROUNDS} rounds): always exactly one active job; the other call gets driver_busy`, good === ROUNDS, detail, `${label}; per round: ${JSON.stringify(detail)}`);

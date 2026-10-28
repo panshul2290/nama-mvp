@@ -37,6 +37,8 @@ export interface Target {
   session(): Promise<Session>;
   /** Supabase only: a supabase-js client signed in as a test user, for API-level checks. */
   apiClientFor?(email: string, password: string): Promise<SupabaseClient>;
+  /** Path of a proof-of-delivery photo uploaded into this user's evidence folder (Storage on Supabase). */
+  evidencePhoto(uid: string): Promise<string>;
   cleanup(): Promise<string[]>;
 }
 
@@ -132,6 +134,8 @@ export async function pgliteTarget(opts: { beforeMigration?: Record<string, (db:
       },
       close: async () => undefined,
     }),
+    // PGlite has no Storage; submit_pod only checks the path is in the caller's folder.
+    evidencePhoto: async (uid) => `${uid}/test-pod.jpg`,
     cleanup: async () => [],
   };
 
@@ -221,6 +225,12 @@ export async function supabaseTarget(): Promise<Target> {
         close: async () => client.release(),
       };
     },
+    evidencePhoto: async (uid) => {
+      const path = `${uid}/test-${runId}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const { error } = await adminApi.storage.from("evidence").upload(path, new Uint8Array([255, 216, 255, 217]), { contentType: "image/jpeg" });
+      if (error) throw new Error(`upload ${path}: ${error.message}`);
+      return path;
+    },
     apiClientFor: async (email, password) => {
       const c = createClient(NEXT_PUBLIC_SUPABASE_URL, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
       const { error } = await c.auth.signInWithPassword({ email, password });
@@ -268,6 +278,11 @@ export async function supabaseTarget(): Promise<Target> {
       await target.admin("delete from public.companies where cr_no like 'TST%'");
       await target.admin("delete from public.organizations where cr_no like 'TST%'");
       log.push(`deleted ${orgs.companies} test companies and ${orgs.orgs} test business accounts`);
+      // Test evidence uploads live in the test users' folders.
+      for (const u of all) {
+        const { data: files } = await adminApi.storage.from("evidence").list(u.id);
+        if (files?.length) await adminApi.storage.from("evidence").remove(files.map((f) => `${u.id}/${f.name}`));
+      }
       for (const u of all) {
         if (!isTestEmail(u.email)) throw new Error(`refusing to delete non-test user ${u.id}`);
         const { error } = await adminApi.auth.admin.deleteUser(u.id);

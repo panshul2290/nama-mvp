@@ -2,7 +2,7 @@
 // this suite created, so it is safe to run against a live project.
 import { quote as jsQuote, type PricingRule } from "../../../lib/pricing";
 import type { Reporter, Target } from "../lib/harness";
-import { makeWorld, placeOrder, setOnline } from "../lib/world";
+import { makeWorld, placeOrder, setOnline, deliver } from "../lib/world";
 
 export async function lifecycleSuite(t: Target, r: Reporter) {
   r.start("PRICE pricing");
@@ -66,7 +66,7 @@ export async function lifecycleSuite(t: Target, r: Reporter) {
   const [st] = await t.as<{ status: string }>(C1.id, "select status from orders where id = $1", [o1.id]);
   r.check("first GPS ping moves the job to arriving", st.status === "arriving", st);
   const [arr] = await t.as<{ status: string }>(D1.id, "select status from mark_arrived($1)", [o1.id]);
-  const [del] = await t.as<{ status: string }>(D1.id, "select status from mark_delivered($1)", [o1.id]);
+  const del = await deliver(t, D1.id, o1.id);
   r.check("arrived → delivered", arr.status === "arrived" && del.status === "delivered");
   const [snap] = await t.as<{ tanker_plate: string }>(C1.id, "select tanker_plate from orders where id = $1", [o1.id]);
   r.check("customer keeps the plate snapshot after delivery", snap.tanker_plate === w.plate("D1"));

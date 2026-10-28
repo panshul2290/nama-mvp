@@ -58,3 +58,10 @@ export async function placeOrder(t: Target, customer: string, type: "DW" | "WW" 
 }
 
 export const setOnline = (t: Target, driver: string, online: boolean) => t.as(driver, "select driver_set_online($1)", [online]);
+
+/** Complete an arrived DW/TE job with a proof of delivery (photo + signature, full volume). */
+export async function deliver(t: Target, driver: string, orderId: string) {
+  const photo = await t.evidencePhoto(driver);
+  const [o] = await t.as<{ status: string }>(driver, "select status from submit_pod($1, 20000, $2, 'test-hash', '<svg/>')", [orderId, photo]);
+  return o;
+}
