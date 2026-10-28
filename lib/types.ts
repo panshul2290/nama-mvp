@@ -1,11 +1,26 @@
 import type { RuleStatus, ServiceType } from "./pricing";
 
-export type Role = "customer" | "driver" | "nws_staff";
-export type StaffRole = "operator" | "permit_officer" | "admin";
+export type Role = "customer" | "driver" | "nws_staff" | "owner" | "business";
+// Prototype "Users and roles": Super admin (admin), Control room operator (operator),
+// Permit officer, Inspector, Complaints agent, Finance, Read-only BI (viewer).
+export type StaffRole = "operator" | "permit_officer" | "admin" | "inspector" | "complaints_agent" | "finance" | "viewer";
+export type OrgRole = "admin" | "site_manager" | "finance";
 
-export type OrderStatus = "requested" | "accepted" | "arriving" | "arrived" | "delivered" | "cancelled";
+export type OrderStatus =
+  | "scheduled"
+  | "pending_approval"
+  | "requested"
+  | "accepted"
+  | "arriving"
+  | "arrived"
+  | "collected"
+  | "delivered"
+  | "cancelled";
 
-export const ACTIVE_STATUSES: OrderStatus[] = ["requested", "accepted", "arriving", "arrived"];
+/** Orders still in progress (a tanker may be on its way). */
+export const ACTIVE_STATUSES: OrderStatus[] = ["requested", "accepted", "arriving", "arrived", "collected"];
+/** A tanker is assigned and working the job. */
+export const ON_JOB_STATUSES: OrderStatus[] = ["accepted", "arriving", "arrived", "collected"];
 
 export type Profile = {
   id: string;
@@ -13,6 +28,19 @@ export type Profile = {
   staff_role?: StaffRole | null;
   full_name: string;
   phone: string | null;
+  company_id?: string | null;
+  org_id?: string | null;
+  org_role?: OrgRole | null;
+  id_type?: "civil_id" | "resident_card" | "passport" | null;
+  id_no?: string | null;
+  id_verified?: boolean;
+  segment?: "household" | "commercial" | "government" | "farm";
+  lang?: "en" | "ar";
+  prefs?: Record<string, unknown>;
+  account_blocked?: boolean;
+  loyalty_points?: number;
+  staff_zones?: string[];
+  created_at?: string;
 };
 
 // Tankers are identified by id; drivers link to them through tanker_assignments.
@@ -25,9 +53,15 @@ export type Tanker = {
   last_lat: number | null;
   last_lng: number | null;
   last_seen_at: string | null;
+  last_fix_at?: string | null;
+  last_accuracy_m?: number | null;
   blocked?: boolean;
   blocked_reason?: string | null;
+  company_id?: string | null;
 };
+
+export type PayMethod = "wallet" | "card" | "omannet" | "wallet_card" | "account" | "cash";
+export type PaymentStatus = "authorized" | "captured" | "refunded" | "partially_refunded" | "failed" | "on_account";
 
 export type Order = {
   id: string;
@@ -42,12 +76,24 @@ export type Order = {
   area: string;
   water_charge: string;
   delivery_fee: string;
+  discount?: string;
   vat: string;
   total: string;
   driver_earnings: string;
   status: OrderStatus;
   /** Status of the pricing rules behind each line when the order was priced. */
-  price_basis: { water: RuleStatus; fee: RuleStatus; vat: RuleStatus; total: RuleStatus; earnings: RuleStatus; rules: string[]; mode: string } | null;
+  price_basis: {
+    water: RuleStatus;
+    fee: RuleStatus;
+    vat: RuleStatus;
+    total: RuleStatus;
+    earnings: RuleStatus;
+    rules: string[];
+    mode: string;
+    peak?: boolean;
+    priority?: boolean;
+    discount_pct?: number;
+  } | null;
   driver_name: string | null;
   tanker_plate: string | null;
   created_at: string;
@@ -56,6 +102,42 @@ export type Order = {
   arrived_at: string | null;
   delivered_at: string | null;
   cancelled_at: string | null;
+  // Platform (0010)
+  property_id?: string | null;
+  org_id?: string | null;
+  contract_id?: string | null;
+  zone_id?: string | null;
+  channel?: "app" | "call_centre" | "business" | "contract";
+  genesys_id?: string | null;
+  is_emergency?: boolean;
+  slot_start?: string | null;
+  slot_end?: string | null;
+  slot_label?: string | null;
+  slot_peak?: boolean;
+  driver_note?: string | null;
+  po_number?: string | null;
+  billing?: "prepaid" | "account";
+  promo_code?: string | null;
+  pay_method?: PayMethod | null;
+  payment_status?: PaymentStatus | null;
+  released_at?: string | null;
+  approved_at?: string | null;
+  filled_at?: string | null;
+  fill_site_id?: string | null;
+  fill_meter_gal?: number | null;
+  fill_verified?: boolean | null;
+  collected_at?: string | null;
+  discharged_at?: string | null;
+  discharge_site_id?: string | null;
+  discharge_verified?: boolean | null;
+  rating?: number | null;
+  rating_comment?: string | null;
+  tip?: string;
+  rated_at?: string | null;
+  cancel_fee?: string;
+  cancelled_by?: "customer" | "driver" | "staff" | "system" | "approver" | null;
+  cancel_reason?: string | null;
+  invoice_id?: string | null;
 };
 
 export type OrderLocation = { order_id: string; lat: number; lng: number; address: string };
@@ -70,6 +152,67 @@ export type OpenRequest = {
   driver_earnings: string;
   earnings_status: RuleStatus | null;
   created_at: string;
+  is_emergency?: boolean;
+  slot_label?: string | null;
+  slot_end?: string | null;
+  channel?: string;
+  contract_no?: number | null;
 };
 
 export type LngLat = { lat: number; lng: number };
+
+export type Company = { id: string; name: string; cr_no: string; phone: string | null; rating: string; since: string; status: "pending" | "active" | "suspended" };
+export type Organization = {
+  id: string; name: string; cr_no: string; segment: string; credit_limit: string; terms_days: number; approval_limit: string;
+  invoicing: string; paused: boolean; status: "pending" | "active" | "suspended";
+};
+export type Zone = { id: string; name: string; governorate: string; center_lat: number; center_lng: number; radius_km: string; active: boolean };
+export type Site = { id: string; code: string; kind: "fill" | "discharge"; name: string; service_types: ServiceType[]; lat: number; lng: number; radius_m: number; operator: string; active: boolean };
+export type Property = { id: string; customer_id: string | null; org_id: string | null; label: string; address: string; area: string; lat: number; lng: number; tank_gal: number; created_at: string };
+export type Contract = {
+  id: string; contract_no: number; customer_id: string | null; org_id: string | null; property_id: string; company_id: string; service_type: ServiceType;
+  gallons: number; frequency: "weekly" | "biweekly" | "monthly"; plan: "monthly" | "yearly"; slot: "morning" | "evening";
+  start_date: string; end_date: string; monthly_est: string; status: "pending_owner" | "active" | "paused" | "ended" | "declined"; created_at: string;
+};
+export type WalletTx = { id: number; customer_id: string; kind: string; amount: string; order_id: string | null; memo: string; created_at: string };
+export type CompanyTx = { id: number; company_id: string; driver_id: string | null; tanker_id: string | null; bucket: "earnings" | "fill_credit"; kind: string; amount: string; order_id: string | null; memo: string; created_at: string };
+export type Payment = { id: string; order_id: string; customer_id: string | null; org_id: string | null; method: PayMethod; amount: string; wallet_amount: string; card_amount: string; card_last4: string | null; status: PaymentStatus; gateway_ref: string | null; failure_reason: string | null; refunded_amount: string; created_at: string; captured_at: string | null };
+export type Pod = { order_id: string; kind: "delivery" | "collection"; photo_path: string | null; photo_hash: string | null; meter_gal: number; signature_svg: string | null; no_signature: boolean; left_at_tank: boolean; lat: number | null; lng: number | null; created_at: string; status: "accepted" | "rejected" };
+export type Complaint = {
+  id: string; case_no: number; order_id: string | null; customer_id: string | null; category: string; description: string; photo_path: string | null;
+  channel: "app" | "call_centre" | "business"; genesys_id: string | null; state: "new" | "assigned" | "escalated" | "resolved"; owner_team: string | null;
+  sla_hours: number; due_at: string; refund_amount: string; resolution: string | null; created_at: string; resolved_at: string | null;
+};
+export type ComplaintNote = { id: number; complaint_id: string; author_id: string | null; author_role: string; body: string; internal: boolean; created_at: string };
+export type Alert = { id: number; tanker_id: string | null; order_id: string | null; type: string; severity: "high" | "med" | "low"; message: string; lat: number | null; lng: number | null; state: "open" | "acknowledged" | "resolved"; created_at: string; acted_at: string | null; action_note: string | null };
+export type Penalty = {
+  id: string; penalty_no: number; rule_code: string; company_id: string | null; tanker_id: string | null; driver_id: string | null; order_id: string | null;
+  customer_id: string | null; org_id: string | null; amount: string; reason: string; evidence: string; state: "issued" | "disputed" | "upheld" | "cancelled";
+  dispute_text: string | null; created_at: string; decided_at: string | null;
+};
+export type PenaltyRule = { code: string; label: string; party: "driver" | "customer" | "business"; amount: string; amount_kind: "omr" | "pct"; compensation: string; active: boolean };
+export type Notification = { id: number; user_id: string; event: string; channels: string[]; title: string; body: string; order_id: string | null; created_at: string; read_at: string | null };
+export type NotificationTemplate = { event: string; label: string; audience: string; title_en: string; body_en: string; title_ar: string; body_ar: string; push: boolean; sms: boolean; whatsapp: boolean };
+export type Invoice = { id: string; invoice_no: number; org_id: string; period_start: string; period_end: string; orders: number; subtotal: string; vat: string; total: string; status: "issued" | "paid" | "overdue"; issued_at: string; due_at: string; paid_at: string | null };
+export type TankerDocument = { id: string; tanker_id: string | null; driver_id: string | null; kind: string; ref_no: string; valid_to: string; file_path: string | null; status: "valid" | "pending_review" | "rejected"; uploaded_at: string };
+export type WaterTest = { id: string; tanker_id: string; cert_no: string; tested_at: string; chlorine: string; turbidity: string; tds: number; ph: string; ecoli: string; coliforms: string; passed: boolean };
+export type Device = { id: string; tanker_id: string | null; firmware: string; sensors: Record<string, boolean>; installed_at: string };
+export type Incident = { id: string; inc_no: number; priority: "P1" | "P2" | "P3" | "P4"; title: string; system: string; state: "open" | "acknowledged" | "resolved"; owner: string; notes: string; opened_at: string; acknowledged_at: string | null; resolved_at: string | null };
+export type Integration = { key: string; name: string; purpose: string; status: "ok" | "warn" | "down" | "simulated"; last_test_at: string | null; latency_ms: number | null; note: string };
+export type FraudFlag = { id: number; rule: string; subject_type: string; subject_id: string; details: string; score: number; state: "open" | "cleared" | "confirmed"; created_at: string };
+export type DataRequest = { id: string; ref_no: number; customer_id: string | null; kind: "access" | "delete" | "correct"; details: string; state: "open" | "completed" | "rejected"; created_at: string; closed_at: string | null };
+export type Promotion = { code: string; label: string; pct: string; audience: string; max_uses: number; uses: number; active: boolean; valid_to: string | null };
+export type Inspection = { id: string; tanker_id: string; permit_id: string | null; inspector_id: string | null; result: "scheduled" | "pass" | "fail"; notes: string; checklist: Record<string, unknown>; scheduled_for: string | null; created_at: string };
+export type OrderMessage = { id: number; order_id: string; sender_id: string | null; sender_role: "customer" | "driver" | "staff"; body: string; created_at: string };
+
+/** Display references for numbered records. */
+export const ref = {
+  order: (n: number | string) => `TO-${n}`,
+  complaint: (n: number | string) => `C-${n}`,
+  contract: (n: number | string) => `CT-${n}`,
+  invoice: (n: number | string) => `INV-${n}`,
+  penalty: (n: number | string) => `V-${n}`,
+  incident: (n: number | string) => `INC-${n}`,
+  payout: (n: number | string) => `PB-${n}`,
+  dataRequest: (n: number | string) => `DSR-${n}`,
+};

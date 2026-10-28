@@ -5,9 +5,17 @@ import type { Profile, StaffRole } from "@/lib/types";
 
 export type Staff = Profile & { staff_role: StaffRole };
 
-const Ctx = createContext<{ staff: Staff; can: (r: StaffRole) => boolean; toast: (m: string, bad?: boolean) => void } | null>(null);
+const Ctx = createContext<{ staff: Staff; can: (...roles: StaffRole[]) => boolean; toast: (m: string, bad?: boolean) => void } | null>(null);
 
-export const STAFF_ROLE_LABEL: Record<StaffRole, string> = { operator: "Operator", permit_officer: "Permit officer", admin: "Admin" };
+export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
+  admin: "Super admin",
+  operator: "Control room operator",
+  permit_officer: "Permit officer",
+  inspector: "Inspector",
+  complaints_agent: "Complaints agent",
+  finance: "Finance",
+  viewer: "Read-only (BI)",
+};
 
 export function StaffProvider({ staff, children }: { staff: Staff; children: React.ReactNode }) {
   const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null);
@@ -16,7 +24,7 @@ export function StaffProvider({ staff, children }: { staff: Staff; children: Rea
     setTimeout(() => setMsg((m) => (m?.text === text ? null : m)), 4000);
   }, []);
   // UI hint only: the database enforces the sub-role in every staff RPC.
-  const can = useCallback((r: StaffRole) => staff.staff_role === r, [staff.staff_role]);
+  const can = useCallback((...roles: StaffRole[]) => roles.includes(staff.staff_role), [staff.staff_role]);
   return (
     <Ctx value={{ staff, can, toast }}>
       {children}

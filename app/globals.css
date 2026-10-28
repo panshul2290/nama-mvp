@@ -349,3 +349,8 @@ button.st { border: 0; }
   .spin, .radar { animation: none; }
   .switch::after { transition: none; }
 }
+
+/* Language toggle (EN | ع) and right-to-left adjustments */
+.lang-tg { min-width: 34px; height: 34px; border-radius: 17px; border: 1px solid var(--line, #dfe6ea); background: #fff; font-weight: 800; cursor: pointer; }
+.phone[dir="rtl"] { font-family: var(--font-nunito), "Segoe UI", Tahoma, sans-serif; }
+.phone[dir="rtl"] .rb .ic { transform: scaleX(-1); }

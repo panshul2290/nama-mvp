@@ -9,13 +9,16 @@ import { Loading } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
 import { supabase } from "@/lib/supabase/client";
 
+// Sidebar exactly as labelled in the prototype's staff portal.
 const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/nws", label: "Live operations", icon: "map" },
   { href: "/nws/orders", label: "Orders", icon: "list" },
   { href: "/nws/fleet", label: "Fleet", icon: "truck" },
   { href: "/nws/permits", label: "Permits", icon: "shield" },
-  { href: "/nws/pricing", label: "Pricing rules", icon: "coins" },
-  { href: "/nws/audit", label: "Audit log", icon: "clock" },
+  { href: "/nws/customers", label: "Customers", icon: "users" },
+  { href: "/nws/complaints", label: "Complaints", icon: "headset" },
+  { href: "/nws/reports", label: "Reports", icon: "chart" },
+  { href: "/nws/settings", label: "Settings", icon: "settings" },
 ];
 
 export default function NwsLayout({ children }: { children: React.ReactNode }) {

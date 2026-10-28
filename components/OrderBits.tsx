@@ -4,10 +4,13 @@ import { omr, omrValue, ruleNumber, SERVICE_LABEL, type PricingRules, type Quote
 import type { Order, OrderStatus } from "@/lib/types";
 
 export const STATUS_TEXT: Record<OrderStatus, [string, "act" | "ok" | "warn" | "bad"]> = {
+  scheduled: ["Scheduled", "act"],
+  pending_approval: ["Awaiting approval", "warn"],
   requested: ["Finding a tanker", "warn"],
   accepted: ["Driver assigned", "act"],
   arriving: ["On the way", "act"],
   arrived: ["Arrived", "act"],
+  collected: ["Collected", "act"],
   delivered: ["Delivered", "ok"],
   cancelled: ["Cancelled", "bad"],
 };

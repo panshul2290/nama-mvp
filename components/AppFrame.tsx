@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { NamaLogo } from "@/components/icons";
+import { LangProvider, useLang } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 
 function appTitle(path: string): [string, string] {
@@ -26,7 +27,19 @@ function Clock() {
 }
 
 export function AppFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <LangProvider>
+      <Frame>{children}</Frame>
+    </LangProvider>
+  );
+}
+
+// Desktop portals (NWS staff, tanker companies, businesses) have their own layout.
+const DESKTOP = ["/nws", "/company", "/business"];
+
+function Frame({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  const { lang, dir } = useLang();
   const router = useRouter();
   const [signedIn, setSignedIn] = useState(false);
   const [title, sub] = appTitle(path);
@@ -44,7 +57,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
   }
 
   // The NWS staff portal is a desktop layout of its own (no phone frame).
-  if (path.startsWith("/nws")) return <>{children}</>;
+  if (DESKTOP.some((p) => path.startsWith(p))) return <>{children}</>;
 
   return (
     <div className="page">
@@ -63,7 +76,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         )}
       </header>
       <div className="stage">
-        <div className="phone">
+        <div className="phone" dir={dir} lang={lang}>
           <div className="sbar" aria-hidden="true">
             <Clock />
             <span className="sig">5G ▮▮▮</span>

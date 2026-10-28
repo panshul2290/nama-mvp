@@ -138,3 +138,12 @@
 @media (max-width: 1180px) {
   .nws .ops-grid, .nws .two { grid-template-columns: 1fr; }
 }
+
+/* Settings: grouped sub-navigation */
+.nws .settings { display: grid; grid-template-columns: 220px 1fr; gap: 20px; align-items: start; }
+.nws .settings .subnav { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 14px; background: #fff; border: 1px solid #e3e9ec; border-radius: 12px; padding: 14px; }
+.nws .settings .subnav small { display: block; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; color: #6b7c85; font-weight: 800; margin-bottom: 4px; }
+.nws .settings .subnav a { display: block; padding: 6px 10px; border-radius: 8px; color: #23343c; text-decoration: none; font-weight: 600; font-size: 14px; }
+.nws .settings .subnav a:hover { background: #f1f5f7; }
+.nws .settings .subnav a.on { background: #e6f3f6; color: #0b5d70; }
+.nws .settings-body { min-width: 0; }
