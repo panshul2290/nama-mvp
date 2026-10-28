@@ -2,6 +2,7 @@
 
 import { createContext, use, useCallback, useState } from "react";
 import type { Profile, StaffRole } from "@/lib/types";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 export type Staff = Profile & { staff_role: StaffRole };
 
@@ -63,8 +64,9 @@ export function ReasonDialog({
 }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const trap = useFocusTrap(busy ? undefined : onCancel);
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onCancel}>
+    <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onCancel}>
       <div onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         {body && <p>{body}</p>}

@@ -66,6 +66,9 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
   const [noSig, setNoSig] = useState(false);
   const [leftAtTank, setLeftAtTank] = useState(false);
   const [busy, setBusy] = useState(false);
+  // The photo must be in Storage before submit_pod: the server rejects a proof without it.
+  const [uploaded, setUploaded] = useState<{ file: File; path: string } | null>(null);
+  const [uploadFailed, setUploadFailed] = useState(false);
 
   useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview]);
 
@@ -76,19 +79,27 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
   async function submit() {
     if (!file) return;
     setBusy(true);
+    setUploadFailed(false);
     const hash = await sha256Hex(file);
-    // Photos go to the private evidence bucket, in the driver's own folder.
-    const bucket = supabase().storage.from("evidence");
-    const opts = { contentType: file.type || "image/jpeg", upsert: false };
-    let path: string | null = `${profile.id}/${o.id}-pod.jpg`;
-    let up = await bucket.upload(path, file, opts);
-    if (up.error) {
-      path = `${profile.id}/${o.id}-pod-${Date.now()}.jpg`; // a retake after an earlier attempt
-      up = await bucket.upload(path, file, opts);
-    }
-    if (up.error) {
-      path = null; // the fingerprint is still recorded
-      toast(t("photoNotUploaded"));
+    // Photos go to the private evidence bucket, in the driver's own folder. A photo already
+    // uploaded on an earlier attempt (when only the submit failed) isn't sent again.
+    let path = uploaded?.file === file ? uploaded.path : null;
+    if (!path) {
+      const bucket = supabase().storage.from("evidence");
+      const opts = { contentType: file.type || "image/jpeg", upsert: false };
+      path = `${profile.id}/${o.id}-pod.jpg`;
+      let up = await bucket.upload(path, file, opts);
+      if (up.error) {
+        path = `${profile.id}/${o.id}-pod-${Date.now()}.jpg`; // a retake after an earlier attempt
+        up = await bucket.upload(path, file, opts);
+      }
+      if (up.error) {
+        // No proof without the photo: keep the sheet open so the driver can retry.
+        setBusy(false);
+        setUploadFailed(true);
+        return;
+      }
+      setUploaded({ file, path });
     }
     const at = getPosition();
     const done = await jobAction("submit_pod", {
@@ -142,6 +153,14 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
         />
       </label>
       {preview && <p className="mut small">{t("retakeHint")}</p>}
+      {uploadFailed && (
+        <div className="banner badb" role="alert">
+          <b>{t("photoNotUploaded")}</b> {t("photoRetryS")}
+          <button type="button" className="btn sm" style={{ marginTop: 8 }} disabled={busy} onClick={submit}>
+            {t("retry")}
+          </button>
+        </div>
+      )}
 
       <div className="fld">
         <label htmlFor="meter">{t("meterReading")}</label>

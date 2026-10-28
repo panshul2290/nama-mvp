@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, use, useCallback, useState } from "react";
+import { createContext, use, useCallback, useEffect, useState } from "react";
 import type { PortalProfile } from "@/components/portal/PortalShell";
 import { useLive } from "@/components/portal/kit";
 import { permitSummary, type Permit } from "@/components/nws/fleetData";
@@ -15,10 +15,26 @@ export type OwnerCompany = {
   earnings_balance: number | string; fill_credit: number | string;
 };
 
-const Ctx = createContext<{ profile: PortalProfile; company: OwnerCompany; reloadCompany: () => Promise<void> } | null>(null);
+/** A load problem shown above the page: a failed query, or a list cut off at its cap. */
+type Issue = { tone: "bad" | "info"; text: string };
+type Report = (key: string, issue: Issue | null) => void;
+
+const Ctx = createContext<{ profile: PortalProfile; company: OwnerCompany; reloadCompany: () => Promise<void>; issues: Issue[]; report: Report } | null>(null);
 
 export function CompanyProvider({ profile, company, reloadCompany, children }: { profile: PortalProfile; company: OwnerCompany; reloadCompany: () => Promise<void>; children: React.ReactNode }) {
-  return <Ctx value={{ profile, company, reloadCompany }}>{children}</Ctx>;
+  const [byKey, setByKey] = useState<Record<string, Issue>>({});
+  const report = useCallback<Report>((key, issue) => {
+    setByKey((prev) => {
+      if (issue ? prev[key]?.text === issue.text && prev[key]?.tone === issue.tone : !(key in prev)) return prev;
+      const next = { ...prev };
+      if (issue) next[key] = issue;
+      else delete next[key];
+      return next;
+    });
+  }, []);
+  // The same message from two hooks on one page is shown once.
+  const issues = [...new Map(Object.values(byKey).map((i) => [i.text, i])).values()];
+  return <Ctx value={{ profile, company, reloadCompany, issues, report }}>{children}</Ctx>;
 }
 
 export function useCompany() {
@@ -26,6 +42,25 @@ export function useCompany() {
   if (!v) throw new Error("useCompany must be used inside the company portal");
   return v;
 }
+
+/** Banners for failed or truncated company queries; rendered once by the layout. */
+export function CompanyIssues() {
+  const { issues } = useCompany();
+  return issues.map((i) => (
+    <div key={i.text} className={`banner ${i.tone === "bad" ? "badb" : "info"}`} role={i.tone === "bad" ? "alert" : "status"}>
+      {i.text}
+    </div>
+  ));
+}
+
+/** Report this hook's issues under `key`, and clear them when the page goes away. */
+function useIssue(key: string) {
+  const { report } = useCompany();
+  useEffect(() => () => report(key, null), [key, report]);
+  return useCallback((issue: Issue | null) => report(key, issue), [key, report]);
+}
+
+const loadFailed = (what: string, message: string): Issue => ({ tone: "bad", text: `Couldn’t load ${what}: ${message}. Showing the last data received; it will retry automatically.` });
 
 // ---------------------------------------------------------------- fleet data
 export type FTanker = {
@@ -37,7 +72,8 @@ export type FAssignment = { id: string; tanker_id: string; driver_id: string; as
 export type FPermit = Permit & { tanker_id: string; stage: "submitted" | "documents" | "inspection" | "decision"; info_requested: string | null; reason: string | null; created_at: string };
 export type FOrder = {
   id: string; order_no: number; status: string; service_type: ServiceType; gallons: number; area: string; tanker_id: string | null; driver_id: string | null;
-  driver_name: string | null; tanker_plate: string | null; created_at: string; accepted_at: string | null; delivered_at: string | null;
+  driver_name: string | null; tanker_plate: string | null; created_at: string; released_at: string | null; accepted_at: string | null;
+  collected_at: string | null; delivered_at: string | null;
   slot_start: string | null; slot_end: string | null; slot_label: string | null; rating: number | null; tip: string; driver_earnings: string;
   contract_id: string | null; org_id: string | null; channel: string;
 };
@@ -60,6 +96,7 @@ const EMPTY: Fleet = { tankers: [], drivers: [], assignments: [], permits: [], d
 export function useFleet(key: string, extraTables: string[] = []) {
   const { company } = useCompany();
   const [fleet, setFleet] = useState<Fleet>(EMPTY);
+  const issue = useIssue(`fleet-${key}`);
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -73,18 +110,21 @@ export function useFleet(key: string, extraTables: string[] = []) {
       db.from("alerts").select("id, tanker_id, order_id, type, severity, message, lat, lng, state, created_at, acted_at, action_note").neq("state", "resolved").order("created_at", { ascending: false }).limit(50),
       db.from("contracts").select("*").eq("company_id", company.id).order("created_at", { ascending: false }),
     ]);
-    setFleet({
-      tankers: (t.data ?? []) as FTanker[],
-      drivers: (d.data ?? []) as FDriver[],
-      assignments: (a.data ?? []) as FAssignment[],
-      permits: (p.data ?? []) as FPermit[],
-      devices: (dv.data ?? []) as Device[],
-      docs: (doc.data ?? []) as TankerDocument[],
-      alerts: (al.data ?? []) as Alert[],
-      contracts: (c.data ?? []) as Contract[],
+    // A failed query keeps what was loaded before instead of showing an empty fleet.
+    const failed = [t, d, a, p, dv, doc, al, c].find((r) => r.error)?.error;
+    issue(failed ? loadFailed("your fleet", failed.message) : null);
+    setFleet((prev) => ({
+      tankers: t.error ? prev.tankers : ((t.data ?? []) as FTanker[]),
+      drivers: d.error ? prev.drivers : ((d.data ?? []) as FDriver[]),
+      assignments: a.error ? prev.assignments : ((a.data ?? []) as FAssignment[]),
+      permits: p.error ? prev.permits : ((p.data ?? []) as FPermit[]),
+      devices: dv.error ? prev.devices : ((dv.data ?? []) as Device[]),
+      docs: doc.error ? prev.docs : ((doc.data ?? []) as TankerDocument[]),
+      alerts: al.error ? prev.alerts : ((al.data ?? []) as Alert[]),
+      contracts: c.error ? prev.contracts : ((c.data ?? []) as Contract[]),
       loaded: true,
-    });
-  }, [company.id]);
+    }));
+  }, [company.id, issue]);
 
   useLive(`fleet-${key}`, ["tankers", "tanker_assignments", "permits", "tanker_documents", "alerts", "contracts", ...extraTables], load, 45_000);
   return { ...fleet, reload: load };
@@ -142,18 +182,32 @@ export const CONTRACT_STATUS: Record<string, [string, "ok" | "warn" | "bad" | "a
 };
 
 const ORDER_COLS =
-  "id, order_no, status, service_type, gallons, area, tanker_id, driver_id, driver_name, tanker_plate, created_at, accepted_at, delivered_at, slot_start, slot_end, slot_label, rating, tip, driver_earnings, contract_id, org_id, channel";
+  "id, order_no, status, service_type, gallons, area, tanker_id, driver_id, driver_name, tanker_plate, created_at, released_at, accepted_at, collected_at, delivered_at, slot_start, slot_end, slot_label, rating, tip, driver_earnings, contract_id, org_id, channel";
+
+export const ORDER_CAP = 1000;
+export const TX_CAP = 2000; // the API may return fewer (its max-rows); `count` reveals any shortfall
+
+/** "Showing the latest N" when a capped query matched more rows than it returned. */
+const capped = (what: string, shown: number, total: number | null, days: number): Issue | null =>
+  total != null && total > shown
+    ? { tone: "info", text: `Showing the latest ${shown.toLocaleString("en-GB")} of ${total.toLocaleString("en-GB")} ${what} from the last ${days} days — totals on this page cover only those.` }
+    : null;
 
 /** Jobs served by the company's tankers since `days` ago (RLS: orders_owner). */
 export function useCompanyOrders(key: string, days = 30) {
   const [orders, setOrders] = useState<FOrder[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const issue = useIssue(`orders-${key}`);
   const load = useCallback(async () => {
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
-    const { data } = await supabase().from("orders").select(ORDER_COLS).not("tanker_id", "is", null).gte("created_at", since).order("created_at", { ascending: false }).limit(1000);
-    setOrders((data ?? []) as FOrder[]);
+    const { data, error, count } = await supabase().from("orders").select(ORDER_COLS, { count: "exact" }).not("tanker_id", "is", null).gte("created_at", since).order("created_at", { ascending: false }).limit(ORDER_CAP);
+    if (error) issue(loadFailed("jobs", error.message));
+    else {
+      setOrders((data ?? []) as FOrder[]);
+      issue(capped("jobs", data?.length ?? 0, count, days));
+    }
     setLoaded(true);
-  }, [days]);
+  }, [days, issue]);
   useLive(`orders-${key}`, ["orders"], load, 30_000);
   return { orders, loaded, reload: load };
 }
@@ -164,19 +218,22 @@ export type FTx = { id: number; driver_id: string | null; tanker_id: string | nu
 export function useCompanyTx(key: string, days = 90) {
   const [tx, setTx] = useState<FTx[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const issue = useIssue(`tx-${key}`);
   const load = useCallback(async () => {
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
-    const { data } = await supabase().from("company_tx").select("id, driver_id, tanker_id, bucket, kind, amount, order_id, penalty_id, payout_batch_id, memo, created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(2000);
-    setTx((data ?? []) as FTx[]);
+    const { data, error, count } = await supabase()
+      .from("company_tx")
+      .select("id, driver_id, tanker_id, bucket, kind, amount, order_id, penalty_id, payout_batch_id, memo, created_at", { count: "exact" })
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(TX_CAP);
+    if (error) issue(loadFailed("the ledger", error.message));
+    else {
+      setTx((data ?? []) as FTx[]);
+      issue(capped("ledger entries", data?.length ?? 0, count, days));
+    }
     setLoaded(true);
-  }, [days]);
+  }, [days, issue]);
   useLive(`tx-${key}`, ["company_tx"], load, 60_000);
   return { tx, loaded, reload: load };
-}
-
-/** On time = delivered by the end of the booked slot, or within 90 minutes of the request when there was no slot. */
-export function onTime(o: Pick<FOrder, "delivered_at" | "slot_end" | "created_at">) {
-  if (!o.delivered_at) return null;
-  const limit = o.slot_end ? Date.parse(o.slot_end) : Date.parse(o.created_at) + 90 * 60_000;
-  return Date.parse(o.delivered_at) <= limit;
 }

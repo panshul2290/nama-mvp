@@ -2,11 +2,15 @@
 
 import { useCallback, useState } from "react";
 import { useBiz, type BizProperty } from "@/components/business/BizContext";
-import { dueBy } from "@/components/business/data";
 import { Kpis, useLive } from "@/components/portal/kit";
+import { servedAt, slaDue } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
 
-type Row = { id: string; property_id: string | null; gallons: number; slot_end: string | null; created_at: string; delivered_at: string | null };
+type Row = {
+  id: string; property_id: string | null; service_type: string; gallons: number; slot_end: string | null; created_at: string; released_at: string | null;
+  collected_at: string | null; delivered_at: string | null;
+};
+const ROW_CAP = 2000;
 type Pod = { order_id: string; meter_gal: number };
 type Stat = { label: string; n: number; onTime: number; lateMin: number[]; ordered: number; metered: number; withPod: number };
 
@@ -22,16 +26,25 @@ export default function ServiceLevels() {
   const [stats, setStats] = useState<Stat[]>([]);
   const [complaints, setComplaints] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [matched, setMatched] = useState(0);
 
   const load = useCallback(async () => {
     const db = supabase();
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     const [o, p, c] = await Promise.all([
-      db.from("orders").select("id, property_id, gallons, slot_end, created_at, delivered_at").eq("org_id", org.id).eq("status", "delivered").gte("delivered_at", since).limit(2000),
+      db.from("orders")
+        .select("id, property_id, service_type, gallons, slot_end, created_at, released_at, collected_at, delivered_at", { count: "exact" })
+        .eq("org_id", org.id).eq("status", "delivered").gte("delivered_at", since)
+        .order("delivered_at", { ascending: false }).limit(ROW_CAP),
       db.from("properties").select("id, label, address, area, lat, lng, tank_gal, created_at").eq("org_id", org.id).order("label"),
       db.from("complaints").select("id", { count: "exact", head: true }).gte("created_at", new Date(Date.now() - 90 * 86_400_000).toISOString()),
     ]);
+    const failed = o.error ?? p.error;
+    setError(failed ? failed.message : null);
+    if (failed) return setLoaded(true); // keep the figures already on screen
     const orders = (o.data ?? []) as Row[];
+    setMatched(o.count ?? orders.length);
     const sites = (p.data ?? []) as BizProperty[];
     const pods: Pod[] = [];
     for (let i = 0; i < orders.length; i += 200) {
@@ -46,7 +59,7 @@ export default function ServiceLevels() {
       if (!by.has(key)) by.set(key, { label: "Other / removed sites", n: 0, onTime: 0, lateMin: [], ordered: 0, metered: 0, withPod: 0 });
       const s = by.get(key)!;
       s.n += 1;
-      const late = Date.parse(r.delivered_at!) - dueBy(r);
+      const late = Date.parse(servedAt(r)!) - slaDue(r);
       if (late <= 0) s.onTime += 1;
       else s.lateMin.push(late / 60_000);
       const m = podOf.get(r.id);
@@ -80,6 +93,16 @@ export default function ServiceLevels() {
           </button>
         ))}
       </div>
+      {error && (
+        <div className="banner badb" role="alert">
+          Couldn’t load service levels: {error}. It will retry automatically.
+        </div>
+      )}
+      {matched > total && (
+        <div className="banner info" role="status">
+          Showing the latest {total.toLocaleString("en-GB")} of {matched.toLocaleString("en-GB")} deliveries in this period — the figures cover only those.
+        </div>
+      )}
       <Kpis
         items={[
           { label: "Delivered within window", value: total ? `${((onTime / total) * 100).toFixed(1)}%` : "—", sub: `${total} deliveries`, tone: total && onTime / total < 0.9 ? "warn" : "ok" },
@@ -126,7 +149,7 @@ export default function ServiceLevels() {
           </table>
         </div>
         <p className="note">
-          On time = delivered before the end of the booked window (or within 2 hours for as-soon-as-possible orders). Volume variance compares the tanker&apos;s flow-meter
+          On time = delivered (wastewater: collected) before the end of the booked window, or within 2 hours for as-soon-as-possible orders. Volume variance compares the tanker&apos;s flow-meter
           reading on the proof of delivery with the gallons ordered; more than 5% short is a penalty for the tanker company and is refunded.
         </p>
       </div>

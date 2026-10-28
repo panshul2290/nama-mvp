@@ -9,22 +9,31 @@ import { Bars, Kpis, fmtDateTime, gal, monthStart, omr, useLive } from "@/compon
 import { supabase } from "@/lib/supabase/client";
 import { ref } from "@/lib/types";
 
+const ORDER_CAP = 1000;
+
 export default function BusinessDashboard() {
   const { org } = useBiz();
   const [sites, setSites] = useState<BizProperty[]>([]);
   const [orders, setOrders] = useState<BizOrder[]>([]);
   const [activeContracts, setActiveContracts] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cut, setCut] = useState<{ shown: number; total: number } | null>(null);
 
   const load = useCallback(async () => {
     const db = supabase();
     const since = new Date(Math.min(monthStart().getTime(), Date.now() - 2 * 86_400_000)).toISOString();
     const [p, o, c, up] = await Promise.all([
       db.from("properties").select("id, label, address, area, lat, lng, tank_gal, created_at").eq("org_id", org.id).order("label"),
-      db.from("orders").select(ORDER_COLS).eq("org_id", org.id).gte("created_at", since).order("created_at", { ascending: false }).limit(1000),
+      db.from("orders").select(ORDER_COLS, { count: "exact" }).eq("org_id", org.id).gte("created_at", since).order("created_at", { ascending: false }).limit(ORDER_CAP),
       db.from("contracts").select("id", { count: "exact", head: true }).eq("org_id", org.id).eq("status", "active"),
       db.from("orders").select(ORDER_COLS).eq("org_id", org.id).in("status", OPEN).order("slot_start", { ascending: true, nullsFirst: true }).limit(50),
     ]);
+    const failed = p.error ?? o.error ?? c.error ?? up.error;
+    setError(failed ? failed.message : null);
+    if (failed) return setLoaded(true); // keep the figures already on screen
+    const shown = o.data?.length ?? 0;
+    setCut(o.count != null && o.count > shown ? { shown, total: o.count } : null);
     setSites((p.data ?? []) as BizProperty[]);
     const map = new Map<string, BizOrder>();
     for (const r of [...((o.data ?? []) as BizOrder[]), ...((up.data ?? []) as BizOrder[])]) map.set(r.id, r);
@@ -54,6 +63,16 @@ export default function BusinessDashboard() {
 
   return (
     <>
+      {error && (
+        <div className="banner badb" role="alert">
+          Couldn’t load your dashboard: {error}. It will retry automatically.
+        </div>
+      )}
+      {cut && (
+        <div className="banner info" role="status">
+          Showing the latest {cut.shown.toLocaleString("en-GB")} of {cut.total.toLocaleString("en-GB")} orders this month — the totals below cover only those.
+        </div>
+      )}
       <Kpis
         items={[
           { label: "Sites", value: loaded ? sites.length : "…" },

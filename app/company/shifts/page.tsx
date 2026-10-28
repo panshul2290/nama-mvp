@@ -3,13 +3,14 @@
 import { useCallback, useState } from "react";
 import { tankerOf, useFleet } from "@/components/company/CompanyContext";
 import { St, useAction, useLive } from "@/components/portal/kit";
+import { SHIFT_KEYS, shiftHours, type Shift } from "@/lib/shifts";
 import { supabase } from "@/lib/supabase/client";
 
-type Avail = { driver_id: string; weekday: number; available: boolean; shift: "day" | "evening" | "night" };
+type Avail = { driver_id: string; weekday: number; available: boolean; shift: Shift };
 type Emergency = { on: boolean; zone: string | null; reason: string | null };
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const SHIFT_LABEL = { day: "Day 06–14", evening: "Evening 14–22", night: "Night 22–06" } as const;
+const SHIFT_NAME: Record<Shift, string> = { day: "Day", evening: "Evening", night: "Night" };
 
 // Today's weekday in Muscat (0 = Sunday), as the database stores it.
 const muscatWeekday = () => new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Muscat" })).getDay();
@@ -92,9 +93,9 @@ export default function CompanyShifts() {
                       {ovr ? "NWS" : a.available ? "On" : "Off"}
                     </button>
                     <select aria-label={`${d.full_name}, ${DAYS[day]} shift`} value={a.shift} disabled={!a.available || busy === k} onChange={(e) => save({ ...a, shift: e.target.value as Avail["shift"] })}>
-                      {(Object.keys(SHIFT_LABEL) as Avail["shift"][]).map((s) => (
+                      {SHIFT_KEYS.map((s) => (
                         <option key={s} value={s}>
-                          {SHIFT_LABEL[s]}
+                          {SHIFT_NAME[s]} {shiftHours(s, true)}
                         </option>
                       ))}
                     </select>
@@ -111,7 +112,7 @@ export default function CompanyShifts() {
               <St tone="ok">{onDuty} on duty today</St>{" "}
             </>
           )}
-          NWS can override shifts in emergency mode and call every driver on duty. Drivers see their week in the Driver app and can change it too.
+          Shifts (Muscat time): {SHIFT_KEYS.map((s) => `${SHIFT_NAME[s]} ${shiftHours(s)}`).join(" · ")}. NWS can override shifts in emergency mode and call every driver on duty. Drivers see their week in the Driver app and can change it too.
         </p>
       </div>
     </div>

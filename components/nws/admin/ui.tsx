@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { saveCsv, type CsvCell } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
+import { muscatDayStart } from "@/lib/sla";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 // Shared bits for the Reports and Settings screens.
 
@@ -11,29 +14,21 @@ export const omr = (v: number | string | null | undefined, digits = 3) =>
 export const int = (v: number) => Math.round(v).toLocaleString();
 export const pct = (v: number, digits = 1) => `${(v * 100).toFixed(digits)}%`;
 
-/** ISO timestamp `days` days ago (start of that local day). */
+const DAY_MS = 86_400_000;
+
+/** ISO timestamp `days` days ago (start of that Muscat day). */
 export function sinceIso(days: number) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - (days - 1));
-  return d.toISOString();
+  return new Date(muscatDayStart().getTime() - (days - 1) * DAY_MS).toISOString();
 }
 
-/** Local calendar day key, YYYY-MM-DD. */
-export const dayKey = (iso: string | Date) => new Date(iso).toLocaleDateString("en-CA");
-export const dayLabel = (key: string) => new Date(`${key}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+/** Muscat calendar day key, YYYY-MM-DD. */
+export const dayKey = (iso: string | Date) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Muscat" });
+export const dayLabel = (key: string) => new Date(`${key}T12:00:00+04:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "Asia/Muscat" });
 
 /** Every day key from `days` days ago to today, for gap-free time series. */
 export function dayKeys(days: number) {
-  const out: string[] = [];
-  const d = new Date();
-  d.setHours(12, 0, 0, 0);
-  d.setDate(d.getDate() - (days - 1));
-  for (let i = 0; i < days; i++) {
-    out.push(dayKey(d));
-    d.setDate(d.getDate() + 1);
-  }
-  return out;
+  const noon = muscatDayStart().getTime() + DAY_MS / 2;
+  return Array.from({ length: days }, (_, i) => dayKey(new Date(noon - (days - 1 - i) * DAY_MS)));
 }
 
 export function median(xs: number[]) {
@@ -56,17 +51,8 @@ export function groupBy<T, A>(rows: T[], key: (r: T) => string, init: () => A, a
 }
 
 /** Download rows as a CSV file (client-side). */
-export function downloadCsv(name: string, rows: (string | number | null | undefined)[][]) {
-  const esc = (v: string | number | null | undefined) => {
-    const s = v == null ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const blob = new Blob(["﻿" + rows.map((r) => r.map(esc).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name.replace(/[^\w-]+/g, "_")}_${dayKey(new Date())}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+export function downloadCsv(name: string, rows: CsvCell[][]) {
+  saveCsv(`${name.replace(/[^\w-]+/g, "_")}_${dayKey(new Date())}.csv`, rows);
 }
 
 export function PageHead({ title, sub, children }: { title: string; sub?: string; children?: React.ReactNode }) {
@@ -187,8 +173,9 @@ export function useRun() {
 /** A plain confirmation for actions the database audits without a reason. */
 export function ConfirmDialog({ title, body, confirm, onCancel, onConfirm }: { title: string; body: React.ReactNode; confirm: string; onCancel: () => void; onConfirm: () => Promise<void> | void }) {
   const [busy, setBusy] = useState(false);
+  const trap = useFocusTrap(busy ? undefined : onCancel);
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onCancel}>
+    <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onCancel}>
       <div onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         <div className="mut" style={{ fontSize: 13.5, marginBottom: 16 }}>{body}</div>
@@ -205,16 +192,24 @@ export function ConfirmDialog({ title, body, confirm, onCancel, onConfirm }: { t
 
 /**
  * Fetch up to `cap` rows in pages of 1,000 (PostgREST's default max rows per request).
- * `page(from, to)` must apply `.range(from, to)` to an ordered query.
+ * `page(from, to)` must apply `.range(from, to)` to an ordered query (newest first,
+ * so a cut-off keeps the latest rows). `truncated` is true when more rows matched than `cap`.
  */
 export async function fetchPaged<T>(page: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message?: string } | null }>, cap = 5000) {
   const rows: T[] = [];
   for (let from = 0; from < cap; from += 1000) {
-    const { data, error } = await page(from, Math.min(from + 1000, cap) - 1);
-    if (error) return { rows, error };
+    const to = Math.min(from + 1000, cap) - 1;
+    const { data, error } = await page(from, to);
+    if (error) return { rows, error, truncated: false };
     const got = (data ?? []) as T[];
     rows.push(...got);
-    if (got.length < 1000) break;
+    if (got.length < to - from + 1) return { rows, error: null, truncated: false };
   }
-  return { rows, error: null };
+  // Full up to the cap: one more row tells whether anything was left out.
+  const more = await page(cap, cap);
+  return { rows, error: null, truncated: !more.error && ((more.data ?? []) as T[]).length > 0 };
 }
+
+/** "Showing the latest N …" for a capped list, or null when nothing was left out. */
+export const cappedNote = (truncated: boolean, shown: number, what: string) =>
+  truncated ? `Showing the latest ${shown.toLocaleString()} ${what} in this period — totals cover only these.` : null;

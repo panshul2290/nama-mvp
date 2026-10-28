@@ -1,6 +1,6 @@
 # Design note: verifying fills and discharges
 
-**Status:** design only, not implemented. The MVP records deliveries (`mark_arrived`, `mark_delivered`) but has no filling or discharge events.
+**Status:** partly implemented. `confirm_fill` and `confirm_discharge` record fill and discharge events in `source_events`, matched to the nearest station/site geofence and a GPS fix under 5 minutes old, with alerts and penalties when outside; proof of delivery needs an uploaded photo (`submit_pod`). The authoritative events (TFS transactions, IVMS valve/flow readings) are still simulated from the driver's phone GPS, so by the rule below these records are not yet truly verified.
 
 ## Rule
 

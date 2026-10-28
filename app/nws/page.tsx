@@ -14,6 +14,7 @@ import { fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffConte
 import { STATUS_TEXT } from "@/components/OrderBits";
 import { agoText, STALE_AFTER_S } from "@/lib/gps";
 import { orderNo } from "@/lib/format";
+import { muscatDayStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
 import { ON_JOB_STATUSES, type OrderStatus } from "@/lib/types";
 import type { ServiceType } from "@/lib/pricing";
@@ -27,7 +28,7 @@ type LiveTanker = {
 };
 type LiveOrder = {
   id: string; order_no: number; service_type: ServiceType; gallons: number; area: string; status: OrderStatus; tanker_id: string | null;
-  tanker_plate: string | null; created_at: string; slot_end: string | null; delivered_at: string | null;
+  tanker_plate: string | null; created_at: string; released_at: string | null; slot_end: string | null; collected_at: string | null; delivered_at: string | null;
   loc: { lat: number; lng: number } | { lat: number; lng: number }[] | null;
 };
 type Alert = {
@@ -41,7 +42,7 @@ type Hit = { kind: "tanker" | "order" | "customer"; id: string; title: string; s
 const ACTIVE: OrderStatus[] = ["requested", "accepted", "arriving", "arrived", "collected"];
 const TYPES: (ServiceType | "all")[] = ["all", "DW", "WW", "TE"];
 const TYPE_LABEL = { all: "All tankers", DW: "Drinking water", WW: "Wastewater", TE: "Treated effluent" };
-const ORDER_COLS = "id, order_no, service_type, gallons, area, status, tanker_id, tanker_plate, created_at, slot_end, delivered_at, loc:order_locations(lat, lng)";
+const ORDER_COLS = "id, order_no, service_type, gallons, area, status, tanker_id, tanker_plate, created_at, released_at, slot_end, collected_at, delivered_at, loc:order_locations(lat, lng)";
 const SCAN_EVERY = 60_000;
 
 // Haversine distance in km (mirrors public.km).
@@ -50,11 +51,7 @@ function km(a: LatLng, b: LatLng) {
   const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
   return 6371 * 2 * Math.asin(Math.sqrt(h));
 }
-function startOfDay(at: number) {
-  const d = new Date(at);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
+const startOfDay = (at: number) => muscatDayStart(at).toISOString();
 
 export default function LiveOperations() {
   const { can, toast } = useStaff();

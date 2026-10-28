@@ -9,6 +9,7 @@ import { DICT, muscatDay, useErrText } from "@/components/driver/i18n";
 import { legIndex, tripLegs, type Leg } from "@/components/driver/legs";
 import { useProfile } from "@/components/useProfile";
 import { useToast } from "@/components/useToast";
+import { errorCode } from "@/lib/errors";
 import { FEED_CHANNEL, GONE_EVENT } from "@/lib/feed";
 import { DEFAULT_CENTER } from "@/lib/geo";
 import { getCurrentPosition, keepScreenOn, wakeLockSupported, watchPosition, type GeoError } from "@/lib/geo-source";
@@ -42,6 +43,8 @@ type DriverState = {
   refreshTanker: () => Promise<void>;
   online: boolean;
   toggleOnline: () => Promise<void>;
+  /** The tanker's company is suspended by NWS (no going online, no jobs). */
+  companySuspended: boolean;
   /** Today's safety pre-check (Muscat day) has been submitted. */
   shiftChecked: boolean;
   submitShiftCheck: (items: Record<string, boolean>) => Promise<boolean>;
@@ -103,6 +106,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   const [acting, setActing] = useState(false);
   const [today, setToday] = useState({ earned: 0, jobs: 0 });
   const [shiftChecked, setShiftChecked] = useState(false);
+  const [companySuspended, setCompanySuspended] = useState(false);
   const [sites, setSites] = useState<Site[]>([]);
   const [prefs, setPrefs] = useState<Prefs>({});
   const [unread, setUnread] = useState(0);
@@ -185,11 +189,8 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       .select("*")
       .eq("active", true)
       .then(({ data }) => setSites((data ?? []) as Site[]));
-    db.from("profiles")
-      .select("prefs")
-      .eq("id", profile.id)
-      .maybeSingle()
-      .then(({ data }) => setPrefs((data?.prefs as Prefs) ?? {}));
+    // prefs is a private column: read through my_private_profile(), not the table.
+    db.rpc("my_private_profile").then(({ data }) => setPrefs((data as { prefs?: Prefs | null } | null)?.prefs ?? {}));
     loadToday(profile.id);
     refreshUnread();
   }, [profile, router, loadJob, loadToday, refreshUnread]);
@@ -198,6 +199,18 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     const { data } = await supabase().from("tankers").select("*").maybeSingle<Tanker>();
     if (data) setTanker(data);
   }, []);
+
+  // A suspended company's tankers can't work (the database refuses with company_suspended).
+  const companyId = tanker?.company_id ?? null;
+  useEffect(() => {
+    if (!companyId) return;
+    supabase()
+      .from("companies")
+      .select("status")
+      .eq("id", companyId)
+      .maybeSingle()
+      .then(({ data }) => setCompanySuspended(data?.status === "suspended"));
+  }, [companyId]);
 
   const savePrefs = useCallback(
     async (patch: Prefs) => {
@@ -225,13 +238,37 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     };
   }, [profile, showToast]);
 
-  // One entry point for fixes, real or simulated. Fixes worse than 100 m are dropped (the server rejects them too).
-  const acceptFix = useCallback((f: Fix) => {
-    if (f.accuracy > MAX_ACCURACY_M) return;
-    fixRef.current = f;
-    lastFixAt.current = Date.now();
-    setMe({ lat: f.lat, lng: f.lng });
+  // Location reporting while online (so NWS operators see idle tankers) and during a job:
+  // every 10 s while moving (>15 m), at most every 30 s otherwise, with accuracy and the fix's
+  // own timestamp. shouldSend() decides; it runs on every fix as it arrives (so a native
+  // background location callback uploads straight away, without waiting for a WebView timer)
+  // and on a 10 s tick as a fallback.
+  const reportingRef = useRef(false);
+  const sendIfDue = useCallback(() => {
+    if (!reportingRef.current) return;
+    const now = Date.now();
+    const fix = fixRef.current;
+    if (!shouldSend(fix, lastSent.current, now)) return;
+    const f = fix as Fix;
+    lastSent.current = { lat: f.lat, lng: f.lng, at: now };
+    supabase()
+      .rpc("report_location", { p_lat: f.lat, p_lng: f.lng, p_accuracy_m: f.accuracy, p_recorded_at: new Date(f.at).toISOString() })
+      .then(({ error }) => {
+        if (error) lastSent.current = null; // retry with the next fix or tick
+      });
   }, []);
+
+  // One entry point for fixes, real or simulated. Fixes worse than 100 m are dropped (the server rejects them too).
+  const acceptFix = useCallback(
+    (f: Fix) => {
+      if (f.accuracy > MAX_ACCURACY_M) return;
+      fixRef.current = f;
+      lastFixAt.current = Date.now();
+      setMe({ lat: f.lat, lng: f.lng });
+      sendIfDue();
+    },
+    [sendIfDue],
+  );
 
   const onFix = useCallback(
     (f: Fix) => {
@@ -262,6 +299,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     const { data, error } = await supabase().rpc("driver_set_online", { p_online: next }).single<Tanker>();
     if (error) {
       setTanker({ ...tanker, is_online: !next });
+      if (errorCode(error) === "company_suspended") setCompanySuspended(true);
       showToast(errText(error));
       return;
     }
@@ -345,6 +383,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       const { error } = await supabase().rpc("accept_order", { p_order_id: orderId }).single<Order>();
       if (error) {
         setOpenJobs((rs) => rs.filter((r) => r.id !== orderId || !/already_taken|not_eligible/.test(error.message)));
+        if (errorCode(error) === "company_suspended") setCompanySuspended(true);
         return error;
       }
       feed.current?.send({ type: "broadcast", event: GONE_EVENT, payload: { id: orderId } });
@@ -400,34 +439,25 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     };
   }, [jobId, profile, showToast, t]);
 
-  // Location reporting while online (so NWS operators see idle tankers) and during a job:
-  // every 10 s while moving (>15 m), at most every 30 s otherwise, with accuracy and the fix's
-  // own timestamp. Same path for real and simulated fixes. Restarts when a job starts, so the
-  // first fix goes out straight away and flips the job to 'arriving'.
+  // Same path for real and simulated fixes. Restarts when a job starts, so the first fix goes
+  // out straight away and flips the job to 'arriving'.
   const reporting = online || onJob;
   useEffect(() => {
+    reportingRef.current = reporting;
     if (!reporting) return;
     lastSent.current = null;
     const tick = () => {
-      const now = Date.now();
-      if (!simRoute.current && now - lastFixAt.current > POKE_AFTER_MS) getCurrentPosition().then(onFix, onFixError);
-      const fix = fixRef.current;
-      if (!shouldSend(fix, lastSent.current, now)) return;
-      const f = fix as Fix;
-      lastSent.current = { lat: f.lat, lng: f.lng, at: now };
-      supabase()
-        .rpc("report_location", { p_lat: f.lat, p_lng: f.lng, p_accuracy_m: f.accuracy, p_recorded_at: new Date(f.at).toISOString() })
-        .then(({ error }) => {
-          if (error) lastSent.current = null; // retry on the next tick
-        });
+      if (!simRoute.current && Date.now() - lastFixAt.current > POKE_AFTER_MS) getCurrentPosition().then(onFix, onFixError);
+      sendIfDue();
     };
     const first = setTimeout(tick, 0);
     const timer = setInterval(tick, PING_MS);
     return () => {
+      reportingRef.current = false;
       clearTimeout(first);
       clearInterval(timer);
     };
-  }, [reporting, jobId, onFix, onFixError]);
+  }, [reporting, jobId, onFix, onFixError, sendIfDue]);
 
   /** Geofenced steps are judged on the server's last fix, so send the newest one first. */
   const sendFixNow = useCallback(async () => {
@@ -592,6 +622,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
         refreshTanker,
         online,
         toggleOnline,
+        companySuspended,
         shiftChecked,
         submitShiftCheck,
         job,

@@ -42,6 +42,10 @@ const AR_ERRORS: Record<string, string> = {
   plate_taken: "رقم اللوحة مسجل مسبقاً.",
   tanker_blocked: "صهريجك موقوف من نماء ولا يمكنه الاتصال أو قبول المهام.",
   permit_invalid: "لا يوجد تصريح ساري لصهريجك لهذه الخدمة.",
+  company_suspended: "شركة الصهاريج التابع لها موقوفة من نماء، لذا لا يمكن لصهاريجها الاتصال أو قبول المهام.",
+  pod_required: "التقط إثبات التسليم (الصورة والتوقيع) لإنهاء هذه المهمة.",
+  invitation_expired: "انتهت صلاحية هذه الدعوة. اطلب دعوة جديدة.",
+  driver_in_other_company: "أنت مرتبط بشركة أخرى.",
   chat_closed: "المراسلة متاحة فقط أثناء المهمة.",
   check_incomplete: "أكمل جميع بنود فحص السلامة قبل بدء المناوبة.",
   no_fill_for_wastewater: "مهام مياه الصرف لا تتطلب التعبئة من محطة.",
@@ -281,7 +285,9 @@ export const DICT: Dict = {
   collectedFromTank: { en: "Collected from the tank, customer not home", ar: "تم السحب من الخزان والعميل غير موجود" },
   confirmDelivery: { en: "Confirm delivery", ar: "تأكيد التوصيل" },
   confirmCollection: { en: "Confirm collection", ar: "تأكيد السحب" },
-  photoNotUploaded: { en: "The photo couldn’t be uploaded; its fingerprint was recorded instead.", ar: "تعذّر رفع الصورة؛ تم تسجيل بصمتها بدلاً من ذلك." },
+  photoNotUploaded: { en: "The photo couldn’t be uploaded.", ar: "تعذّر رفع الصورة." },
+  photoRetryS: { en: "The job can’t be completed without it. Check your connection and try again.", ar: "لا يمكن إكمال المهمة بدونها. تحقق من الاتصال وحاول مرة أخرى." },
+  retry: { en: "Retry", ar: "إعادة المحاولة" },
   deliveredToast: { en: "Delivered · you earned {amt}", ar: "تم التوصيل · ربحت {amt}" },
   collectedToast: { en: "Collection confirmed. Now drive to the discharge site.", ar: "تم تأكيد السحب. توجّه الآن إلى موقع التفريغ." },
 
@@ -391,7 +397,7 @@ export const DICT: Dict = {
   uploadFailed: { en: "The file couldn’t be uploaded. Check your connection and try again.", ar: "تعذّر رفع الملف. تحقق من الاتصال وحاول مجدداً." },
   docSent: { en: "Document submitted — NWS will review it.", ar: "تم إرسال المستند — ستراجعه نماء." },
   availability: { en: "Weekly availability", ar: "التوفر الأسبوعي" },
-  availNote: { en: "Day 06:00–18:00 · evening 14:00–22:00 · night 22:00–06:00. NWS can override this during emergencies.", ar: "نهاري ٠٦:٠٠–١٨:٠٠ · مسائي ١٤:٠٠–٢٢:٠٠ · ليلي ٢٢:٠٠–٠٦:٠٠. يمكن لنماء تجاوز ذلك في حالات الطوارئ." },
+  availNote: { en: "Day {day} · evening {evening} · night {night}. NWS can override this during emergencies.", ar: "نهاري {day} · مسائي {evening} · ليلي {night}. يمكن لنماء تجاوز ذلك في حالات الطوارئ." },
   shiftFor: { en: "Shift on {day}", ar: "المناوبة يوم {day}" },
   shift_day: { en: "Day", ar: "نهاري" },
   shift_evening: { en: "Evening", ar: "مسائي" },
@@ -427,6 +433,15 @@ export const DICT: Dict = {
   noNotifs: { en: "No notifications yet.", ar: "لا توجد إشعارات بعد." },
   unread: { en: "Unread", ar: "غير مقروء" },
 
+  // Company invitations
+  inviteT: { en: "{company} invited you to join their fleet", ar: "دعتك {company} للانضمام إلى أسطولها" },
+  inviteS: { en: "Accept to drive for them. They assign your tanker; a tanker you registered yourself joins the company with you. Expires {date}.", ar: "اقبل للعمل لديهم. تخصص الشركة صهريجك، وينضم أي صهريج سجلته بنفسك إلى الشركة معك. تنتهي في {date}." },
+  inviteCompany: { en: "A tanker company", ar: "شركة صهاريج" },
+  inviteAccepted: { en: "You joined {company}.", ar: "انضممت إلى {company}." },
+  inviteDeclined: { en: "Invitation declined.", ar: "تم رفض الدعوة." },
+  companySuspendedT: { en: "Your tanker company is suspended by NWS.", ar: "شركة الصهاريج التابع لها موقوفة من نماء." },
+  companySuspendedS: { en: "Its tankers can’t go online or take jobs until NWS reinstates it.", ar: "لا يمكن لصهاريجها الاتصال أو قبول المهام حتى تعيد نماء تفعيلها." },
+
   // Onboarding
   obTitle: { en: "Your tanker", ar: "صهريجك" },
   obSub: { en: "You’ll only see requests your tanker can serve", ar: "سترى فقط الطلبات التي يمكن لصهريجك تلبيتها" },
@@ -436,4 +451,5 @@ export const DICT: Dict = {
   obCapacity: { en: "Capacity (gallons)", ar: "السعة (جالون)" },
   obOrEnter: { en: "Or enter capacity", ar: "أو أدخل السعة" },
   obSave: { en: "Save and continue", ar: "حفظ ومتابعة" },
+  obJoined: { en: "You joined the company. It will assign you a tanker; you can then go online from Home.", ar: "انضممت إلى الشركة. ستخصص لك صهريجاً، وبعدها يمكنك الاتصال من الصفحة الرئيسية." },
 };

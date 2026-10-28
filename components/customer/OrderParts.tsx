@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
+import { SignatureSvg } from "@/components/SignatureSvg";
 import { friendlyError } from "@/lib/errors";
 import { initials } from "@/lib/format";
 import { localDigits } from "@/lib/i18n";
@@ -243,11 +244,6 @@ export function PodCard({ order }: { order: Order }) {
             .then(({ data: s }) => setPhoto(s?.signedUrl ?? null));
       });
   }, [order.id]);
-  const sig = useMemo(() => {
-    const s = pod?.signature_svg?.trim();
-    if (!s) return null;
-    return s.startsWith("<svg") ? { img: `data:image/svg+xml;utf8,${encodeURIComponent(s)}` } : { path: s };
-  }, [pod?.signature_svg]);
   if (!pod) return null;
   const short = pod.meter_gal < order.gallons * 0.95;
   return (
@@ -292,19 +288,19 @@ export function PodCard({ order }: { order: Order }) {
           </b>
         </div>
       )}
+      {Number(order.short_credit ?? 0) > 0 && (
+        <div className="banner" role="status">
+          {t(order.billing === "account" ? "shortCreditAcct" : "shortCredit", {
+            got: gal(pod.meter_gal, lang),
+            of: gal(order.gallons, lang),
+            amt: omr3(order.short_credit ?? 0, lang),
+          })}
+        </div>
+      )}
       {pod.left_at_tank && <p className="mut small">{t("leftAtTank")}</p>}
       <div className="sig">
         <span className="mut small">{t("signature")}</span>
-        {sig?.img ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={sig.img} alt={t("signature")} />
-        ) : sig?.path ? (
-          <svg viewBox="0 0 150 80" role="img" aria-label={t("signature")}>
-            <path d={sig.path} fill="none" stroke="#0e2329" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ) : (
-          <p className="mut small">{t("noSig")}</p>
-        )}
+        {pod.signature_svg?.trim() ? <SignatureSvg value={pod.signature_svg} label={t("signature")} style={{ color: "#0e2329" }} /> : <p className="mut small">{t("noSig")}</p>}
       </div>
     </div>
   );
@@ -421,7 +417,9 @@ export function ReschedSheet({ order, now, onClose, onDone }: { order: Order; no
   const { t, lang } = useCx();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const slots = slotOptions(now, false);
+  // The price was fixed at booking, so only windows with the same evening-peak class are offered
+  // (the server refuses others with reschedule_changes_price).
+  const slots = slotOptions(now, false).filter((s) => s.peak === Boolean(order.slot_peak));
   async function pick(id: string) {
     const s = slots.find((x) => x.id === id);
     if (!s) return;
@@ -449,7 +447,10 @@ export function ReschedSheet({ order, now, onClose, onDone }: { order: Order; no
           </button>
         ))}
       </div>
-      <p className="mut small">{t("reschedNote")}</p>
+      {!slots.length && <p className="small">{t("reschedNone")}</p>}
+      <p className="mut small">
+        {t("reschedNote")} {t("reschedPeakNote")}
+      </p>
       {error && <div className="banner badb">{error}</div>}
     </Sheet>
   );

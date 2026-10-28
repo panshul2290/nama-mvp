@@ -60,12 +60,10 @@ export const PREF_DEFAULTS: Required<Prefs> = { push: true, sms: true, whatsapp:
 export function usePrefs(userId: string) {
   const [prefs, setPrefs] = useState<Required<Prefs> | null>(null);
   useEffect(() => {
+    // prefs is a private column: read through my_private_profile(), not the table.
     supabase()
-      .from("profiles")
-      .select("prefs")
-      .eq("id", userId)
-      .maybeSingle<{ prefs: Prefs | null }>()
-      .then(({ data }) => setPrefs({ ...PREF_DEFAULTS, ...(data?.prefs ?? {}) }));
+      .rpc("my_private_profile")
+      .then(({ data }) => setPrefs({ ...PREF_DEFAULTS, ...((data as { prefs?: Prefs | null } | null)?.prefs ?? {}) }));
   }, [userId]);
 
   const set = useCallback(

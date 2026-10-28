@@ -4,9 +4,12 @@
 // Permits, Customers, Complaints): tabs, KPI tiles, dialogs, RPC runner, formatting.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStaff } from "@/components/nws/StaffContext";
+import { saveCsv, type CsvCell } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
+import { servedAt, slaDue } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/lib/types";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 export const HOUR = 3_600_000;
 export const DAY = 86_400_000;
@@ -44,15 +47,16 @@ export const CHANNEL_LABEL: Record<string, string> = { app: "App", call_centre: 
 export const SEV_LABEL = { high: "High", med: "Medium", low: "Low" } as const;
 export const SEV_TONE = { high: "bad", med: "warn", low: "act" } as const;
 
-/** Order SLA: from the slot end, or 60 minutes after creation for ASAP orders. */
+/** Order SLA (lib/sla): served by the slot end, or within 2 h of release/creation for ASAP orders. */
 export function orderSla(
-  o: { status: OrderStatus; slot_end?: string | null; created_at: string; delivered_at?: string | null },
+  o: { status: OrderStatus; service_type?: string; slot_end?: string | null; released_at?: string | null; created_at: string; collected_at?: string | null; delivered_at?: string | null },
   now: number,
 ): { text: string; tone: "ok" | "warn" | "bad" | "" } {
   if (o.status === "cancelled") return { text: "—", tone: "" };
-  const due = o.slot_end ? Date.parse(o.slot_end) : Date.parse(o.created_at) + HOUR;
-  if (o.status === "delivered") {
-    const at = o.delivered_at ? Date.parse(o.delivered_at) : due;
+  const due = slaDue(o);
+  const served = servedAt({ ...o, service_type: o.service_type ?? "" });
+  if (served || o.status === "delivered") {
+    const at = served ? Date.parse(served) : due;
     return at <= due ? { text: "On time", tone: "ok" } : { text: "Late", tone: "bad" };
   }
   if (now > due) return { text: "Late", tone: "bad" };
@@ -122,17 +126,8 @@ export function useSignedUrl(path: string | null | undefined) {
 }
 
 /** Download rows as CSV (first row = headers). */
-export function downloadCsv(name: string, rows: (string | number | null | undefined)[][]) {
-  const esc = (v: string | number | null | undefined) => {
-    const s = v == null ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const blob = new Blob(["﻿" + rows.map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+export function downloadCsv(name: string, rows: CsvCell[][]) {
+  saveCsv(`${name}.csv`, rows);
 }
 
 export function Tabs<K extends string>({ tabs, value, onChange }: { tabs: [K, string, number?][]; value: K; onChange: (k: K) => void }) {
@@ -164,8 +159,9 @@ export function St({ tone, children }: { tone?: string; children: React.ReactNod
 
 /** A modal shell (wider than ReasonDialog) for forms. */
 export function Modal({ title, wide, onClose, children }: { title: string; wide?: boolean; onClose: () => void; children: React.ReactNode }) {
+  const trap = useFocusTrap(onClose);
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
+    <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
       <div className={wide ? "wide" : ""} onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         {children}

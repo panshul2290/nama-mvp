@@ -2,7 +2,7 @@
 
 import "./company.css";
 import { useCallback, useEffect, useState } from "react";
-import { CompanyProvider, type OwnerCompany } from "@/components/company/CompanyContext";
+import { CompanyIssues, CompanyProvider, type OwnerCompany } from "@/components/company/CompanyContext";
 import { RegisterCompany } from "@/components/company/RegisterCompany";
 import { PortalLoading, PortalShell, usePortalProfile, type PortalTab } from "@/components/portal/PortalShell";
 import { supabase } from "@/lib/supabase/client";
@@ -72,6 +72,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
   return (
     <CompanyProvider profile={profile} company={company} reloadCompany={loadCompany}>
       <PortalShell app="Company portal" who={who} title={company.name} description={DESCRIPTION} banner={banner} tabs={TABS.map((t) => (t.href === "/company/jobs" ? { ...t, badge: offers } : t))}>
+        <CompanyIssues />
         {children}
       </PortalShell>
     </CompanyProvider>

@@ -1,5 +1,6 @@
 // Business portal helpers: slot windows (Asia/Muscat), ETA text and labels.
 import { distanceKm } from "@/lib/geo";
+import { slaDue } from "@/lib/sla";
 import type { OrderStatus } from "@/lib/types";
 
 export type WindowKey = "morning" | "afternoon" | "evening";
@@ -45,7 +46,5 @@ export const CONTRACT_STATUS: Record<string, [string, "ok" | "warn" | "bad" | "a
   declined: ["Declined", "bad"],
 };
 
-/** When an order should have been delivered by: the slot end, or 2 h after it was placed. */
-export function dueBy(o: { slot_end: string | null; created_at: string }) {
-  return o.slot_end ? Date.parse(o.slot_end) : Date.parse(o.created_at) + 2 * 3_600_000;
-}
+/** When an order should have been served by (lib/sla): the slot end, or 2 h after it was released/placed. */
+export const dueBy = slaDue;

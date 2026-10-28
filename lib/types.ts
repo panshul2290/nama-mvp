@@ -43,6 +43,21 @@ export type Profile = {
   created_at?: string;
 };
 
+/** A company's invitation to a driver, or an organisation's to a business user (accepted by the invitee). */
+export type Invitation = {
+  id: string;
+  kind: "driver" | "org_member";
+  company_id: string | null;
+  org_id: string | null;
+  org_role: OrgRole | null;
+  email: string;
+  invited_by: string | null;
+  status: "pending" | "accepted" | "declined" | "revoked";
+  created_at: string;
+  expires_at: string;
+  decided_at: string | null;
+};
+
 // Tankers are identified by id; drivers link to them through tanker_assignments.
 export type Tanker = {
   id: string;
@@ -138,6 +153,8 @@ export type Order = {
   cancelled_by?: "customer" | "driver" | "staff" | "system" | "approver" | null;
   cancel_reason?: string | null;
   invoice_id?: string | null;
+  /** Short delivery: the pro-rata share refunded to the wallet (prepaid) or credited on the account invoice. */
+  short_credit?: string;
 };
 
 export type OrderLocation = { order_id: string; lat: number; lng: number; address: string };

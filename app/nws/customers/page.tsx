@@ -18,6 +18,14 @@ type Customer = {
   id: string; full_name: string; phone: string | null; segment: Segment; id_type: string | null; id_no: string | null; id_verified: boolean;
   account_blocked: boolean; lang: string; loyalty_points: number; created_at: string;
 };
+// id_type, id_no and loyalty_points are private columns: staff read them through staff_private_profiles().
+type Private = { id: string; id_type: string | null; id_no: string | null; loyalty_points: number };
+type PublicCustomer = Omit<Customer, "id_type" | "id_no" | "loyalty_points">;
+const PUBLIC_COLS = "id, full_name, phone, segment, id_verified, account_blocked, lang, created_at";
+function withPrivate(rows: PublicCustomer[], priv: Private[] | null): Customer[] {
+  const m = new Map((priv ?? []).map((p) => [p.id, p]));
+  return rows.map((r) => ({ ...r, id_type: m.get(r.id)?.id_type ?? null, id_no: m.get(r.id)?.id_no ?? null, loyalty_points: m.get(r.id)?.loyalty_points ?? 0 }));
+}
 type Org = {
   id: string; name: string; cr_no: string; segment: string; credit_limit: string; terms_days: number; approval_limit: string; invoicing: string;
   paused: boolean; status: "pending" | "active" | "suspended"; created_at: string;
@@ -70,8 +78,9 @@ function Customers() {
   const load = useCallback(async () => {
     const db = supabase();
     const nowIso = new Date().toISOString();
-    const [c, w, o, g, ao, inv, k, n] = await Promise.all([
-      db.from("profiles").select("id, full_name, phone, segment, id_type, id_no, id_verified, account_blocked, lang, loyalty_points, created_at").eq("role", "customer").order("created_at", { ascending: false }),
+    const [c, priv, w, o, g, ao, inv, k, n] = await Promise.all([
+      db.from("profiles").select(PUBLIC_COLS).eq("role", "customer").order("created_at", { ascending: false }),
+      db.rpc("staff_private_profiles", { p_ids: null }),
       db.from("wallet_tx").select("customer_id, amount"),
       db.from("orders").select("customer_id").limit(10000),
       db.from("organizations").select("*").order("name"),
@@ -83,7 +92,7 @@ function Customers() {
         .order("created_at", { ascending: false }),
       db.from("notifications").select("id, event, channels, title, created_at, read_at, user:profiles(full_name)").order("created_at", { ascending: false }).limit(200),
     ]);
-    setCustomers((c.data ?? []) as Customer[]);
+    setCustomers(withPrivate((c.data ?? []) as PublicCustomer[], priv.data as Private[] | null));
     const wm = new Map<string, number>();
     for (const r of (w.data ?? []) as { customer_id: string; amount: string }[]) wm.set(r.customer_id, (wm.get(r.customer_id) ?? 0) + Number(r.amount));
     setWallet(wm);
@@ -260,15 +269,16 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
 
   const load = useCallback(async () => {
     const db = supabase();
-    const [p, pr, o, k, x, t] = await Promise.all([
-      db.from("profiles").select("id, full_name, phone, segment, id_type, id_no, id_verified, account_blocked, lang, loyalty_points, created_at").eq("id", id).maybeSingle(),
+    const [p, priv, pr, o, k, x, t] = await Promise.all([
+      db.from("profiles").select(PUBLIC_COLS).eq("id", id).maybeSingle(),
+      db.rpc("staff_private_profiles", { p_ids: [id] }),
       db.from("properties").select("id, label, address, area, tank_gal").eq("customer_id", id).order("created_at"),
       db.from("orders").select("id, order_no, service_type, gallons, status, total, created_at").eq("customer_id", id).order("created_at", { ascending: false }).limit(30),
       db.from("contracts").select("id, contract_no, service_type, gallons, frequency, status").eq("customer_id", id).order("created_at", { ascending: false }),
       db.from("complaints").select("id, case_no, category, state, created_at").eq("customer_id", id).order("created_at", { ascending: false }),
       db.from("wallet_tx").select("id, kind, amount, memo, created_at").eq("customer_id", id).order("created_at", { ascending: false }).limit(50),
     ]);
-    setC(p.data as Customer | null);
+    setC(p.data ? withPrivate([p.data as PublicCustomer], priv.data as Private[] | null)[0] : null);
     setD({
       props: (pr.data ?? []) as Detail["props"],
       orders: (o.data ?? []) as Detail["orders"],

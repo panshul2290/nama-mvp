@@ -51,16 +51,17 @@ function Account() {
   const [sheet, setSheet] = useState<"edit" | "id" | "help" | null>(null);
   const [propSheet, setPropSheet] = useState<Property | "new" | null>(params.get("add") === "property" ? "new" : null);
 
-  const loadMe = useCallback(
-    () =>
-      supabase()
-        .from("profiles")
-        .select("full_name, phone, id_type, id_no, id_verified")
-        .eq("id", profile.id)
-        .maybeSingle<Me>()
-        .then(({ data }) => setMe(data)),
-    [profile.id],
-  );
+  // Identity fields are private columns: they come from my_private_profile(), not the table.
+  const loadMe = useCallback(() => {
+    const db = supabase();
+    return Promise.all([
+      db.from("profiles").select("full_name, phone, id_verified").eq("id", profile.id).maybeSingle<Pick<Me, "full_name" | "phone" | "id_verified">>(),
+      db.rpc("my_private_profile"),
+    ]).then(([{ data: pub }, { data: priv }]) => {
+      const p = (priv ?? {}) as Pick<Me, "id_type" | "id_no">;
+      setMe(pub ? { ...pub, id_type: p.id_type ?? null, id_no: p.id_no ?? null } : null);
+    });
+  }, [profile.id]);
   const loadDsr = useCallback(
     () =>
       supabase()

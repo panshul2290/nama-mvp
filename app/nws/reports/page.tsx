@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Chips, PageHead, Tabs } from "@/components/nws/admin/ui";
+import { cappedNote, Chips, PageHead, Tabs } from "@/components/nws/admin/ui";
 import { useStaff } from "@/components/nws/StaffContext";
 import { friendlyError } from "@/lib/errors";
 import Builder from "./_tabs/Builder";
@@ -17,6 +17,8 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<Tab>("ops");
   const [range, setRange] = useState("30");
   const [rows, setRows] = useState<ORow[] | null>(null);
+  const [truncated, setTruncated] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refData, setRefData] = useState<Ref | null>(null);
 
   useEffect(() => {
@@ -25,10 +27,12 @@ export default function ReportsPage() {
 
   useEffect(() => {
     let live = true;
-    loadOrders(Number(range)).then(({ rows: r, error }) => {
+    loadOrders(Number(range)).then(({ rows: r, error, truncated: cut }) => {
       if (!live) return;
+      setLoadError(error ? friendlyError(error) : null);
       if (error) toast(friendlyError(error), true);
       setRows(r);
+      setTruncated(cut);
     });
     return () => { live = false; };
   }, [range, toast]);
@@ -42,10 +46,12 @@ export default function ReportsPage() {
         <div className="rangebar">
           <Chips items={RANGES.map(([v, l]) => [v, l] as [string, string])} value={range} onChange={(v) => { setRows(null); setRange(v); }} />
           <span className="mut" style={{ fontSize: 12.5 }}>
-            {rows ? `${rows.length.toLocaleString()} orders${rows.length === ROW_CAP ? ` (first ${ROW_CAP.toLocaleString()})` : ""}` : "Loading…"}
+            {rows ? `${rows.length.toLocaleString()} orders` : "Loading…"}
           </span>
         </div>
       )}
+      {tab !== "build" && loadError && <div className="banner badb" role="alert">Couldn’t load all orders: {loadError}. Figures below are incomplete.</div>}
+      {tab !== "build" && rows && cappedNote(truncated, ROW_CAP, "orders") && <div className="banner info" role="status">{cappedNote(truncated, ROW_CAP, "orders")}</div>}
       {tab === "build" ? (
         <Builder refData={refData} />
       ) : !rows ? (

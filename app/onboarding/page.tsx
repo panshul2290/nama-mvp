@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { DICT, useErrText } from "@/components/driver/i18n";
+import { InvitationCards } from "@/components/driver/Invitations";
 import { Loading } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
 import { LangToggle, useT } from "@/lib/i18n";
@@ -22,6 +23,7 @@ export default function DriverOnboarding() {
   const [capacity, setCapacity] = useState(5000);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
 
   // Already registered? Go straight to the driver home.
   useEffect(() => {
@@ -60,6 +62,13 @@ export default function DriverOnboarding() {
         <span className="sp" style={{ flex: 1 }} />
         <LangToggle />
       </div>
+      {note && (
+        <div className="banner info" role="status">
+          {note}
+        </div>
+      )}
+      {/* A company that invited this driver assigns their tanker after they accept. */}
+      <InvitationCards toast={setNote} onJoined={() => setNote(t("obJoined"))} />
       <form onSubmit={submit}>
         {error && <div className="banner badb">{error}</div>}
         <div className="fld">

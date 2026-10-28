@@ -24,9 +24,7 @@ const PENALTY_STATE: Record<Penalty["state"], [string, "ok" | "warn" | "bad" | "
 };
 
 function nextSunday(now = new Date()) {
-  const d = dayStart(now);
-  d.setDate(d.getDate() + ((7 - d.getDay()) % 7 || 7));
-  return d;
+  return new Date(weekStart(now).getTime() + 7 * 86_400_000);
 }
 
 export default function CompanyFinance() {

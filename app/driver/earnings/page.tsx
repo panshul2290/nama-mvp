@@ -5,25 +5,16 @@ import { useDriver } from "@/components/DriverContext";
 import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
 import { useNow } from "@/components/driver/useNow";
 import { useT } from "@/lib/i18n";
+import { isOnTime, muscatDayStart, muscatWeekStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type CompanyTx, type Order, type Penalty } from "@/lib/types";
 
 type Row = Pick<CompanyTx, "id" | "bucket" | "kind" | "amount" | "order_id" | "memo" | "created_at">;
-type MyOrder = Pick<Order, "id" | "order_no" | "area" | "status" | "rating" | "tip" | "driver_earnings" | "accepted_at" | "arrived_at" | "slot_end" | "delivered_at">;
+type MyOrder = Pick<
+  Order,
+  "id" | "order_no" | "area" | "status" | "service_type" | "rating" | "tip" | "driver_earnings" | "created_at" | "released_at" | "accepted_at" | "slot_end" | "collected_at" | "delivered_at"
+>;
 const EARNING_KINDS = ["earning", "tip", "cancel_fee", "penalty", "penalty_reversal"];
-const ON_TIME_GRACE_MS = 60 * 60_000; // no slot: on time when arrived within 60 min of accepting
-
-function startOfDay(d = new Date()) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-/** The working week starts on Sunday in Oman. */
-function startOfWeek() {
-  const x = startOfDay();
-  x.setDate(x.getDate() - x.getDay());
-  return x;
-}
 
 export default function EarningsPage() {
   const { profile, tanker, prefs, toast } = useDriver();
@@ -42,9 +33,10 @@ export default function EarningsPage() {
 
   const load = useCallback(() => {
     const db = supabase();
-    const week = startOfWeek().toISOString();
+    // The working week starts on Sunday in Oman (Muscat time).
+    const week = muscatWeekStart().toISOString();
     db.from("orders")
-      .select("id, order_no, area, status, rating, tip, driver_earnings, accepted_at, arrived_at, slot_end, delivered_at")
+      .select("id, order_no, area, status, service_type, rating, tip, driver_earnings, created_at, released_at, accepted_at, slot_end, collected_at, delivered_at")
       .eq("driver_id", profile.id)
       .order("accepted_at", { ascending: false })
       .limit(300)
@@ -92,7 +84,7 @@ export default function EarningsPage() {
   }, [load]);
 
   const sums = useMemo(() => {
-    const day = now ? startOfDay(new Date(now)).toISOString() : "";
+    const day = now ? muscatDayStart(now).toISOString() : "";
     const s = { today: 0, week: 0, tipsToday: 0, tipsWeek: 0, fillToday: 0, fillWeek: 0 };
     for (const r of rows ?? []) {
       const a = Number(r.amount);
@@ -115,10 +107,8 @@ export default function EarningsPage() {
   const perf = useMemo(() => {
     const delivered = orders.filter((o) => o.status === "delivered");
     const rated = delivered.filter((o) => o.rating != null);
-    const timed = orders.filter((o) => o.arrived_at);
-    const onTime = timed.filter((o) =>
-      o.slot_end ? o.arrived_at! <= o.slot_end : Date.parse(o.arrived_at!) - Date.parse(o.accepted_at ?? o.arrived_at!) <= ON_TIME_GRACE_MS,
-    );
+    const timed = orders.map(isOnTime).filter((v): v is boolean => v != null);
+    const onTime = timed.filter(Boolean);
     const accepted = orders.length + released;
     const declined = Number(prefs.declined ?? 0);
     return {

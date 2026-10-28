@@ -52,7 +52,7 @@ export default function Consumption({ rows }: { rows: ORow[] }) {
   useEffect(() => {
     const db = supabase();
     const from = new Date(Date.now() - 180 * DAY).toISOString();
-    fetchPaged<Hist>((a, b) => db.from("orders").select("customer_id, property_id, area, gallons, delivered_at").eq("service_type", "DW").eq("status", "delivered").gte("delivered_at", from).order("delivered_at").order("id").range(a, b), ROW_CAP)
+    fetchPaged<Hist>((a, b) => db.from("orders").select("customer_id, property_id, area, gallons, delivered_at").eq("service_type", "DW").eq("status", "delivered").gte("delivered_at", from).order("delivered_at", { ascending: false }).order("id").range(a, b), ROW_CAP)
       .then(({ rows: r }) => setHist(r));
     fetchPaged<{ segment: string | null }>((a, b) => db.from("profiles").select("segment").eq("role", "customer").order("id").range(a, b), 20000).then(({ rows: r }) => {
       const m: Record<string, number> = {};

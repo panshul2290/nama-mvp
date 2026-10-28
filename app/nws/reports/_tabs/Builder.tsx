@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { dayKey, downloadCsv, Empty, fetchPaged, groupBy, omr, sinceIso, useRun } from "@/components/nws/admin/ui";
+import { cappedNote, dayKey, downloadCsv, Empty, fetchPaged, groupBy, omr, sinceIso, useRun } from "@/components/nws/admin/ui";
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { friendlyError } from "@/lib/errors";
 import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
@@ -42,35 +42,37 @@ type Raw =
   | { ds: "Fleet"; rows: { id: string; service_type: ServiceType; company_id: string | null; is_online: boolean; blocked: boolean }[]; trips: Map<string, number> }
   | { ds: "Payments"; rows: { created_at: string; method: string; status: string; amount: string; refunded_amount: string }[] };
 
-async function load(ds: Dataset, days: number): Promise<{ raw: Raw | null; error: { message?: string } | null }> {
+// Every dataset is read newest first, so a cut-off at ROW_CAP keeps the latest rows (and says so).
+async function load(ds: Dataset, days: number): Promise<{ raw: Raw | null; error: { message?: string } | null; truncated: boolean }> {
   const db = supabase();
   const from = sinceIso(days);
   if (ds === "Orders" || ds === "Revenue" || ds === "Ratings") {
-    const { rows, error } = await fetchPaged<ORow & { water_charge: string; delivery_fee: string; vat: string }>((a, b) => {
+    const field = ds === "Revenue" ? "delivered_at" : ds === "Ratings" ? "rated_at" : "created_at";
+    const { rows, error, truncated } = await fetchPaged<ORow & { water_charge: string; delivery_fee: string; vat: string }>((a, b) => {
       const q = db.from("orders").select(`${ORDER_COLS}, water_charge, delivery_fee, vat`);
       const f = ds === "Revenue" ? q.eq("status", "delivered").gte("delivered_at", from) : ds === "Ratings" ? q.not("rating", "is", null).gte("rated_at", from) : q.gte("created_at", from);
-      return f.order("id").range(a, b);
+      return f.order(field, { ascending: false }).order("id").range(a, b);
     }, ROW_CAP);
-    return { raw: { ds, rows }, error };
+    return { raw: { ds, rows }, error, truncated };
   }
   if (ds === "Complaints") {
     const [c, sla] = await Promise.all([
-      fetchPaged<{ created_at: string; category: string; channel: string; state: string; refund_amount: string }>((a, b) => db.from("complaints").select("created_at, category, channel, state, refund_amount").gte("created_at", from).order("id").range(a, b), ROW_CAP),
+      fetchPaged<{ created_at: string; category: string; channel: string; state: string; refund_amount: string }>((a, b) => db.from("complaints").select("created_at, category, channel, state, refund_amount").gte("created_at", from).order("created_at", { ascending: false }).order("id").range(a, b), ROW_CAP),
       db.from("complaint_sla").select("category, label"),
     ]);
-    return { raw: { ds, rows: c.rows, labels: new Map((sla.data ?? []).map((r: { category: string; label: string }) => [r.category, r.label])) }, error: c.error };
+    return { raw: { ds, rows: c.rows, labels: new Map((sla.data ?? []).map((r: { category: string; label: string }) => [r.category, r.label])) }, error: c.error, truncated: c.truncated };
   }
   if (ds === "Fleet") {
     const [t, o] = await Promise.all([
       fetchPaged<{ id: string; service_type: ServiceType; company_id: string | null; is_online: boolean; blocked: boolean }>((a, b) => db.from("tankers").select("id, service_type, company_id, is_online, blocked").order("id").range(a, b), ROW_CAP),
-      fetchPaged<{ tanker_id: string | null }>((a, b) => db.from("orders").select("tanker_id").eq("status", "delivered").gte("delivered_at", from).order("id").range(a, b), ROW_CAP),
+      fetchPaged<{ tanker_id: string | null }>((a, b) => db.from("orders").select("tanker_id").eq("status", "delivered").gte("delivered_at", from).order("delivered_at", { ascending: false }).order("id").range(a, b), ROW_CAP),
     ]);
     const trips = new Map<string, number>();
     for (const r of o.rows) if (r.tanker_id) trips.set(r.tanker_id, (trips.get(r.tanker_id) ?? 0) + 1);
-    return { raw: { ds, rows: t.rows, trips }, error: t.error };
+    return { raw: { ds, rows: t.rows, trips }, error: t.error ?? o.error, truncated: t.truncated || o.truncated };
   }
-  const { rows, error } = await fetchPaged<{ created_at: string; method: string; status: string; amount: string; refunded_amount: string }>((a, b) => db.from("payments").select("created_at, method, status, amount, refunded_amount").gte("created_at", from).order("id").range(a, b), ROW_CAP);
-  return { raw: { ds, rows }, error };
+  const { rows, error, truncated } = await fetchPaged<{ created_at: string; method: string; status: string; amount: string; refunded_amount: string }>((a, b) => db.from("payments").select("created_at, method, status, amount, refunded_amount").gte("created_at", from).order("created_at", { ascending: false }).order("id").range(a, b), ROW_CAP);
+  return { raw: { ds, rows }, error, truncated };
 }
 
 /** Group the raw rows into [label, ...metrics] lines. */
@@ -111,6 +113,7 @@ export default function Builder({ refData }: { refData: Ref | null }) {
   const [range, setRange] = useState("30");
   const [fmt, setFmt] = useState<Fmt>("csv");
   const [raw, setRaw] = useState<Raw | null>(null);
+  const [truncated, setTruncated] = useState(false);
   const [cadence, setCadence] = useState("weekly");
   const [recipients, setRecipients] = useState("");
   const [name, setName] = useState("");
@@ -118,10 +121,11 @@ export default function Builder({ refData }: { refData: Ref | null }) {
 
   useEffect(() => {
     let live = true;
-    load(ds, Number(range)).then(({ raw: r, error }) => {
+    load(ds, Number(range)).then(({ raw: r, error, truncated: cut }) => {
       if (!live) return;
       if (error) toast(friendlyError(error), true);
       setRaw(r);
+      setTruncated(cut);
     });
     return () => { live = false; };
   }, [ds, range, toast]);
@@ -188,6 +192,7 @@ export default function Builder({ refData }: { refData: Ref | null }) {
             </div>
           </div>
           <h3 className="preview-h">Preview — {title}, {rangeLabel.toLowerCase()}{ds === "Fleet" ? " (fleet as of now; trips in range)" : ""}</h3>
+          {lines && truncated && <div className="banner info" role="status">{cappedNote(true, ROW_CAP, "rows")}</div>}
           <div className="tblwrap scroll">
             <table>
               <thead>
@@ -198,7 +203,7 @@ export default function Builder({ refData }: { refData: Ref | null }) {
                 {lines?.length === 0 && <Empty cols={COLUMNS[ds].length + 1}>No rows in this range.</Empty>}
                 {lines?.map(([k, v]) => (
                   <tr key={k}>
-                    <td>{g === "day" ? new Date(`${k}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : k}</td>
+                    <td>{g === "day" ? new Date(`${k}T12:00:00+04:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Muscat" }) : k}</td>
                     {v.map((x, i) => <td key={i} className="num">{cell(x, i)}</td>)}
                   </tr>
                 ))}

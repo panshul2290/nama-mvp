@@ -4,24 +4,25 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
 import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
+import { InvitationCards } from "@/components/driver/Invitations";
 import { permitState, usePermits } from "@/components/driver/permit";
 import { Sheet } from "@/components/driver/Sheet";
 import { useNow } from "@/components/driver/useNow";
 import { LangToggle, useT } from "@/lib/i18n";
 import { initials } from "@/lib/format";
+import { SHIFT_KEYS, shiftHours, type Shift } from "@/lib/shifts";
 import { supabase } from "@/lib/supabase/client";
 import type { Device, TankerDocument } from "@/lib/types";
 
 const DOC_KINDS = ["heavy_licence", "mulkiya", "tank_cleanliness", "rop_inspection", "insurance", "ivms_certificate", "water_test"] as const;
 type DocKind = (typeof DOC_KINDS)[number];
-type Shift = "day" | "evening" | "night";
 type Avail = { weekday: number; available: boolean; shift: Shift };
 const TRAINING = ["train0", "train1", "train2", "train3"];
 const DAY = 86_400_000;
 
 export default function DriverProfile() {
   const router = useRouter();
-  const { profile, tanker, prefs, savePrefs, toast } = useDriver();
+  const { profile, tanker, refreshTanker, prefs, savePrefs, toast } = useDriver();
   const t = useT(DICT);
   const f = useFmt();
   const errText = useErrText();
@@ -123,6 +124,7 @@ export default function DriverProfile() {
           </div>
         </div>
       </div>
+      <InvitationCards toast={toast} onJoined={refreshTanker} />
 
       <h4 className="ch-sec">{t("tanker")}</h4>
       <div className="ch-list">
@@ -213,15 +215,15 @@ export default function DriverProfile() {
           <div key={d} className="lrow">
             <span>{t(`wdLong${d}`)}</span>
             <select className="d-sel" aria-label={t("shiftFor", { day: t(`wdLong${d}`) })} value={dayOf(d).shift} onChange={(e) => setDay(d, { shift: e.target.value as Shift })}>
-              {(["day", "evening", "night"] as Shift[]).map((s) => (
+              {SHIFT_KEYS.map((s) => (
                 <option key={s} value={s}>
-                  {t(`shift_${s}`)}
+                  {t(`shift_${s}`)} · {f.d(shiftHours(s))}
                 </option>
               ))}
             </select>
           </div>
         ))}
-      <p className="mut small">{t("availNote")}</p>
+      <p className="mut small">{t("availNote", { day: f.d(shiftHours("day")), evening: f.d(shiftHours("evening")), night: f.d(shiftHours("night")) })}</p>
 
       <h4 className="d-h4">{t("training")}</h4>
       {TRAINING.map((k, i) => (

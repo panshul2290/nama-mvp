@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
 import { DICT, useFmt } from "@/components/driver/i18n";
+import { InvitationCards } from "@/components/driver/Invitations";
 import { pickOffer } from "@/components/driver/offer";
 import { permitState, usePermits } from "@/components/driver/permit";
 import { useNow } from "@/components/driver/useNow";
@@ -17,7 +18,7 @@ const PRE_CHECK = ["tyres_brakes_lights", "valves_sealed", "hatch_locked", "ppe"
 type Emergency = { on: boolean; zone: string | null; reason: string | null };
 
 export default function DriverHome() {
-  const { profile, tanker, online, toggleOnline, shiftChecked, submitShiftCheck, job, legs, leg, today, openJobs, seenAt, unread } = useDriver();
+  const { profile, tanker, refreshTanker, online, toggleOnline, companySuspended, shiftChecked, submitShiftCheck, job, legs, leg, today, openJobs, seenAt, unread, toast } = useDriver();
   const t = useT(DICT);
   const f = useFmt();
   const now = useNow(1_000);
@@ -44,7 +45,7 @@ export default function DriverHome() {
   }, []);
 
   const noPermit = permit != null && (permit.key === "expired" || permit.key === "rejected" || permit.key === "wrong" || permit.key === "none");
-  const cantGoOnline = !online && (Boolean(tanker.blocked) || noPermit || !shiftChecked);
+  const cantGoOnline = !online && (Boolean(tanker.blocked) || companySuspended || noPermit || !shiftChecked);
   const done = PRE_CHECK.filter((k) => checks[k]).length;
   const offer = online && !job ? pickOffer(openJobs, seenAt, now) : null;
 
@@ -83,7 +84,12 @@ export default function DriverHome() {
           <b>{t("blockedT")}</b> {tanker.blocked_reason ? t("reasonX", { reason: tanker.blocked_reason }) : ""} {t("blockedS")}
         </div>
       )}
-      {!tanker.blocked && noPermit && permit && (
+      {!tanker.blocked && companySuspended && (
+        <div className="banner badb" role="alert">
+          <b>{t("companySuspendedT")}</b> {t("companySuspendedS")}
+        </div>
+      )}
+      {!tanker.blocked && !companySuspended && noPermit && permit && (
         <div className="banner badb" role="alert">
           <b>{t(`permit_${permit.key}`)}.</b> {permit.pending ? t("renewalReview") : t("noPermitS", { svc: t(`svc_${tanker.service_type}`) })}{" "}
           {!permit.pending && (
@@ -105,6 +111,8 @@ export default function DriverHome() {
           )}
         </div>
       )}
+
+      <InvitationCards toast={toast} onJoined={refreshTanker} />
 
       <div className={`card ${online ? "" : "sunk"}`}>
         <div className="row">

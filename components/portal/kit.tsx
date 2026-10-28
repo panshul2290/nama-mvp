@@ -1,8 +1,11 @@
 "use client";
 
 import { createContext, use, useCallback, useEffect, useRef, useState } from "react";
+import { saveCsv, type CsvCell } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
+import { muscatDayStart, muscatWeekStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 // Shared building blocks for the Company portal (tanker owners) and the
 // Business portal (B2B customers). Styles live in components/portal/portal.css.
@@ -32,37 +35,23 @@ export function daysUntil(iso: string, now = Date.now()) {
   return Math.ceil((t - now) / DAY);
 }
 
-/** Start of the current week (Sunday 00:00 local), as the prototype counts weeks. */
+/** Start of the current week (Sunday 00:00 Muscat time), as the prototype counts weeks. */
 export function weekStart(now = new Date()) {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - d.getDay());
-  return d;
+  return muscatWeekStart(now);
 }
+/** The 1st of the current month, 00:00 Muscat time (UTC+4). */
 export function monthStart(now = new Date()) {
-  return new Date(now.getFullYear(), now.getMonth(), 1);
+  const m = new Date(now.getTime() + 4 * 3_600_000);
+  return new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth(), 1) - 4 * 3_600_000);
 }
+/** Today's 00:00 in Muscat time. */
 export function dayStart(now = new Date()) {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return muscatDayStart(now);
 }
 
 /** Download rows as a CSV file (first row = header). */
-export function downloadCsv(filename: string, rows: (string | number | null | undefined)[][]) {
-  const esc = (v: string | number | null | undefined) => {
-    const s = v == null ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const blob = new Blob(["﻿" + rows.map((r) => r.map(esc).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+export function downloadCsv(filename: string, rows: CsvCell[][]) {
+  saveCsv(filename, rows);
 }
 
 // ---------------------------------------------------------------- toast
@@ -160,13 +149,9 @@ export function Columns({ rows, format = (v: number) => String(v) }: { rows: { l
 }
 
 export function Dialog({ title, body, onClose, children, wide }: { title: string; body?: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
-  }, [onClose]);
+  const trap = useFocusTrap(onClose);
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
+    <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
       <div className={wide ? "wide" : ""} onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         {body && <p>{body}</p>}

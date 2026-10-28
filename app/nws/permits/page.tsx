@@ -24,6 +24,8 @@ type TankerRef = { id: string; plate: string; service_type: ServiceType; capacit
 type PermitRow = {
   id: string; permit_no: string; type: ServiceType; issued_at: string; expires_at: string; status: Status; effective_status: Status;
   stage: Stage; info_requested: string | null; reviewed_at: string | null; reason: string | null; created_at: string;
+  /** Set for applications from an owner or driver; null for permits a permit officer created directly. */
+  applied_by: string | null;
   tanker: TankerRef | TankerRef[] | null;
   reviewer: { full_name: string } | { full_name: string }[] | null;
 };
@@ -109,7 +111,7 @@ function Permits() {
       db
         .from("permits")
         .select(
-          "id, permit_no, type, issued_at, expires_at, status, effective_status, stage, info_requested, reviewed_at, reason, created_at, tanker:tankers(id, plate, service_type, capacity_gal, company:companies(name)), reviewer:profiles!permits_reviewed_by_fkey(full_name)",
+          "id, permit_no, type, issued_at, expires_at, status, effective_status, stage, info_requested, reviewed_at, reason, created_at, applied_by, tanker:tankers(id, plate, service_type, capacity_gal, company:companies(name)), reviewer:profiles!permits_reviewed_by_fkey(full_name)",
         )
         .order("created_at", { ascending: false }),
       db.from("tankers").select("id, plate, service_type, capacity_gal, company_id, company:companies(name)").order("plate"),
@@ -223,11 +225,22 @@ function Permits() {
     );
   }
 
+  // Applications move one stage at a time (submitted → documents → inspection → decision) and are
+  // approved only at the decision stage after a passed inspection; the database enforces the same.
+  const passedInspection = (p: PermitRow) => {
+    const tankerId = one(p.tanker)?.id;
+    return inspections.some((i) => i.tanker_id === tankerId && i.result === "pass" && (i.permit_id === p.id || i.created_at >= p.created_at));
+  };
+  const approvable = (p: PermitRow) => p.stage === "decision" && (!p.applied_by || passedInspection(p));
+
   async function advance(p: PermitRow) {
     const next: Record<Stage, string | null> = { submitted: "documents", documents: "inspection", inspection: null, decision: null };
     if (p.stage === "inspection") return setDlg({ k: "pass" });
-    if (p.stage === "decision") return void rpc("staff_review_permit", { p_permit_id: p.id, p_decision: "approve", p_reason: null }, `${p.permit_no} approved and issued — the owner is notified`);
-    await rpc("staff_permit_stage", { p_permit_id: p.id, p_stage: next[p.stage], p_note: null }, `${p.permit_no}: ${NEXT_LABEL[p.stage].toLowerCase()} — logged`);
+    const ok =
+      p.stage === "decision"
+        ? await rpc("staff_review_permit", { p_permit_id: p.id, p_decision: "approve", p_reason: null }, `${p.permit_no} approved and issued — the owner is notified`)
+        : await rpc("staff_permit_stage", { p_permit_id: p.id, p_stage: next[p.stage], p_note: null }, `${p.permit_no}: ${NEXT_LABEL[p.stage].toLowerCase()} — logged`);
+    if (!ok) await load(); // e.g. permit_review_incomplete: show where the application really is
   }
 
   const permInsp = selected ? inspections.filter((i) => i.permit_id === selected.id) : [];
@@ -447,7 +460,9 @@ function Permits() {
                   {selected.status === "pending" && (
                     <div className="pv-act">
                       <small>
-                        {selected.stage === "decision"
+                        {selected.stage === "decision" && !approvable(selected)
+                          ? "No passed inspection is recorded for this application, so it can’t be approved yet. Schedule an inspection from the Inspections tab."
+                          : selected.stage === "decision"
                           ? "All checks complete. Issuing notifies the owner and lets the tanker go online."
                           : selected.stage === "inspection"
                             ? "Approval unlocks after the inspection result is recorded."
@@ -461,8 +476,16 @@ function Permits() {
                         )}
                         <button
                           className="btn pri"
-                          disabled={selected.stage === "inspection" ? !canInspect : !officer}
-                          title={selected.stage === "inspection" ? (canInspect ? undefined : "Inspectors and permit officers") : offTitle}
+                          disabled={selected.stage === "inspection" ? !canInspect : !officer || (selected.stage === "decision" && !approvable(selected))}
+                          title={
+                            selected.stage === "inspection"
+                              ? canInspect
+                                ? undefined
+                                : "Inspectors and permit officers"
+                              : selected.stage === "decision" && !approvable(selected)
+                                ? "Needs a passed inspection"
+                                : offTitle
+                          }
                           onClick={() => advance(selected)}
                         >
                           {NEXT_LABEL[selected.stage]}
@@ -616,6 +639,9 @@ function Permits() {
                 {inspections.length === 0 && <tr><td colSpan={6} className="empty">No inspections yet.</td></tr>}
                 {inspections.map((i) => {
                   const t = one(i.tanker);
+                  // A pass moves its application to the decision stage, so it must already be at the inspection stage.
+                  const app = i.permit_id ? rows?.find((p) => p.id === i.permit_id) : undefined;
+                  const early = app?.status === "pending" && (app.stage === "submitted" || app.stage === "documents");
                   return (
                     <tr key={i.id}>
                       <td>{t?.plate ?? "—"} {t && <span className={`tag ${t.service_type}`}>{t.service_type}</span>}</td>
@@ -627,7 +653,14 @@ function Permits() {
                         {i.result === "scheduled" ? (
                           <div className="btns" style={{ flexWrap: "nowrap" }}>
                             <St tone="act">Scheduled</St>
-                            <button className="btn sm" disabled={!canInspect} title={canInspect ? undefined : "Inspectors and permit officers"} onClick={() => setDlg({ k: "insp", row: i, result: "pass" })}>Pass</button>
+                            <button
+                              className="btn sm"
+                              disabled={!canInspect || early}
+                              title={early ? "Complete the application’s document check first" : canInspect ? undefined : "Inspectors and permit officers"}
+                              onClick={() => setDlg({ k: "insp", row: i, result: "pass" })}
+                            >
+                              Pass
+                            </button>
                             <button className="btn sm bad" disabled={!canInspect} title={canInspect ? undefined : "Inspectors and permit officers"} onClick={() => setDlg({ k: "insp", row: i, result: "fail" })}>Fail</button>
                           </div>
                         ) : (

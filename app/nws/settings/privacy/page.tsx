@@ -33,8 +33,13 @@ export default function PrivacyPage() {
         setNow(Date.now());
         setReqs((data ?? []) as Req[]);
       });
-    fetchPaged<{ prefs: Record<string, unknown> | null }>((a, b) => db.from("profiles").select("prefs").eq("role", "customer").order("id").range(a, b), 50000).then(({ rows }) => {
-      setConsent({ share: rows.filter((r) => r.prefs?.share_usage === true).length, n: rows.length });
+    // prefs is a private column: staff read the consent flag through staff_private_profiles().
+    Promise.all([
+      fetchPaged<{ id: string }>((a, b) => db.from("profiles").select("id").eq("role", "customer").order("id").range(a, b), 50000),
+      fetchPaged<{ id: string; share_usage: boolean }>((a, b) => db.rpc("staff_private_profiles", { p_ids: null }).order("id").range(a, b), 50000),
+    ]).then(([{ rows: cust }, { rows: priv }]) => {
+      const sharing = new Set(priv.filter((r) => r.share_usage).map((r) => r.id));
+      setConsent({ share: cust.filter((r) => sharing.has(r.id)).length, n: cust.length });
     });
   }, []);
   useEffect(load, [load]);

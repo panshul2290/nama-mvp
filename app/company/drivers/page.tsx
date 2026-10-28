@@ -1,13 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { currentDoc, onTime, tankerOf, useCompanyOrders, useFleet } from "@/components/company/CompanyContext";
+import { currentDoc, tankerOf, useCompany, useCompanyOrders, useFleet } from "@/components/company/CompanyContext";
+import { isOnTime } from "@/lib/sla";
 import { Dialog, St, daysUntil, fmtDate, useAction } from "@/components/portal/kit";
+import { useSentInvitations } from "@/components/useInvitations";
 import { supabase } from "@/lib/supabase/client";
 
 export default function CompanyDrivers() {
   const fleet = useFleet("drivers");
   const { orders } = useCompanyOrders("drivers", 90);
+  const { company } = useCompany();
+  const sent = useSentInvitations("driver", company.id);
   const { busy, run } = useAction();
   const [adding, setAdding] = useState(false);
 
@@ -26,10 +30,10 @@ export default function CompanyDrivers() {
     <div className="panel">
       <div className="toolbar">
         <span className="mut" style={{ fontSize: 13 }}>
-          Drivers sign up in the Driver app, then you add them here by email and assign a tanker
+          Drivers sign up in the Driver app, then you invite them here by email and assign a tanker once they accept
         </span>
         <button className="btn pri" onClick={() => setAdding(true)}>
-          Add driver
+          Invite driver
         </button>
       </div>
       <div className="tblwrap">
@@ -50,7 +54,7 @@ export default function CompanyDrivers() {
               const tk = tankerOf(fleet, d.id);
               const mine = orders.filter((o) => o.driver_id === d.id && o.status === "delivered");
               const rated = mine.filter((o) => o.rating);
-              const timed = mine.map(onTime).filter((x) => x !== null);
+              const timed = mine.map(isOnTime).filter((x) => x !== null);
               const lic = currentDoc(fleet.docs, "heavy_licence", { driver: d.id });
               const licDays = lic ? daysUntil(lic.valid_to) : null;
               return (
@@ -92,28 +96,65 @@ export default function CompanyDrivers() {
             {fleet.loaded && !fleet.drivers.length && (
               <tr>
                 <td colSpan={7} className="empty">
-                  No drivers yet. Ask each driver to create an account in the Driver app, then add them here with the email they used.
+                  No drivers yet. Ask each driver to create an account in the Driver app, then invite them here with the email they used.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+      {sent.invitations.length > 0 && (
+        <>
+          <h2 style={{ paddingTop: 12 }}>
+            Pending invitations <small>the driver accepts in the Driver app</small>
+          </h2>
+          <div className="tblwrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Sent</th>
+                  <th>Expires</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {sent.invitations.map((i) => (
+                  <tr key={i.id}>
+                    <td>{i.email}</td>
+                    <td>{fmtDate(i.created_at)}</td>
+                    <td>{i.expired ? <St tone="bad">Expired</St> : fmtDate(i.expires_at)}</td>
+                    <td className="num">
+                      <button className="btn sm" disabled={busy === i.id} onClick={() => run(i.id, () => supabase().rpc("revoke_invitation", { p_id: i.id }), "Invitation revoked", sent.reload)}>
+                        Revoke
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
       <p className="note">A driver can drive one tanker at a time. Changing a tanker takes it offline until the driver goes online again; it isn’t possible while either is on a job.</p>
-      {adding && <AddDriver onClose={() => setAdding(false)} onDone={fleet.reload} />}
+      {adding && <InviteDriver onClose={() => setAdding(false)} onDone={sent.reload} />}
     </div>
   );
 }
 
-function AddDriver({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function InviteDriver({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { busy, run } = useAction();
   const [email, setEmail] = useState("");
   return (
-    <Dialog title="Add driver" body="Enter the email the driver used to sign up in the Driver app. A tanker they registered themselves joins your company too." onClose={onClose}>
+    <Dialog
+      title="Invite driver"
+      body="Enter the email the driver used to sign up in the Driver app. They join your company when they accept the invitation in the app; a tanker they registered themselves joins with them."
+      onClose={onClose}
+    >
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          await run("add", () => supabase().rpc("owner_add_driver", { p_email: email.trim() }), "Driver added to your company", () => {
+          await run("add", () => supabase().rpc("owner_add_driver", { p_email: email.trim() }), `Invitation sent to ${email.trim()}`, () => {
             onDone();
             onClose();
           });
@@ -128,7 +169,7 @@ function AddDriver({ onClose, onDone }: { onClose: () => void; onDone: () => voi
             Cancel
           </button>
           <button className="btn pri" disabled={busy === "add"}>
-            {busy === "add" ? "Adding…" : "Add driver"}
+            {busy === "add" ? "Sending…" : "Send invitation"}
           </button>
         </div>
       </form>

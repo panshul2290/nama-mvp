@@ -5,6 +5,7 @@ import { Empty, Kpi, PageHead, useAudited, useRun } from "@/components/nws/admin
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Incident, type Integration } from "@/lib/types";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 type Target = { priority: Incident["priority"]; label: string; response_min: number; resolve_min: number };
 const STATUS: Record<Integration["status"], [string, string]> = { ok: ["Operational", "ok"], warn: ["Degraded", "warn"], down: ["Down", "bad"], simulated: ["Simulated", "act"] };
@@ -149,8 +150,9 @@ function OpenIncident({ targets, onClose, onDone }: { targets: Target[]; onClose
   const [title, setTitle] = useState("");
   const [system, setSystem] = useState("");
   const [busy, setBusy] = useState(false);
+  const trap = useFocusTrap(busy ? undefined : onClose);
   return (
-    <div className="dlg" role="dialog" aria-modal="true" aria-label="Open incident" onClick={onClose}>
+    <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label="Open incident" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}>
         <h3>Open incident</h3>
         <p>The on-call team is paged and the response clock starts now.</p>

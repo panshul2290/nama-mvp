@@ -46,7 +46,7 @@ export default function Operations({ rows, refData, days }: { rows: ORow[]; refD
     <>
       <div className="okpis">
         <Kpi label="Trips completed" value={int(s.delivered.length)} sub={`of ${int(rows.length)} orders placed`} />
-        <Kpi label="On-time delivery" value={onPct == null ? "—" : pct(onPct)} sub="arrived within the slot, or within 2 h" tone={onPct == null ? undefined : onPct >= 0.9 ? "ok" : "warn"} />
+        <Kpi label="On-time delivery" value={onPct == null ? "—" : pct(onPct)} sub="delivered (wastewater: collected) by the slot end, or within 2 h" tone={onPct == null ? undefined : onPct >= 0.9 ? "ok" : "warn"} />
         <Kpi label="Median time to assign" value={s.assign == null ? "—" : s.assign < 60 ? `${Math.round(s.assign)} min` : `${(s.assign / 60).toFixed(1)} h`} sub="request to tanker accepted" />
         <Kpi label="Cancellations" value={int(s.cancelled)} sub={rows.length ? `${pct(s.cancelled / rows.length)} of orders` : "—"} tone={rows.length && s.cancelled / rows.length > 0.1 ? "bad" : undefined} />
       </div>

@@ -8,6 +8,7 @@ import { FleetMap } from "@/components/nws/FleetMap";
 import type { LatLng, MapSite } from "@/components/nws/FleetMapView";
 import { permitSummary, type Permit } from "@/components/nws/fleetData";
 import { CHANNEL_LABEL, maskPhone, n3, omr3, one, orderSla, St, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
+import { SignatureSvg } from "@/components/SignatureSvg";
 import { PenaltyDialog } from "@/components/nws/PenaltyDialog";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { OrderBill, STATUS_TEXT } from "@/components/OrderBits";
@@ -21,7 +22,7 @@ type One<T> = T | T[] | null;
 type Detail = Order & {
   filled_at: string | null; collected_at: string | null; discharged_at: string | null; released_at: string | null; approved_at: string | null;
   fill_meter_gal: number | null; fill_verified: boolean | null; discharge_verified: boolean | null; cancelled_by: string | null; cancel_reason: string | null;
-  rating: number | null; rating_comment: string | null; tip: string; rated_at: string | null; cancel_fee: string;
+  rating: number | null; rating_comment: string | null; tip: string; rated_at: string | null; cancel_fee: string; short_credit: string;
   customer: { id: string; full_name: string; phone: string | null } | null;
   driver: { full_name: string; phone: string | null } | null;
   tanker: { id: string; plate: string; service_type: string; capacity_gal: number; blocked: boolean; last_lat: number | null; last_lng: number | null } | null;
@@ -220,7 +221,7 @@ export default function OrderDetail() {
   const opTip = isOp ? undefined : "Control room operators only";
   const short = pod && pod.meter_gal < o.gallons * 0.95;
   const slot = tomorrowMorning();
-  const sigImg = pod?.signature_svg ? `data:image/svg+xml;utf8,${encodeURIComponent(pod.signature_svg)}` : sigFile;
+  const signed = Boolean(pod?.signature_svg?.trim() || sigFile);
 
   return (
     <>
@@ -526,6 +527,8 @@ export default function OrderDetail() {
                 {short && (
                   <div className="banner">
                     Meter reading {pod.meter_gal.toLocaleString()} gal is more than 5% under the {o.gallons.toLocaleString()} gal ordered (short volume).
+                    {Number(o.short_credit ?? 0) > 0 &&
+                      ` ${omr3(o.short_credit ?? 0)} ${o.billing === "account" ? "credited against the account invoice" : "refunded to the customer’s wallet"}.`}
                   </div>
                 )}
                 <dl className="kv" style={{ padding: "0 0 12px" }}>
@@ -534,7 +537,7 @@ export default function OrderDetail() {
                   <dt>Submitted</dt>
                   <dd>{fmtDateTime(pod.created_at)}</dd>
                   <dt>Signature</dt>
-                  <dd>{pod.no_signature ? <St tone="warn">Customer not available to sign</St> : sigImg ? "Signed" : "—"}</dd>
+                  <dd>{pod.no_signature ? <St tone="warn">Customer not available to sign</St> : signed ? "Signed" : "—"}</dd>
                   {pod.left_at_tank && (
                     <>
                       <dt>Left at tank</dt>
@@ -545,10 +548,14 @@ export default function OrderDetail() {
                 <div className="grid2">
                   {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not optimisable */}
                   {photo ? <img className="pod-img" src={photo} alt={`Proof of delivery for ${orderNo(o.order_no)}`} /> : <span className="mut" style={{ fontSize: 13 }}>{pod.photo_path ? "Loading photo…" : "No photo"}</span>}
-                  {sigImg && !pod.no_signature && (
+                  {signed && !pod.no_signature && (
                     <div className="sig">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- inline SVG data URL */}
-                      <img src={sigImg} alt="Customer signature" style={{ width: "100%" }} />
+                      {pod.signature_svg?.trim() ? (
+                        <SignatureSvg value={pod.signature_svg} label="Customer signature" style={{ width: "100%", color: "#0e2329" }} />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element -- signed storage URL
+                        <img src={sigFile!} alt="Customer signature" style={{ width: "100%" }} />
+                      )}
                     </div>
                   )}
                 </div>

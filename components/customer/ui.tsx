@@ -6,6 +6,7 @@ import { Icon } from "@/components/icons";
 import type { RuleStatus, ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import type { Order, OrderStatus } from "@/lib/types";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import { useCx } from "./i18n";
 import { amt3, omr3, tshort } from "./fmt";
 
@@ -13,14 +14,10 @@ import { amt3, omr3, tshort } from "./fmt";
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   const { t, dir } = useCx();
   const [host] = useState(() => (typeof document === "undefined" ? null : document.querySelector(".phone")));
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const trap = useFocusTrap(onClose);
   const node = (
     <div className="cx-modal" dir={dir} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="cx-sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={trap} className="cx-sheet" role="dialog" aria-modal="true" aria-label={title}>
         <div className="cx-sh-h">
           <h3>{title}</h3>
           <button type="button" className="iconbtn" onClick={onClose}>

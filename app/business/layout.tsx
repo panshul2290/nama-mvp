@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { BizProvider, ORG_ROLE_LABEL, SEGMENT_LABEL, type OrgSummary } from "@/components/business/BizContext";
 import { useAction, useLive } from "@/components/portal/kit";
 import { PortalLoading, PortalShell, usePortalProfile, type PortalTab } from "@/components/portal/PortalShell";
+import { useMyInvitations } from "@/components/useInvitations";
 import { supabase } from "@/lib/supabase/client";
 
 const DESCRIPTION =
@@ -45,6 +46,7 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
   if (!org) {
     return (
       <PortalShell app="Business portal" who={who} title="Open an account" description="Hotels, compounds, farms and government sites order water in bulk on credit from NWS-permitted tankers.">
+        <OrgInvitations onJoined={loadOrg} />
         <RegisterOrg onDone={loadOrg} />
       </PortalShell>
     );
@@ -86,6 +88,34 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
     >
       <BizProvider value={{ profile, org, reloadOrg: loadOrg }}>{children}</BizProvider>
     </PortalShell>
+  );
+}
+
+/** Invitations from an existing business account, shown before the user opens their own. */
+function OrgInvitations({ onJoined }: { onJoined: () => void }) {
+  const { invitations, respond } = useMyInvitations("org_member");
+  const { busy, run } = useAction();
+  if (!invitations.length) return null;
+  return (
+    <div className="panel">
+      <h2>You’ve been invited</h2>
+      <div className="pad">
+        {invitations.map((i) => (
+          <div key={i.id} className="banner info" role="status">
+            <b>{i.from ?? "A business account"}</b> invited you to join as {i.org_role ? ORG_ROLE_LABEL[i.org_role] : "a member"}. Expires {new Date(i.expires_at).toLocaleDateString("en-GB")}.
+            <div className="btns" style={{ marginTop: 8 }}>
+              <button className="btn pri" disabled={busy !== null} onClick={() => run(i.id, () => respond(i.id, true).then((error) => ({ error })), "You joined the business account", onJoined)}>
+                Accept
+              </button>
+              <button className="btn" disabled={busy !== null} onClick={() => run(i.id, () => respond(i.id, false).then((error) => ({ error })), "Invitation declined")}>
+                Decline
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="note">Accepting joins that organisation instead of opening a new account.</p>
+    </div>
   );
 }
 

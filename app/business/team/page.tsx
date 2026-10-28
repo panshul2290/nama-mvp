@@ -2,7 +2,8 @@
 
 import { useCallback, useState } from "react";
 import { ORG_ROLE_LABEL, useBiz } from "@/components/business/BizContext";
-import { Dialog, fmtDate, useAction, useLive } from "@/components/portal/kit";
+import { Dialog, fmtDate, St, useAction, useLive } from "@/components/portal/kit";
+import { useSentInvitations } from "@/components/useInvitations";
 import { supabase } from "@/lib/supabase/client";
 import type { OrgRole } from "@/lib/types";
 
@@ -17,6 +18,8 @@ export default function BusinessTeam() {
   const { org, isAdmin, profile } = useBiz();
   const [members, setMembers] = useState<Member[]>([]);
   const [open, setOpen] = useState(false);
+  const sent = useSentInvitations("org_member", isAdmin ? org.id : null);
+  const { busy, run } = useAction();
 
   const load = useCallback(async () => {
     const { data } = await supabase().from("profiles").select("id, full_name, phone, org_role, created_at").eq("org_id", org.id).order("created_at");
@@ -64,9 +67,44 @@ export default function BusinessTeam() {
             </tbody>
           </table>
         </div>
+        {isAdmin && sent.invitations.length > 0 && (
+          <>
+            <h2 style={{ paddingTop: 12 }}>
+              Pending invitations <small>the person accepts when they sign in to the Business portal</small>
+            </h2>
+            <div className="tblwrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Sent</th>
+                    <th>Expires</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sent.invitations.map((i) => (
+                    <tr key={i.id}>
+                      <td>{i.email}</td>
+                      <td>{i.org_role ? ORG_ROLE_LABEL[i.org_role] : "—"}</td>
+                      <td>{fmtDate(i.created_at)}</td>
+                      <td>{i.expired ? <St tone="bad">Expired</St> : fmtDate(i.expires_at)}</td>
+                      <td className="num">
+                        <button className="btn sm" disabled={busy === i.id} onClick={() => run(i.id, () => supabase().rpc("revoke_invitation", { p_id: i.id }), "Invitation revoked", sent.reload)}>
+                          Revoke
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
         <p className="note">Site managers order and track for your sites. Finance sees invoices and statements, not ordering. Only account admins approve orders above the approval limit.</p>
       </div>
-      {open && <InviteDialog onClose={() => setOpen(false)} onDone={load} />}
+      {open && <InviteDialog onClose={() => setOpen(false)} onDone={sent.reload} />}
     </>
   );
 }
@@ -78,13 +116,13 @@ function InviteDialog({ onClose, onDone }: { onClose: () => void; onDone: () => 
   return (
     <Dialog
       title="Invite user"
-      body="The person must first create a Business portal account (at /signup?app=business) with this email. Inviting links their account to your organisation."
+      body="The person must first create a Business portal account (at /signup?app=business) with this email. They join your organisation when they accept the invitation after signing in."
       onClose={onClose}
     >
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          run("inv", async () => supabase().rpc("org_add_member", { p_email: email.trim(), p_role: role }), `${email.trim()} added as ${ORG_ROLE_LABEL[role]}`, () => {
+          run("inv", async () => supabase().rpc("org_add_member", { p_email: email.trim(), p_role: role }), `Invitation sent to ${email.trim()} as ${ORG_ROLE_LABEL[role]}`, () => {
             onDone();
             onClose();
           });
