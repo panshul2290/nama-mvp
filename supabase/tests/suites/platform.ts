@@ -37,7 +37,7 @@ export async function platformSuite(t: Target, r: Reporter) {
       [type, gal, extra.lat ?? LAT, extra.lng ?? LNG, method, extra.card ?? null, extra.promo ?? null, extra.slotStart ?? null, extra.slotEnd ?? null, extra.emergency ?? false]);
 
   await r.denies("create_order: wallet payment with an empty wallet → insufficient_wallet", () => order(C1.id, "DW", 1000, "wallet"), "insufficient_wallet");
-  await r.denies("create_order: outside every service zone → outside_service_area", () => order(C1.id, "DW", 1000, "card", { lat: 21.0, lng: 57.0 }), "outside_service_area");
+  await r.denies("create_order: outside every service zone → outside_service_area", () => order(C1.id, "DW", 1000, "card", { lat: 25.2, lng: 55.27 }), "outside_service_area");
   await r.denies("wallet_topup: declined card → payment_failed", () => one(C1.id, "select wallet_topup(10, 'card', '0002')"), "payment_failed");
   await one(C1.id, "select wallet_topup(20, 'card', '4417')");
   r.check("wallet_topup adds 20 OMR to the wallet", (await wallet(C1.id)) === 20);
