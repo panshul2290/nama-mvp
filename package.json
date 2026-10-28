@@ -18,9 +18,13 @@
     "test:db:supabase": "tsx --env-file-if-exists=.env.local supabase/tests/run.ts supabase",
     "evidence": "node --env-file-if-exists=.env.local scripts/evidence.mjs",
     "test:unit": "tsx tests/unit/tracking.test.ts && tsx tests/unit/privacy.test.ts",
-    "verify:seed": "tsx scripts/verify-demo-seed.mts"
+    "verify:seed": "tsx scripts/verify-demo-seed.mts",
+    "build:apk:customer": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs customer",
+    "build:apk:driver": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs driver"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "1.2.26",
+    "@capacitor/core": "8.5.3",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
     "maplibre-gl": "^6.14.0",
@@ -29,6 +33,8 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/cli": "8.5.3",
     "@electric-sql/pglite": "^0.5.10",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",

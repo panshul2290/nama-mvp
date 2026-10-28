@@ -48,3 +48,13 @@ next-env.d.ts
 
 # local database backups (contain auth data: never commit)
 /backups/
+
+# mobile builds (scripts/build-mobile.mjs)
+/.mobile/
+/dist/
+/mobile/*/www/
+/mobile/*/android/app/build/
+/mobile/*/android/build/
+/mobile/*/android/.gradle/
+/mobile/*/android/local.properties
+/mobile/*/android/app/src/main/assets/public/
