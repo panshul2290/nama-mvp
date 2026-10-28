@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Nama Tanker</string>
+    <string name="title_activity_main">Nama Tanker</string>
+    <string name="package_name">om.nama.tanker.customer</string>
+    <string name="custom_url_scheme">om.nama.tanker.customer</string>
+</resources>

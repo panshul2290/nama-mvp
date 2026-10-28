@@ -1,0 +1,10 @@
+{
+  "appId": "om.nama.tanker.driver",
+  "appName": "Nama Driver",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true
+  },
+  "plugins": {}
+}

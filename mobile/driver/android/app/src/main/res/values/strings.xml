@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Nama Driver</string>
+    <string name="title_activity_main">Nama Driver</string>
+    <string name="package_name">om.nama.tanker.driver</string>
+    <string name="custom_url_scheme">om.nama.tanker.driver</string>
+</resources>

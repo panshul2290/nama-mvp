@@ -1,0 +1,10 @@
+{
+  "appId": "om.nama.tanker.customer",
+  "appName": "Nama Tanker",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true
+  },
+  "plugins": {}
+}
