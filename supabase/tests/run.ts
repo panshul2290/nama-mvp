@@ -50,6 +50,18 @@ async function main() {
          union all select 'u' || row_to_json(u)::text from public.audit_log u where coalesce(u.actor_email, '') not like 'test-%'
          union all select 'o' || row_to_json(o)::text from public.orders o where o.customer_id in (select id from real_users)
          union all select 'l' || row_to_json(l)::text from public.order_locations l join public.orders o on o.id = l.order_id where o.customer_id in (select id from real_users)
+         union all select 'c' || row_to_json(c)::text from public.companies c where c.cr_no not like 'TST%'
+         union all select 'g' || row_to_json(g)::text from public.organizations g where g.cr_no not like 'TST%'
+         union all select 'x' || row_to_json(x)::text from public.company_tx x join public.companies c on c.id = x.company_id where c.cr_no not like 'TST%'
+         union all select 'w' || row_to_json(w)::text from public.wallet_tx w where w.customer_id in (select id from real_users)
+         union all select 'y' || row_to_json(y)::text from public.payments y join public.orders o on o.id = y.order_id where o.customer_id in (select id from real_users)
+         union all select 'b' || row_to_json(b)::text from public.payout_batches b
+         union all select 'e' || row_to_json(e)::text from public.alerts e join public.tankers k on k.id = e.tanker_id where k.plate not like 'TST%'
+         union all select 'n' || row_to_json(n)::text from public.penalties n where n.company_id in (select id from public.companies where cr_no not like 'TST%')
+         union all select 'f' || row_to_json(f)::text from public.fraud_flags f
+         union all select 's' || row_to_json(s2)::text from public.app_settings s2
+         union all select 'r' || row_to_json(r2)::text from public.pricing_rules r2
+         union all select 'k' || row_to_json(k2)::text from public.contracts k2 where k2.company_id in (select id from public.companies where cr_no not like 'TST%')
        ) s`,
     );
   const before = t.name === "supabase" ? (await fingerprint())[0] : null;

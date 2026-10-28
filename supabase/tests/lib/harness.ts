@@ -258,6 +258,16 @@ export async function supabaseTarget(): Promise<Target> {
          select count(*)::int as n from gone`,
       );
       log.push(`deleted ${tk.n} test tankers (+${orphans.n} unassigned TST tankers) with their permits`);
+      // Test companies and business accounts (CR numbers start with TST) and what hangs off them.
+      const [orgs] = await target.admin<{ companies: number; orgs: number }>(
+        `with tco as (select id from public.companies where cr_no like 'TST%'), torg as (select id from public.organizations where cr_no like 'TST%'),
+              p as (delete from public.penalties where company_id in (select id from tco) returning 1),
+              k as (delete from public.contracts where company_id in (select id from tco) or org_id in (select id from torg) returning 1)
+         select (select count(*) from tco)::int as companies, (select count(*) from torg)::int as orgs`,
+      );
+      await target.admin("delete from public.companies where cr_no like 'TST%'");
+      await target.admin("delete from public.organizations where cr_no like 'TST%'");
+      log.push(`deleted ${orgs.companies} test companies and ${orgs.orgs} test business accounts`);
       for (const u of all) {
         if (!isTestEmail(u.email)) throw new Error(`refusing to delete non-test user ${u.id}`);
         const { error } = await adminApi.auth.admin.deleteUser(u.id);

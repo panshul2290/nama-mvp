@@ -137,6 +137,13 @@ export async function platformSuite(t: Target, r: Reporter) {
   r.check("the customer sees the case notes (none internal)", visible.length >= 2 && visible.every((n) => !n.internal), visible);
 
   // ---- control room ----------------------------------------------------------------------
+  // staff_scan, payout batches and emergency mode act on every tanker / company / setting,
+  // so on a live project they'd touch real data: run them only on a fresh database.
+  const GLOBAL = "acts on all real tankers, companies or settings — covered by the fresh (PGlite) run";
+  if (!t.fresh) {
+    for (const n of ["staff_scan raises 'IVMS signal lost' for a silent online tanker", "… without duplicating an open alert", "operator acknowledges the alert (audited)",
+                     "fraud scan flags a DW delivery without a filling event", "finance runs a payout batch; the company's earnings balance goes to zero"]) r.skip(n, GLOBAL);
+  } else {
   await t.admin("update tankers set is_online = true, last_fix_at = now() - interval '10 minutes' where id = $1", [w.tk.D1]);
   await r.denies("a customer can't run staff_scan", () => one(C1.id, "select staff_scan()"), "not_staff");
   const scan = await one<{ s: Row }>(OP.id, "select staff_scan() as s");
@@ -157,6 +164,7 @@ export async function platformSuite(t: Target, r: Reporter) {
   const batch = await one<Row>(FIN.id, "select * from staff_run_payout_batch()");
   const bal = await t.admin<{ s: string }>("select coalesce(sum(amount), 0)::text s from company_tx where company_id = $1 and bucket = 'earnings'", [co.id]);
   r.check("finance runs a payout batch; the company's earnings balance goes to zero", Number(batch.companies) >= 1 && Number(bal[0].s) === 0, { batch, bal });
+  }
 
   // ---- staff order actions and call-centre orders ----------------------------------------
   const call = await one<Row>(OP.id, "select * from staff_place_order($1, 'DW', 2000, $2, $3, 'TEST area', 'TEST caller address', 'GEN-1001')", [C2.id, LAT, LNG]);
@@ -219,9 +227,11 @@ export async function platformSuite(t: Target, r: Reporter) {
     return (await qq<{ value: string }>("select value from staff_update_pricing_rule('fee_dw_omr', '4', 'assumption', 'TEST', 'TEST reason')"))[0];
   });
   r.check("admin can change a pricing rule (rolled back here)", pr.value === "4", pr);
-  const em = await one<{ e: Row }>(OP.id, "select staff_set_emergency(true, 'Seeb', 'TEST supply outage') as e");
-  r.check("operator activates emergency mode for a zone", em.e.on === true && em.e.zone === "Seeb", em.e);
-  await one(OP.id, "select staff_set_emergency(false, null, 'TEST restored')");
+  if (t.fresh) {
+    const em = await one<{ e: Row }>(OP.id, "select staff_set_emergency(true, 'Seeb', 'TEST supply outage') as e");
+    r.check("operator activates emergency mode for a zone", em.e.on === true && em.e.zone === "Seeb", em.e);
+    await one(OP.id, "select staff_set_emergency(false, null, 'TEST restored')");
+  } else r.skip("operator activates emergency mode for a zone", GLOBAL);
   const dr = await one<Row>(C1.id, "select * from file_data_request('access', 'TEST export my data')");
   r.check("customer files a data-access request", dr.state === "open", dr);
 }
