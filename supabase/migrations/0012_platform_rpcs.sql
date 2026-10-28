@@ -139,7 +139,9 @@ declare q record; pct numeric := 0; promo public.promotions;
 begin
   if p_gallons is null or p_gallons < 1 or p_gallons > 20000 then raise exception 'invalid_gallons'; end if;
   if nullif(btrim(coalesce(p_promo_code, '')), '') is not null then
-    select * into promo from public.promotions where code = upper(btrim(p_promo_code)) and active and uses < max_uses and (valid_to is null or valid_to >= current_date);
+    select * into promo from public.promotions where code = upper(btrim(p_promo_code)) and active and uses < max_uses and (valid_to is null or valid_to >= current_date)
+       and (audience in ('all', 'household')
+            or (audience = 'new' and not exists (select 1 from public.orders where customer_id = auth.uid() and status = 'delivered')));
     if not found then raise exception 'invalid_promo'; end if;
     pct := promo.pct;
   end if;
@@ -247,6 +249,9 @@ begin
   values (o.id, auth.uid(), p_pay_method, o.total, w, c, case when c > 0 then coalesce(p_card_last4, '4417') end, 'authorized', 'SIM-' || o.order_no);
   if promo is not null then update public.promotions set uses = uses + 1 where code = promo; end if;
   update public.orders set payment_status = 'authorized' where id = o.id returning * into o;
+  if o.status = 'requested' then
+    perform public.notify(auth.uid(), 'order_confirmed', o.id, jsonb_build_object('order', 'TO-' || o.order_no, 'total', to_char(o.total, 'FM9990.000')));
+  end if;
   return o;
 end $$;
 
@@ -473,7 +478,7 @@ begin
           s.team, s.hours, now() + make_interval(hours => s.hours))
   returning * into c;
   insert into public.complaint_notes (complaint_id, author_id, author_role, body) values (c.id, auth.uid(), r::text, btrim(p_description));
-  perform public.notify(auth.uid(), 'complaint_update', p_order_id, jsonb_build_object('case', 'C-' || c.case_no, 'status', 'received'));
+  perform public.notify(auth.uid(), 'complaint_update', p_order_id, jsonb_build_object('case', 'C-' || c.case_no, 'status', 'received', 'status_ar', 'قيد المراجعة'));
   return c;
 end $$;
 
@@ -1164,7 +1169,8 @@ begin
   returning * into c;
   if not found then raise exception 'not_found'; end if;
   perform public.notify(coalesce(c.customer_id, (select id from public.profiles where org_id = c.org_id and org_role = 'admin' limit 1)),
-                        'contract_update', null, jsonb_build_object('contract', 'CT-' || c.contract_no, 'status', case when p_accept then 'accepted' else 'declined' end));
+                        'contract_update', null, jsonb_build_object('contract', 'CT-' || c.contract_no, 'status', case when p_accept then 'accepted' else 'declined' end,
+                                                    'status_ar', case when p_accept then 'قبول' else 'رفض' end));
   if p_accept then perform public.generate_contract_orders(); end if;
   return c;
 end $$;
@@ -1579,7 +1585,7 @@ begin
   elsif p_action = 'resolve' then
     if char_length(btrim(coalesce(p_body, ''))) < 3 then raise exception 'reason_required'; end if;
     update public.complaints set state = 'resolved', resolved_at = now(), resolution = btrim(p_body) where id = b.id returning * into a;
-    perform public.notify(b.customer_id, 'complaint_update', b.order_id, jsonb_build_object('case', 'C-' || b.case_no, 'status', 'resolved'));
+    perform public.notify(b.customer_id, 'complaint_update', b.order_id, jsonb_build_object('case', 'C-' || b.case_no, 'status', 'resolved', 'status_ar', 'تم الحل'));
   elsif p_action = 'reopen' then
     update public.complaints set state = 'assigned', resolved_at = null where id = b.id and state = 'resolved' returning * into a;
     if not found then raise exception 'invalid_state'; end if;
@@ -1620,6 +1626,7 @@ as $$
 declare b public.payout_batches; r record; tot numeric := 0; n integer := 0;
 begin
   perform public.require_staff(array['finance', 'admin']::public.staff_role[]);
+  perform pg_advisory_xact_lock(hashtext('nama.payout_batch'));
   insert into public.payout_batches (run_by, total, companies) values (auth.uid(), 0, 0) returning * into b;
   for r in select company_id, sum(amount) bal from public.company_tx where bucket = 'earnings' group by company_id having sum(amount) > 0 loop
     insert into public.company_tx (company_id, kind, amount, payout_batch_id, memo) values (r.company_id, 'payout', -r.bal, b.id, 'Payout batch PB-' || b.batch_no);
@@ -1688,6 +1695,7 @@ declare b jsonb := public.setting_json('EMERGENCY'); a jsonb; r text;
 begin
   perform public.require_staff(array['operator', 'admin']::public.staff_role[]);
   r := public.require_reason(p_reason);
+  if p_on and not exists (select 1 from public.zones where name = p_zone) then raise exception 'invalid_value'; end if;
   a := jsonb_build_object('on', p_on, 'zone', case when p_on then p_zone end, 'reason', case when p_on then r end, 'since', case when p_on then now() end);
   update public.app_settings set value = a::text where key = 'EMERGENCY';
   perform public.write_audit('emergency.' || case when p_on then 'activate' else 'deactivate' end, 'setting', 'EMERGENCY', b, a, r);
@@ -1703,6 +1711,13 @@ begin
   perform public.require_staff(array['admin']::public.staff_role[]);
   r := public.require_reason(p_reason);
   if p_key not in ('PRIVACY', 'LOYALTY') then raise exception 'invalid_setting'; end if;
+  if p_key = 'LOYALTY' and not (coalesce((p_value ->> 'points_per_omr')::numeric, 0) > 0 and coalesce((p_value ->> 'redeem_points')::numeric, 0) >= 1
+                                and coalesce((p_value ->> 'redeem_omr')::numeric, 0) > 0) then
+    raise exception 'invalid_value';
+  end if;
+  if p_key = 'PRIVACY' and not (p_value ?& array['mask_phone', 'mask_address', 'retention_gps_days', 'retention_orders_years', 'usage_data_default']) then
+    raise exception 'invalid_value';
+  end if;
   b := public.setting_json(p_key);
   update public.app_settings set value = p_value::text where key = p_key;
   perform public.write_audit('setting.update', 'setting', p_key, b, p_value, r);
@@ -1777,6 +1792,30 @@ begin
          title_ar = coalesce(nullif(btrim(p_title_ar), ''), title_ar), body_ar = coalesce(nullif(btrim(p_body_ar), ''), body_ar)
    where event = p_event returning * into a;
   perform public.write_audit('template.update', 'notification_template', p_event, to_jsonb(b), to_jsonb(a), r);
+  return a;
+end $$;
+
+-- Staff roles: tanker-company owners and business users can't be made staff
+-- (their accounts would silently change type); otherwise as in 0008.
+create or replace function public.staff_set_role(p_user_id uuid, p_staff_role public.staff_role, p_reason text)
+returns public.profiles
+language plpgsql security definer set search_path = public
+as $$
+declare b public.profiles; a public.profiles; r text;
+begin
+  perform public.require_staff(array['admin']::public.staff_role[]);
+  r := public.require_reason(p_reason);
+  if p_user_id = auth.uid() then raise exception 'cannot_change_own_role'; end if;
+  select * into b from public.profiles where id = p_user_id for update;
+  if not found then raise exception 'not_found'; end if;
+  if b.role = 'driver' then raise exception 'target_is_driver'; end if;
+  if b.role in ('owner', 'business') then raise exception 'target_not_eligible'; end if;
+  update public.profiles
+     set role = case when p_staff_role is null then 'customer'::public.user_role else 'nws_staff'::public.user_role end,
+         staff_role = p_staff_role
+   where id = p_user_id returning * into a;
+  perform public.write_audit('staff.set_role', 'profile', a.id::text,
+    jsonb_build_object('role', b.role, 'staff_role', b.staff_role), jsonb_build_object('role', a.role, 'staff_role', a.staff_role), r);
   return a;
 end $$;
 
@@ -1904,6 +1943,8 @@ as $$
 declare i public.incidents;
 begin
   perform public.require_staff(array['admin', 'operator']::public.staff_role[]);
+  if char_length(btrim(coalesce(p_title, ''))) < 3 or char_length(btrim(coalesce(p_system, ''))) < 2 then raise exception 'invalid_value'; end if;
+  if not exists (select 1 from public.incident_targets where priority = p_priority) then raise exception 'invalid_value'; end if;
   insert into public.incidents (priority, title, system) values (p_priority, btrim(p_title), btrim(p_system)) returning * into i;
   perform public.write_audit('incident.open', 'incident', i.id::text, null, to_jsonb(i), null);
   return i;
@@ -1999,8 +2040,14 @@ as $$
 declare s public.scheduled_reports;
 begin
   if not public.is_staff() then raise exception 'not_staff'; end if;
+  if char_length(btrim(coalesce(p_name, ''))) < 3
+     or p_dataset not in ('orders', 'revenue', 'complaints', 'ratings', 'fleet', 'payments')
+     or p_group_by not in ('day', 'service', 'zone', 'company', 'category', 'channel') then
+    raise exception 'invalid_value';
+  end if;
   insert into public.scheduled_reports (name, dataset, group_by, cadence, format, recipients, created_by)
   values (btrim(p_name), p_dataset, p_group_by, p_cadence, p_format, coalesce(p_recipients, ''), auth.uid()) returning * into s;
+  perform public.write_audit('report.schedule', 'scheduled_report', s.id::text, null, to_jsonb(s), null);
   return s;
 end $$;
 

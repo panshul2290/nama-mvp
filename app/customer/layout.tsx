@@ -1,22 +1,38 @@
 "use client";
 
+import "./customer.css";
 import { CustomerCtx } from "@/components/CustomerContext";
+import { useCx } from "@/components/customer/i18n";
+import { UnreadProvider, useUnread } from "@/components/customer/ui";
 import { Loading, TabBar, type Tab } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
 
-const TABS: Tab[] = [
-  { href: "/customer", label: "Home", icon: "home", match: (p) => p === "/customer" || p.startsWith("/customer/request") },
-  { href: "/customer/orders", label: "Orders", icon: "list", match: (p) => p.startsWith("/customer/orders") },
-  { href: "/customer/account", label: "Account", icon: "user" },
-];
+const HOME = ["/customer/request", "/customer/inbox", "/customer/complaint"];
+const ORDERS = ["/customer/orders", "/customer/order", "/customer/contract"];
+const ACCOUNT = ["/customer/account", "/customer/complaints"];
+const under = (p: string, list: string[]) => list.some((x) => p === x || p.startsWith(`${x}/`));
+
+function Tabs() {
+  const { t } = useCx();
+  const { unread } = useUnread();
+  const tabs: Tab[] = [
+    { href: "/customer", label: t("tHome"), icon: "home", badge: unread, match: (p) => p === "/customer" || under(p, HOME) },
+    { href: "/customer/orders", label: t("tOrders"), icon: "list", match: (p) => under(p, ORDERS) },
+    { href: "/customer/wallet", label: t("tWallet"), icon: "wallet", match: (p) => under(p, ["/customer/wallet"]) },
+    { href: "/customer/account", label: t("tAccount"), icon: "user", match: (p) => under(p, ACCOUNT) },
+  ];
+  return <TabBar tabs={tabs} />;
+}
 
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {
   const profile = useProfile("customer");
   if (!profile) return <Loading />;
   return (
     <CustomerCtx value={profile}>
-      {children}
-      <TabBar tabs={TABS} />
+      <UnreadProvider userId={profile.id}>
+        {children}
+        <Tabs />
+      </UnreadProvider>
     </CustomerCtx>
   );
 }

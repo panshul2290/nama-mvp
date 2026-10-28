@@ -1,0 +1,88 @@
+/* Reports and Settings (NWS staff portal). Scoped under .nws, dark theme tokens from nws.css. */
+
+/* Settings sub-navigation, re-themed for the dark portal (overrides nws.css). */
+.nws div.settings { grid-template-columns: 210px minmax(0, 1fr); gap: 28px; }
+.nws .settings nav.subnav { background: transparent; border: 0; padding: 0; gap: 1px; top: 0; }
+.nws .settings nav.subnav > div { display: flex; flex-direction: column; gap: 1px; }
+.nws .settings nav.subnav small { color: var(--muted); padding: 14px 10px 4px; margin: 0; font-size: 11.5px; letter-spacing: .06em; }
+.nws .settings nav.subnav > div:first-child small { padding-top: 0; }
+.nws .settings nav.subnav a { color: var(--ink); padding: 7px 10px; border-radius: 8px; font-weight: 500; }
+.nws .settings nav.subnav a:hover { background: var(--panel); }
+.nws .settings nav.subnav a.on { background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font-weight: 700; }
+@media (max-width: 1180px) {
+  .nws div.settings { grid-template-columns: 1fr; }
+  .nws .settings nav.subnav { position: static; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .nws .settings nav.subnav > div { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .nws .settings nav.subnav small { display: none; }
+}
+
+/* Tabs (prototype .tabs) */
+.nws .rtabs { display: flex; flex-wrap: wrap; gap: 2px 24px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.nws .rtabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 0 9px; font-size: 14px; color: var(--muted); margin-bottom: -1px; font-weight: 600; }
+.nws .rtabs button.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 700; }
+
+/* Layout grids */
+.nws .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.nws .half { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.nws .wide { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1280px) { .nws .grid3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 1180px) { .nws .grid3, .nws .half, .nws .wide { grid-template-columns: 1fr; } }
+.nws .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.nws .stack > .panel { margin-bottom: 0; }
+.nws .rangebar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: -6px 0 16px; }
+
+/* Bars (prototype bars()) */
+.nws .bars { display: flex; flex-direction: column; gap: 9px; padding: 8px 16px 16px; }
+.nws .bar { display: grid; grid-template-columns: minmax(90px, 140px) 1fr 76px; gap: 10px; align-items: center; font-size: 13px; }
+.nws .bar .bl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nws .bar .track { height: 12px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
+.nws .bar .fill { height: 100%; background: var(--accent); border-radius: 3px; }
+
+/* Charts */
+.nws .chart { padding: 4px 12px 12px; }
+.nws .chart svg { width: 100%; height: auto; display: block; }
+.nws .chart .ax, .nws .donut .ax { fill: var(--muted); font-size: 10.5px; }
+.nws .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); padding: 4px 4px 0; }
+.nws .legend span { display: inline-flex; align-items: center; gap: 6px; }
+.nws .legend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.nws .donut { display: flex; align-items: center; gap: 18px; padding: 8px 16px 16px; flex-wrap: wrap; }
+.nws .donut svg { width: 140px; height: 140px; flex: none; }
+.nws .donut .dc { fill: var(--ink); font-size: 20px; font-weight: 800; }
+.nws .donut ul { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.nws .donut li { display: grid; grid-template-columns: 10px 1fr auto 40px; gap: 8px; align-items: center; }
+.nws .donut li i { width: 10px; height: 10px; border-radius: 3px; }
+.nws .donut li small { color: var(--muted); text-align: right; }
+
+/* Switch (prototype .switch) */
+.nws .switch { width: 36px; height: 21px; border-radius: 999px; background: var(--line); border: 0; position: relative; flex: none; padding: 0; cursor: pointer; vertical-align: middle; }
+.nws .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: left .15s; }
+.nws .switch.on { background: var(--ok); }
+.nws .switch.on::after { left: 18px; }
+.nws .switch[disabled] { opacity: .45; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) { .nws .switch::after { transition: none; } }
+
+/* Inline inputs and forms */
+.nws input.inl, .nws select.inl { font: inherit; font-size: 13.5px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunk); color: var(--ink); }
+.nws input.inl { width: 90px; text-align: right; }
+.nws .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.nws .form .fld { margin: 0; }
+.nws .dlg .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.nws .dlg-wide .dlg > div { width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; }
+.nws .dlg .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13.5px; }
+.nws .dlg .checks label { display: inline-flex; gap: 6px; align-items: center; }
+.nws .preview-h { font-size: 14px; margin: 16px 0 8px; }
+
+/* Tables */
+.nws table.matrix td, .nws table.matrix th { text-align: center; }
+.nws table.matrix td:first-child, .nws table.matrix th:first-child { text-align: left; }
+.nws table.matrix td b { color: var(--accent); }
+.nws .tblwrap.scroll { max-height: 460px; overflow-y: auto; }
+.nws td.tpl { max-width: 280px; font-size: 13px; }
+.nws td.tpl small { display: block; }
+.nws .stars { color: var(--warn); letter-spacing: 1px; white-space: nowrap; }
+.nws .quote { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.nws .quote:first-child { border-top: 0; }
+.nws .quote small { display: block; color: var(--muted); margin-top: 2px; }
+.nws ul.plain { margin: 0; padding: 4px 16px 16px 34px; font-size: 14px; line-height: 1.7; }
+.nws .mapcard.zonemap { height: 520px; min-height: 360px; }
+.nws .pcheck .bill { padding-top: 10px; }

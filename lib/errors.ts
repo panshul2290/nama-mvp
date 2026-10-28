@@ -31,6 +31,7 @@ const MESSAGES: Record<string, string> = {
   permit_no_taken: "That permit number already exists.",
   cannot_change_own_role: "You can’t change your own role.",
   target_is_driver: "Drivers can’t be made staff.",
+  target_not_eligible: "Tanker-company and business accounts can’t be made staff. Use a separate account.",
   pricing_unconfirmed: "This order can’t be priced yet: some pricing rules are still awaiting NWS confirmation (billing is in production mode).",
   price_immutable: "Prices can’t be changed after an order is placed.",
   // Platform (0010+)

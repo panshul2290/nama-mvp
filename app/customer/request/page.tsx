@@ -1,37 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useCustomer } from "@/components/CustomerContext";
+import { useCx } from "@/components/customer/i18n";
+import { gal, omr3 } from "@/components/customer/fmt";
+import { useNow, useOnline, usePaymentMethods, useProperties, useWallet, type PayMethodRow } from "@/components/customer/hooks";
+import { PropertySheet } from "@/components/customer/PropertySheet";
+import { slotOptions } from "@/components/customer/slots";
+import { Bill, quoteToBill, SvcTag, Toggle } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
-import { Bill, SERVICE_SHORT, TypeTag } from "@/components/OrderBits";
 import { BackButton, Loading } from "@/components/Shell";
-import { friendlyError } from "@/lib/errors";
-import { currentPosition, DEFAULT_CENTER, reverseGeocodeArea } from "@/lib/geo";
-import { feeKey, omr, quote, ruleNumber, VOLUME_PRESETS, type PricingRules, type ServiceType } from "@/lib/pricing";
-import { RuleTag } from "@/components/OrderBits";
 import { usePricingRules } from "@/components/usePricingRules";
+import { errorCode, friendlyError } from "@/lib/errors";
+import { currentPosition, DEFAULT_CENTER, reverseGeocodeArea } from "@/lib/geo";
+import { ruleNumber, VOLUME_PRESETS, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
-import type { LngLat, Order } from "@/lib/types";
+import { ref, type LngLat, type Order } from "@/lib/types";
 
-const STEP_NAMES = ["Service", "Location", "Volume"];
 const TYPES: ServiceType[] = ["DW", "WW", "TE"];
-const TYPE_NOTE: Record<ServiceType, string> = {
-  DW: "Potable water from NWS filling stations",
-  WW: "Septic tank emptied, discharged at an approved STP",
-  TE: "For irrigation and construction — not for drinking",
-};
-// Explains the tariff from the rules table (no figures are hard-coded).
-function tariffNote(type: ServiceType, rules: PricingRules) {
-  const n = (k: string) => ruleNumber(rules, k);
-  const fee = `Delivery fee ${n(feeKey(type)).toFixed(3)} OMR.`;
-  if (type === "DW") {
-    const basis = rules.dw_above_650_basis?.value === "whole_volume" ? "on every gallon once over" : "on the gallons above";
-    return `${n("dw_rate_upto_650")} baisa a gallon up to ${n("dw_tier_threshold_gal")} gal, ${n("dw_rate_above_650")} baisa a gallon ${basis} ${n("dw_tier_threshold_gal")}. ${fee}`;
-  }
-  return `${n(type === "WW" ? "ww_rate" : "te_rate")} baisa a gallon. ${fee}`;
-}
 const COLOR: Record<ServiceType, string> = { DW: "var(--dw)", WW: "var(--ww)", TE: "var(--te)" };
+type Plan = "one" | "monthly" | "yearly";
 
 export default function RequestPage() {
   return (
@@ -44,213 +35,567 @@ export default function RequestPage() {
 function RequestWizard() {
   const router = useRouter();
   const params = useSearchParams();
-  const initialType = TYPES.includes(params.get("type") as ServiceType) ? (params.get("type") as ServiceType) : "DW";
+  const profile = useCustomer();
+  const { t, lang } = useCx();
+  const online = useOnline();
+  const now = useNow(60_000);
+  const { rules } = usePricingRules();
+  const { props, reload: reloadProps } = useProperties(profile.id);
+  const { wallet } = useWallet();
+  const { methods } = usePaymentMethods(profile.id);
 
+  const initialType = TYPES.includes(params.get("type") as ServiceType) ? (params.get("type") as ServiceType) : "DW";
+  const paramGallons = Number(params.get("gallons"));
   const [step, setStep] = useState(1);
   const [type, setType] = useState<ServiceType>(initialType);
-  const [gallons, setGallons] = useState(VOLUME_PRESETS[initialType][1] ?? VOLUME_PRESETS[initialType][0]);
+  // "pin" = drop a pin instead of a saved property; null = not chosen yet (defaults below).
+  const [propChoice, setPropChoice] = useState<string | null>(params.get("property"));
+  const [addingProp, setAddingProp] = useState(false);
+  const [gallons, setGallons] = useState(paramGallons > 0 ? paramGallons : 3000);
+  const gallonsTouched = useRef(paramGallons > 0);
+  const [plan, setPlan] = useState<Plan>("one");
+  const [slotId, setSlotId] = useState("now");
+  const [emergency, setEmergency] = useState(false);
+  const [note, setNote] = useState("");
+  const [promoIn, setPromoIn] = useState("");
+  const [promo, setPromo] = useState<string | null>(null);
+  const [promoMsg, setPromoMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pay, setPay] = useState<string | null>(null);
+  const [quote, setQuote] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState<{ code: string | null; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<Order | null>(null);
+  const [history, setHistory] = useState<Order[]>([]);
+
+  // Pin mode (as before): GPS fix, draggable pin, suggested area name.
   const [center, setCenter] = useState<LngLat>(DEFAULT_CENTER);
   const [point, setPoint] = useState<LngLat>(DEFAULT_CENTER);
-  const [gpsNote, setGpsNote] = useState<string | null>(null);
+  const [gpsNote, setGpsNote] = useState(false);
   const [area, setArea] = useState("");
   const areaTouched = useRef(false);
   const [address, setAddress] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+
+  const prop = props && propChoice !== "pin" ? (props.find((p) => p.id === propChoice) ?? (propChoice === null ? props[0] : undefined)) : undefined;
+  const pinMode = props !== null && !prop;
 
   function applyPosition(p: LngLat | null) {
-    if (!p) return setGpsNote("Couldn’t get your location — drag the pin or tap the map.");
-    setGpsNote(null);
+    setGpsNote(!p);
+    if (!p) return;
     setCenter(p);
     setPoint(p);
   }
   const locate = () => currentPosition().then(applyPosition);
-
-  // Default the pin to the current GPS fix.
   useEffect(() => {
-    currentPosition().then(applyPosition);
-  }, []);
-
-  // Suggest the area name from the pin; the customer can overwrite it.
+    if (!pinMode) return;
+    currentPosition().then((p) => {
+      setGpsNote(!p);
+      if (!p) return;
+      setCenter(p);
+      setPoint(p);
+    });
+  }, [pinMode]);
   useEffect(() => {
-    if (areaTouched.current) return;
+    if (!pinMode || areaTouched.current) return;
     const ctl = new AbortController();
-    const t = setTimeout(async () => {
+    const tm = setTimeout(async () => {
       const name = await reverseGeocodeArea(point, ctl.signal);
       if (name && !areaTouched.current) setArea(name);
     }, 600);
     return () => {
-      clearTimeout(t);
+      clearTimeout(tm);
       ctl.abort();
     };
-  }, [point]);
+  }, [point, pinMode]);
 
-  const { rules } = usePricingRules();
-  const q = useMemo(() => (rules ? quote(type, gallons || 0, rules) : null), [type, gallons, rules]);
-  const validGallons = Number.isInteger(gallons) && gallons >= 1 && gallons <= 20000;
-  const canNext = step === 1 || (step === 2 && area.trim().length > 0) || (step === 3 && validGallons);
+  // Past deliveries power the volume suggestion.
+  useEffect(() => {
+    supabase()
+      .from("orders")
+      .select("id, property_id, service_type, gallons, delivered_at, status")
+      .eq("customer_id", profile.id)
+      .eq("status", "delivered")
+      .order("delivered_at", { ascending: false })
+      .limit(40)
+      .then(({ data }) => setHistory((data ?? []) as Order[]));
+  }, [profile.id]);
 
-  function pickType(t: ServiceType) {
-    setType(t);
-    if (!VOLUME_PRESETS[t].includes(gallons)) setGallons(VOLUME_PRESETS[t][0]);
+  const slots = useMemo(() => slotOptions(now), [now]);
+  const slot = slots.find((s) => s.id === slotId) ?? slots[0];
+
+  const suggestion = useMemo(() => {
+    if (type === "DW") {
+      const tank = prop?.tank_gal ?? 3000;
+      const g = Math.min(5000, tank);
+      const ts = history
+        .filter((o) => o.service_type === "DW" && (!prop || o.property_id === prop.id) && o.delivered_at)
+        .map((o) => new Date(o.delivered_at!).getTime())
+        .slice(0, 8);
+      const days = ts.length >= 2 ? Math.max(1, Math.round((ts[0] - ts[ts.length - 1]) / (ts.length - 1) / 86_400_000)) : null;
+      const text = days
+        ? t("recoDwHist", { p: prop?.label ?? t("yourHome"), g: gal(g, lang), d: days, n: ts.length })
+        : t("recoDwTank", { p: prop?.label ?? t("yourHome"), g: gal(g, lang), tank: gal(tank, lang) });
+      return { g, text };
+    }
+    return type === "WW" ? { g: 3000, text: t("recoWw") } : { g: 10000, text: t("recoTe") };
+  }, [type, prop, history, t, lang]);
+
+  // Live quote on the review step (peak, priority and promotion included).
+  const slotStart = slot?.start ?? null;
+  const quoteArgs = useMemo(
+    () => ({ p_service_type: type, p_gallons: gallons, p_slot_start: slotStart, p_emergency: emergency, p_promo_code: promo }),
+    [type, gallons, slotStart, emergency, promo],
+  );
+  useEffect(() => {
+    if (step !== 4) return;
+    let live = true;
+    supabase()
+      .rpc("quote_order", quoteArgs)
+      .then(({ data, error }) => {
+        if (!live) return;
+        if (error) {
+          if (errorCode(error) === "invalid_promo") {
+            setPromo(null);
+            setPromoMsg({ ok: false, text: t("promoBad") });
+          } else setError({ code: errorCode(error), text: friendlyError(error) });
+          return;
+        }
+        setQuote(data as Record<string, unknown>);
+      });
+    return () => {
+      live = false;
+    };
+  }, [step, quoteArgs, t]);
+
+  async function applyPromo() {
+    const code = promoIn.trim().toUpperCase();
+    if (!code) {
+      setPromo(null);
+      setPromoMsg(null);
+      return;
+    }
+    const { data, error } = await supabase().rpc("quote_order", { ...quoteArgs, p_promo_code: code });
+    if (error) return setPromoMsg({ ok: false, text: errorCode(error) === "invalid_promo" ? t("promoBad") : friendlyError(error) });
+    setPromo(code);
+    setQuote(data as Record<string, unknown>);
+    setPromoMsg({ ok: true, text: t("promoOk", { c: code, l: String((data as { promo_label?: string }).promo_label ?? "") }) });
+  }
+
+  // Payment choice: wallet, a saved card, or OmanNet.
+  const cards = (methods ?? []).filter((m) => m.brand !== "OmanNet");
+  const omannetCard = (methods ?? []).find((m) => m.brand === "OmanNet");
+  const defaultCard: PayMethodRow | undefined = cards.find((m) => m.is_default) ?? cards[0];
+  const total = quote ? Number(quote.total) : null;
+  const balance = wallet?.balance ?? 0;
+  const payKey = pay ?? (balance > 0 ? "wallet" : defaultCard ? `card:${defaultCard.id}` : "card");
+  const walletShort = payKey === "wallet" && total != null && balance < total;
+
+  function payment(): { method: string; last4: string | null } {
+    if (payKey === "wallet") return walletShort ? { method: "wallet_card", last4: defaultCard?.last4 ?? null } : { method: "wallet", last4: null };
+    if (payKey === "omannet") return { method: "omannet", last4: omannetCard?.last4 ?? null };
+    const card = cards.find((c) => `card:${c.id}` === payKey);
+    return { method: "card", last4: card?.last4 ?? null };
+  }
+
+  function pickType(k: ServiceType) {
+    setType(k);
+    if (!gallonsTouched.current) setGallons(k === "DW" ? 3000 : k === "WW" ? 3000 : 10000);
+  }
+
+  function next() {
+    if (step === 1 && !gallonsTouched.current) setGallons(suggestion.g);
+    setError(null);
+    setStep(step + 1);
   }
 
   async function place() {
     setBusy(true);
     setError(null);
+    const { method, last4 } = payment();
+    const loc = prop
+      ? { p_lat: prop.lat, p_lng: prop.lng, p_area: prop.area || prop.label, p_address: [prop.label, prop.address].filter(Boolean).join(" · ") }
+      : { p_lat: point.lat, p_lng: point.lng, p_area: area.trim(), p_address: address.trim() };
     const { data, error } = await supabase()
-      .rpc("place_order", { p_service_type: type, p_gallons: gallons, p_lat: point.lat, p_lng: point.lng, p_area: area, p_address: address })
+      .rpc("create_order", {
+        p_service_type: type,
+        p_gallons: gallons,
+        ...loc,
+        p_property_id: prop?.id ?? null,
+        p_slot_start: slot?.start ?? null,
+        p_slot_end: slot?.end ?? null,
+        p_slot_label: slot?.start ? slot.label : null,
+        p_emergency: emergency,
+        p_driver_note: note.trim() || null,
+        p_pay_method: method,
+        p_card_last4: last4,
+        p_promo_code: promo,
+      })
       .single<Order>();
     setBusy(false);
-    if (error || !data) return setError(friendlyError(error));
-    router.replace(`/customer/orders/${data.id}`);
+    if (error || !data) {
+      const code = errorCode(error);
+      // quote_order doesn't check a promotion's audience (e.g. first order only); create_order does.
+      if (code === "invalid_promo") {
+        setPromo(null);
+        setPromoMsg({ ok: false, text: t("promoBad") });
+      }
+      return setError({ code, text: friendlyError(error) });
+    }
+    if (data.status === "cancelled" && data.payment_status === "failed") return setFailed(data);
+    router.replace(`/customer/order?id=${data.id}`);
+  }
+
+  const validGallons = Number.isInteger(gallons) && gallons >= 1 && gallons <= 20000;
+  const canNext = step === 1 ? props !== null && (!pinMode || area.trim().length > 0) : step === 2 ? validGallons : true;
+  const vatPct = rules ? Math.round(ruleNumber(rules, "vat_rate") * 1000) / 10 : null;
+  const prioMult = rules ? ruleNumber(rules, "priority_multiplier") : NaN;
+
+  // ---------------------------------------------------------------- payment failed
+  if (failed) {
+    const { last4 } = payment();
+    return (
+      <main className="screen">
+        <div className="rq-h">
+          <BackButton onClick={() => setFailed(null)} label={t("back")} />
+          <div>
+            <h3>{t("payFailT")}</h3>
+            <small>{ref.order(failed.order_no)}</small>
+          </div>
+        </div>
+        <div className="fail-hero">
+          <Icon name="x" />
+          <div>
+            <b>{t("payFailT")}</b>
+            <small>{last4 ? t("payFailCard", { l: last4 }) : t("payFailS")}</small>
+          </div>
+        </div>
+        <p className="mut small">{t("payFailNote")}</p>
+        <button className="cta" disabled={busy} onClick={() => (setFailed(null), place())}>
+          {busy ? t("paying") : t("retryPay")}
+        </button>
+        <button className="cta sec" onClick={() => setFailed(null)}>
+          {t("otherMethod")}
+        </button>
+      </main>
+    );
   }
 
   return (
-    <main className="screen">
-      <div className="rq-h">
-        <BackButton onClick={() => (step > 1 ? setStep(step - 1) : router.push("/customer"))} />
-        <div>
-          <h3>{step === 4 ? "Review and confirm" : "Request a tanker"}</h3>
-          <small>
-            Step {step} of 4{step < 4 ? ` · ${STEP_NAMES[step - 1]}` : ""}
-          </small>
+    <>
+      <main className="screen">
+        <div className="rq-h">
+          <BackButton label={t("back")} onClick={() => (step > 1 ? setStep(step - 1) : router.push("/customer"))} />
+          <div>
+            <h3>{step === 4 ? t("s4") : t("reqTanker")}</h3>
+            <small>
+              {t("stepOf", { n: lang === "ar" ? "١٢٣٤"[step - 1] : step })}
+              {step < 4 ? ` · ${t(`s${step}`)}` : ""}
+            </small>
+          </div>
         </div>
-      </div>
-      <div className="wiz" aria-hidden="true">
-        {[1, 2, 3, 4].map((n) => (
-          <span key={n} className={n <= step ? "on" : ""} />
-        ))}
-      </div>
-
-      {step === 1 && (
-        <div className="svc" role="radiogroup" aria-label="Service">
-          {TYPES.map((t) => (
-            <button key={t} type="button" role="radio" aria-checked={type === t} className={type === t ? "on" : ""} onClick={() => pickType(t)}>
-              <i style={{ background: COLOR[t] }} />
-              <div>
-                <b>{t === "WW" ? "Wastewater pickup" : SERVICE_SHORT[t]}</b>
-                <span>{TYPE_NOTE[t]}</span>
-              </div>
-            </button>
+        <div className="wiz" aria-hidden="true">
+          {[1, 2, 3, 4].map((n) => (
+            <span key={n} className={n <= step ? "on" : ""} />
           ))}
         </div>
-      )}
 
-      {step === 2 && (
-        <>
-          <div className="rq-map">
-            <Map center={center} pick={{ value: point, onChange: setPoint }} hint="Drag the pin or tap the map" onLocate={locate} />
-          </div>
-          {gpsNote && <div className="banner">{gpsNote}</div>}
-          <div className="fld">
-            <label htmlFor="area">Area</label>
-            <input
-              id="area"
-              required
-              maxLength={120}
-              placeholder="e.g. Al Khoud"
-              value={area}
-              onChange={(e) => {
-                areaTouched.current = true;
-                setArea(e.target.value);
-              }}
-            />
-          </div>
-          <div className="fld">
-            <label htmlFor="addr">Building, villa or landmark</label>
-            <input id="addr" maxLength={300} placeholder="e.g. Villa 214, Way 3021" value={address} onChange={(e) => setAddress(e.target.value)} />
-          </div>
-          <p className="mut small" style={{ marginTop: -4 }}>
-            Drivers see only the area until they accept your request.
-          </p>
-        </>
-      )}
+        {!online && <div className="banner badb">{t("offline")}</div>}
 
-      {step === 3 && (
-        <>
-          <h4 className="ch-sec">Volume (gallons)</h4>
-          <div className="opts">
-            {VOLUME_PRESETS[type].map((v) => (
-              <button key={v} type="button" className={`opt ${gallons === v ? "on" : ""}`} onClick={() => setGallons(v)}>
-                {v.toLocaleString()}
-              </button>
-            ))}
-          </div>
-          <div className="fld" style={{ marginTop: 12 }}>
-            <label htmlFor="gal">Or enter an amount</label>
-            <input id="gal" type="number" inputMode="numeric" min={1} max={20000} step={1} value={gallons || ""} onChange={(e) => setGallons(Math.floor(Number(e.target.value)))} />
-          </div>
-          {rules && q && (
-            <>
-              <div className="reco">
-                <b>Tariff:</b> {tariffNote(type, rules)}
-                {q.status.water !== "confirmed" && (
-                  <>
-                    {" "}
-                    <RuleTag status={q.status.water} /> {rules.dw_above_650_basis?.source}: how the higher rate applies is awaiting NWS.
-                  </>
-                )}
-              </div>
-              <div className="rq-card pad">
-                <Bill quote={q} rules={rules} />
-              </div>
-            </>
-          )}
-        </>
-      )}
-
-      {step === 4 && (
-        <>
-          <div className="rq-card">
-            <div className="rq-ch">
-              <b>Your request</b>
-              <TypeTag type={type} />
-            </div>
-            <div className="rq-r">
-              <span>Location</span>
-              <b>{[area, address].filter(Boolean).join(" · ")}</b>
-            </div>
-            <div className="rq-r">
-              <span>Volume (gallons)</span>
-              <b>{gallons.toLocaleString()} gallons</b>
-            </div>
-            <div className="rq-r">
-              <span>Delivery</span>
-              <b>As soon as possible</b>
-            </div>
-          </div>
-          {rules && q && (
-            <div className="rq-card pad">
-              <Bill quote={q} rules={rules} />
-              {q.status.total !== "confirmed" && (
-                <p className="mut small" style={{ margin: "8px 0 0" }}>
-                  Tagged lines use rates that NWS hasn’t confirmed yet.
-                </p>
-              )}
-            </div>
-          )}
-          {error && <div className="banner badb">{error}</div>}
-        </>
-      )}
-
-      <div className="rq-next">
-        {step < 4 ? (
-          <button className="cta" disabled={!canNext} onClick={() => setStep(step + 1)}>
-            Next
-          </button>
-        ) : (
+        {step === 1 && (
           <>
-            <button className="cta" disabled={busy || !q} onClick={place}>
-              {busy ? "Placing request…" : q ? `Place request · ${omr(q.total)}` : "Place request"}
+            <div className="svc" role="radiogroup" aria-label={t("s1")}>
+              {TYPES.map((k) => (
+                <button key={k} type="button" role="radio" aria-checked={type === k} className={type === k ? "on" : ""} onClick={() => pickType(k)}>
+                  <i style={{ background: COLOR[k] }} />
+                  <div>
+                    <b>{t(k)}</b>
+                    <span>{t(`${k}s`)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <h4 className="ch-sec">{t("property")}</h4>
+            {props === null ? (
+              <div className="empty">{t("loading")}</div>
+            ) : (
+              <div className="rq-card" role="radiogroup" aria-label={t("property")}>
+                {props.map((p) => (
+                  <button key={p.id} type="button" role="radio" aria-checked={prop?.id === p.id} className="pm" onClick={() => setPropChoice(p.id)}>
+                    <span>
+                      <b>{p.label}</b>
+                      <small>{[p.area, p.address].filter(Boolean).join(" · ") || gal(p.tank_gal, lang)}</small>
+                    </span>
+                    <i className={`radio ${prop?.id === p.id ? "on" : ""}`} />
+                  </button>
+                ))}
+                <button type="button" role="radio" aria-checked={pinMode} className="pm" onClick={() => setPropChoice("pin")}>
+                  <span>
+                    <b>{t("dropPin")}</b>
+                    <small>{t("dropPinS")}</small>
+                  </span>
+                  <i className={`radio ${pinMode ? "on" : ""}`} />
+                </button>
+              </div>
+            )}
+            <button type="button" className="lk" onClick={() => setAddingProp(true)}>
+              + {t("addProp")}
             </button>
-            <div className="rq-note">
-              <Icon name="shield" />
-              Free to cancel — no tanker assigned yet.
+            {pinMode && (
+              <div style={{ marginTop: 12 }}>
+                <div className="rq-map">
+                  <Map center={center} pick={{ value: point, onChange: setPoint }} hint={t("dragPin")} onLocate={locate} />
+                </div>
+                {gpsNote && <div className="banner">{t("noGps")}</div>}
+                <div className="fld">
+                  <label htmlFor="area">{t("area")}</label>
+                  <input
+                    id="area"
+                    required
+                    maxLength={120}
+                    placeholder={t("areaPh")}
+                    value={area}
+                    onChange={(e) => {
+                      areaTouched.current = true;
+                      setArea(e.target.value);
+                    }}
+                  />
+                </div>
+                <div className="fld">
+                  <label htmlFor="addr">{t("bldg")}</label>
+                  <input id="addr" maxLength={300} placeholder={t("addressPh")} value={address} onChange={(e) => setAddress(e.target.value)} />
+                </div>
+                <p className="mut small" style={{ marginTop: -4 }}>
+                  {t("areaOnly")}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <h4 className="ch-sec">{t("volume")}</h4>
+            <div className="opts">
+              {VOLUME_PRESETS[type].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`opt ${gallons === v ? "on" : ""}`}
+                  onClick={() => {
+                    gallonsTouched.current = true;
+                    setGallons(v);
+                  }}
+                >
+                  {v.toLocaleString("en-US")}
+                </button>
+              ))}
+            </div>
+            <div className="fld" style={{ marginTop: 12 }}>
+              <label htmlFor="gal">{t("orAmount")}</label>
+              <input
+                id="gal"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={20000}
+                step={1}
+                value={gallons || ""}
+                onChange={(e) => {
+                  gallonsTouched.current = true;
+                  setGallons(Math.floor(Number(e.target.value)));
+                }}
+              />
+            </div>
+            <div className="reco">
+              <b>{t("reco")}:</b> {suggestion.text}
+            </div>
+            <h4 className="ch-sec">{t("plan")}</h4>
+            <div className="seg" role="tablist">
+              {(["one", "monthly", "yearly"] as Plan[]).map((k) => (
+                <button key={k} type="button" role="tab" aria-selected={plan === k} className={plan === k ? "on" : ""} onClick={() => setPlan(k)}>
+                  {t(k === "one" ? "one" : k === "monthly" ? "month" : "year")}
+                </button>
+              ))}
+            </div>
+            {plan !== "one" && <div className="reco">{t("planNote")}</div>}
+          </>
+        )}
+
+        {step === 3 && (
+          <>
+            <h4 className="ch-sec">{t("slot")}</h4>
+            <div className="opts">
+              {slots.map((s) => (
+                <button key={s.id} type="button" className={`opt ${slot?.id === s.id ? "on" : ""}`} onClick={() => setSlotId(s.id)}>
+                  {t(s.key)}
+                  {s.peak ? ` · ${t("peak")}` : ""}
+                </button>
+              ))}
+            </div>
+            {slot?.start && new Date(slot.start).getTime() - now > 2 * 3600_000 && <p className="mut small">{t("willSchedule")}</p>}
+            <div className="rq-card rq-split" style={{ marginTop: 14 }}>
+              <div>
+                <b>{t("emerg")}</b>
+                <small>
+                  {t("emergS")}
+                  {Number.isFinite(prioMult) ? ` (× ${prioMult})` : ""}
+                </small>
+              </div>
+              <Toggle on={emergency} onChange={setEmergency} label={t("emerg")} />
+            </div>
+            <div className="fld">
+              <label htmlFor="drvNote">{t("noteDrv")}</label>
+              <input id="drvNote" maxLength={300} value={note} placeholder={t("notePh")} onChange={(e) => setNote(e.target.value)} />
             </div>
           </>
         )}
-      </div>
-    </main>
+
+        {step === 4 && (
+          <>
+            <div className="rq-card">
+              <div className="rq-ch">
+                <b>{t("yourReq")}</b>
+                <SvcTag type={type} />
+              </div>
+              <div className="rq-r">
+                <span>{t("property")}</span>
+                <b>{prop ? [prop.label, prop.area].filter(Boolean).join(" · ") : [area, address].filter(Boolean).join(" · ")}</b>
+              </div>
+              <div className="rq-r">
+                <span>{t("volume")}</span>
+                <b>
+                  {gallons.toLocaleString("en-US")} {t("gallons")}
+                </b>
+              </div>
+              <div className="rq-r">
+                <span>{t("slot")}</span>
+                <b>{slot ? t(slot.key) : ""}</b>
+              </div>
+              {emergency && (
+                <div className="rq-r">
+                  <span>{t("emerg")}</span>
+                  <b>✓</b>
+                </div>
+              )}
+              {note.trim() && (
+                <div className="rq-r">
+                  <span>{t("noteDrv")}</span>
+                  <b>{note}</b>
+                </div>
+              )}
+            </div>
+
+            <div className="rq-card pad">
+              {quote ? <Bill bill={{ ...quoteToBill(quote, promo), vatPct }} gallons={gallons} /> : <div className="empty">{t("pricing")}</div>}
+              {quote && quote.total_status !== "confirmed" && <p className="mut small" style={{ margin: "8px 0 0" }}>{t("taggedNote")}</p>}
+              <div className="promo">
+                <input
+                  value={promoIn}
+                  dir="ltr"
+                  placeholder={`${t("promo")} · WELCOME10`}
+                  aria-label={t("promo")}
+                  onChange={(e) => setPromoIn(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && applyPromo()}
+                />
+                <button type="button" className="btn sm" onClick={applyPromo}>
+                  {t("apply")}
+                </button>
+              </div>
+              {promoMsg && <p className={`small ${promoMsg.ok ? "okt" : "badt"}`}>{promoMsg.text}</p>}
+            </div>
+
+            <h4 className="ch-sec">{t("payWith")}</h4>
+            <div className="rq-card" role="radiogroup" aria-label={t("payWith")}>
+              <PayRow on={payKey === "wallet"} onPick={() => setPay("wallet")} title={t("walletBal")} sub={`${t("balanceL")} ${omr3(balance, lang)}`} />
+              {cards.map((c) => (
+                <PayRow
+                  key={c.id}
+                  on={payKey === `card:${c.id}`}
+                  onPick={() => setPay(`card:${c.id}`)}
+                  title={`${c.brand} ••${c.last4}`}
+                  sub={c.is_default ? t("defaultCard") : t("savedCard")}
+                />
+              ))}
+              {cards.length === 0 && <PayRow on={payKey === "card"} onPick={() => setPay("card")} title={t("cardGeneric")} sub={t("cardGenericS")} />}
+              <PayRow
+                on={payKey === "omannet"}
+                onPick={() => setPay("omannet")}
+                title={t("omannet")}
+                sub={omannetCard ? `••${omannetCard.last4}` : t("omannetS")}
+              />
+            </div>
+            {walletShort && <div className="banner">{t("walletShort")}</div>}
+            {error && (
+              <div className="banner badb">
+                {error.text}
+                {error.code === "insufficient_wallet" && (
+                  <>
+                    {" "}
+                    <Link className="lk" href="/customer/wallet">
+                      {t("topup")}
+                    </Link>
+                  </>
+                )}
+                {(error.code === "outside_service_area" || error.code === "zone_disabled") && (
+                  <>
+                    {" "}
+                    <button type="button" className="lk" onClick={() => (setError(null), setStep(1))}>
+                      {t("changeLoc")}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            <div className="paybar">
+              <button className="cta" disabled={busy || total == null || !online} onClick={place}>
+                {busy ? t("paying") : total != null ? `${t("pay")} ${omr3(total, lang)}` : t("pay")}
+              </button>
+              <small>
+                <Icon name="shield" />
+                {t("cancelFree")}
+              </small>
+            </div>
+          </>
+        )}
+
+        {step < 4 && (
+          <div className="rq-next">
+            {step === 2 && plan !== "one" ? (
+              <Link
+                className="cta"
+                href={`/customer/contract?type=${type}&gallons=${gallons}&plan=${plan}${prop ? `&property=${prop.id}` : ""}`}
+              >
+                {t("toContract")}
+              </Link>
+            ) : (
+              <button className="cta" disabled={!canNext} onClick={next}>
+                {t("next")}
+              </button>
+            )}
+          </div>
+        )}
+      </main>
+      {addingProp && (
+        <PropertySheet
+          onClose={() => setAddingProp(false)}
+          onSaved={(p) => {
+            setAddingProp(false);
+            reloadProps();
+            setPropChoice(p.id);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function PayRow({ on, onPick, title, sub }: { on: boolean; onPick: () => void; title: string; sub: string }) {
+  return (
+    <button type="button" role="radio" aria-checked={on} className="pm" onClick={onPick}>
+      <span>
+        <b>{title}</b>
+        <small>{sub}</small>
+      </span>
+      <i className={`radio ${on ? "on" : ""}`} />
+    </button>
   );
 }

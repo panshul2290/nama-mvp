@@ -3,7 +3,7 @@
 // complaints, alerts and penalties, payouts, companies, contracts, business
 // accounts and invoices, staff order actions, notifications and RLS.
 import type { Reporter, Target } from "../lib/harness";
-import { giveTanker, makeWorld, setOnline } from "../lib/world";
+import { makeWorld, setOnline } from "../lib/world";
 
 type Row = Record<string, unknown>;
 const LAT = 23.6;

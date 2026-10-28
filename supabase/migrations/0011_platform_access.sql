@@ -152,6 +152,9 @@ create function public.is_owner()
 returns boolean language sql stable security definer set search_path = public
 as $$ select exists (select 1 from public.profiles where id = auth.uid() and role = 'owner' and company_id is not null) $$;
 
+create policy tankers_customer_collected on public.tankers for select to authenticated using (
+  exists (select 1 from public.orders o where o.tanker_id = tankers.id and o.customer_id = auth.uid() and o.status = 'collected'));
+
 -- A wastewater job stays the driver's until discharge: keep the customer's name and address visible.
 create policy profiles_driver_collected on public.profiles for select to authenticated using (
   exists (select 1 from public.orders o where o.customer_id = profiles.id and o.driver_id = auth.uid() and o.status = 'collected'));
@@ -355,6 +358,10 @@ begin
   if tpl.sms then ch := array_append(ch, 'sms'); end if;
   if tpl.whatsapp then ch := array_append(ch, 'whatsapp'); end if;
   if cardinality(ch) = 0 then ch := array['in_app']; end if;
+  if lang = 'ar' then
+    select coalesce(p_vars, '{}'::jsonb) || coalesce(jsonb_object_agg(left(k, -3), v), '{}'::jsonb) into p_vars
+      from jsonb_each(coalesce(p_vars, '{}'::jsonb)) as e(k, v) where k like '%\_ar';
+  end if;
   insert into public.notifications (user_id, event, channels, title, body, order_id)
   values (p_user, p_event, ch,
           public.fill_template(case when lang = 'ar' then tpl.title_ar else tpl.title_en end, p_vars),
@@ -378,7 +385,8 @@ begin
       for m in select id from public.profiles where org_id = new.org_id and org_role = 'admin' loop
         perform public.notify(m.id, 'approval_needed', new.id, v);
       end loop;
-    elsif new.status = 'requested' then perform public.notify(new.customer_id, 'order_confirmed', new.id, v);
+    elsif new.status = 'requested' and not (new.channel = 'app' and new.pay_method is not null) then
+      perform public.notify(new.customer_id, 'order_confirmed', new.id, v);
     end if;
     return new;
   end if;

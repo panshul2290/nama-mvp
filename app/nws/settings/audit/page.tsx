@@ -50,6 +50,21 @@ export default function AuditLogPage() {
               <option value="tanker.">Tanker (block, assign…)</option>
               <option value="permit.">Permit</option>
               <option value="staff.">Staff roles</option>
+              <option value="order.">Orders</option>
+              <option value="customer.">Customers</option>
+              <option value="complaint">Complaints</option>
+              <option value="penalty">Penalties</option>
+              <option value="pricing.">Pricing</option>
+              <option value="promotion.">Promotions</option>
+              <option value="setting.">Settings (privacy, loyalty)</option>
+              <option value="emergency.">Emergency mode</option>
+              <option value="zone.">Zones</option>
+              <option value="site.">Geofences</option>
+              <option value="template.">Notification templates</option>
+              <option value="payout.">Payouts</option>
+              <option value="fraud.">Fraud</option>
+              <option value="data_request.">Data requests</option>
+              <option value="incident.">Incidents</option>
             </select>
             <label className="mut" style={{ fontSize: 12.5 }}>
               From <input className="in" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
