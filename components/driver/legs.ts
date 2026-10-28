@@ -18,11 +18,15 @@ export function tripLegs(order: Order, loc: OrderLocation | null, sites: Site[],
   const cust: Leg = { kind: "cust", target: loc ? { lat: loc.lat, lng: loc.lng } : null, site: null };
   const near = loc ?? me;
   if (order.service_type === "WW") {
-    const s = nearestSite(sites, "discharge", "WW", near);
+    // A site the tanker is already inside wins (confirm_discharge verifies against the site nearest the tanker).
+    const here = order.status === "collected" ? sites.find((x) => x.kind === "discharge" && x.active && x.service_types.includes("WW") && insideGeofence(x, me)) : undefined;
+    const s = here ?? nearestSite(sites, "discharge", "WW", near);
     return [cust, { kind: "discharge", target: s ? { lat: s.lat, lng: s.lng } : null, site: s }];
   }
-  // The fill site the server records wins once filling is confirmed.
-  const s = (order.fill_site_id && sites.find((x) => x.id === order.fill_site_id)) || nearestSite(sites, "fill", order.service_type, near);
+  // The fill site the server records wins once filling is confirmed. Before that, a station the
+  // tanker is already inside wins (confirm_fill verifies against the station nearest the tanker).
+  const here = sites.find((x) => x.kind === "fill" && x.active && x.service_types.includes(order.service_type) && insideGeofence(x, me));
+  const s = (order.fill_site_id && sites.find((x) => x.id === order.fill_site_id)) || here || nearestSite(sites, "fill", order.service_type, near);
   return [{ kind: "fill", target: s ? { lat: s.lat, lng: s.lng } : null, site: s }, cust];
 }
 

@@ -60,7 +60,7 @@ export default function DriverHome() {
         <div>
           <h3>{profile.full_name || t("driver")}</h3>
           <div className="sub">
-            {tanker.plate} · {t(`svc_${tanker.service_type}`)} · {f.n(tanker.capacity_gal)} {t("gal")}
+            <bdi>{tanker.plate}</bdi> · {t(`svc_${tanker.service_type}`)} · {f.n(tanker.capacity_gal)} {t("gal")}
           </div>
         </div>
         <div className="d-tools">

@@ -69,7 +69,7 @@ export default function JobsPage() {
         <div>
           <h3>{t("tJobs")}</h3>
           <small>
-            {tanker.plate} · {t(`svc_${tanker.service_type}`)} · {f.n(tanker.capacity_gal)} {t("gal")}
+            <bdi>{tanker.plate}</bdi> · {t(`svc_${tanker.service_type}`)} · {f.n(tanker.capacity_gal)} {t("gal")}
           </small>
         </div>
         <button className={`d-onl ${online ? "on" : ""}`} onClick={toggleOnline} disabled={Boolean(job)} aria-pressed={online}>

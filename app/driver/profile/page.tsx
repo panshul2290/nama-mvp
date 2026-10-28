@@ -163,7 +163,7 @@ export default function DriverProfile() {
           {permit && <span className={`st ${permitTone}`}>{t(`permit_${permit.key}`)}</span>}
         </div>
         <p>
-          {tanker.plate} · {t(`svc_${tanker.service_type}`)}
+          <bdi>{tanker.plate}</bdi> · {t(`svc_${tanker.service_type}`)}
           {permit?.current ? ` · ${t(permit.key === "expired" ? "expiredOn" : "validUntil", { date: f.date(permit.current.expires_at) })}` : ""}
         </p>
         {permit?.pending && (
