@@ -152,6 +152,12 @@ create function public.is_owner()
 returns boolean language sql stable security definer set search_path = public
 as $$ select exists (select 1 from public.profiles where id = auth.uid() and role = 'owner' and company_id is not null) $$;
 
+-- A wastewater job stays the driver's until discharge: keep the customer's name and address visible.
+create policy profiles_driver_collected on public.profiles for select to authenticated using (
+  exists (select 1 from public.orders o where o.customer_id = profiles.id and o.driver_id = auth.uid() and o.status = 'collected'));
+create policy order_locations_driver_collected on public.order_locations for select to authenticated using (
+  exists (select 1 from public.orders o where o.id = order_locations.order_id and o.driver_id = auth.uid() and o.status = 'collected'));
+
 create policy tankers_owner            on public.tankers            for select to authenticated using (public.is_owner() and company_id = public.my_company_id());
 create policy profiles_owner_drivers   on public.profiles           for select to authenticated using (public.is_owner() and company_id = public.my_company_id());
 create policy assignments_owner        on public.tanker_assignments for select to authenticated using (public.in_my_company(tanker_id));

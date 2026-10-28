@@ -111,5 +111,7 @@ begin
     -- who know the path (paths are unguessable UUIDs and are only shown through RLS-protected rows).
     execute $p$create policy evidence_upload on storage.objects for insert to authenticated with check (bucket_id = 'evidence' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
     execute $p$create policy evidence_read on storage.objects for select to authenticated using (bucket_id = 'evidence')$p$;
+    -- Retaking a photo overwrites your own upload.
+    execute $p$create policy evidence_update on storage.objects for update to authenticated using (bucket_id = 'evidence' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
   end if;
 end $$;

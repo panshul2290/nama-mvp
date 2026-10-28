@@ -1,6 +1,9 @@
 // Demo trip simulator: plays back a road route in Muscat as if a phone were
 // driving it. Positions are fed into the same fix handler and send cadence as
 // real GPS, so the customer view behaves exactly as with a real driver.
+// Trips are driven leg by leg (filling station → customer, or customer →
+// discharge site), so each leg ends inside the site's geofence and the station
+// and discharge checks pass exactly as they would for a real tanker.
 // Only offered when NEXT_PUBLIC_DEMO_MODE=true.
 import { distanceKm } from "./geo";
 import { routeEta } from "./routing";
@@ -8,15 +11,21 @@ import type { LngLat } from "./types";
 
 export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 const AVG_SPEED_MS = 10; // ≈ 36 km/h, city traffic
+/** A leg starts from the tanker's current position when it is this close; otherwise from a nearby point. */
+const MAX_START_KM = 40;
 
 export type SimRoute = { points: LngLat[]; cum: number[]; totalM: number; source: "osrm" | "straight-line" };
 
-/** Road route from a start point ~3 km north-west of the destination (OSRM), or a straight line. */
-export async function buildDemoRoute(dest: LngLat): Promise<SimRoute> {
-  const start = { lat: dest.lat + 0.02, lng: dest.lng - 0.02 };
+/**
+ * Road route to `dest` (OSRM, or a straight line), starting from `from` — the
+ * tanker's current position — or, when that is unknown or far away, from a
+ * point ~3 km north-west of the destination.
+ */
+export async function buildDemoRoute(dest: LngLat, from?: LngLat | null): Promise<SimRoute> {
+  const start = from && distanceKm(from, dest) <= MAX_START_KM ? from : { lat: dest.lat + 0.02, lng: dest.lng - 0.02 };
   const r = await routeEta(start, dest, { withPath: true });
   const raw = r.source === "osrm" && r.path && r.path.length > 1 ? r.path.map(([lng, lat]) => ({ lat, lng })) : straight(start, dest, 40);
-  const points = [...raw, dest]; // end exactly at the customer's pin
+  const points = [...raw, dest]; // end exactly at the target (customer pin or site centre)
   const cum = [0];
   for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + distanceKm(points[i - 1], points[i]) * 1000);
   return { points, cum, totalM: cum[cum.length - 1], source: r.path ? "osrm" : "straight-line" };

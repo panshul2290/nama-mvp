@@ -1,163 +1,418 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
+import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
+import { insideGeofence, metresTo } from "@/components/driver/legs";
+import { IssueSheet, PodSheet } from "@/components/driver/TripSheets";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
-import { RuleTag, SERVICE_SHORT } from "@/components/OrderBits";
-import { kmText, orderNo } from "@/lib/format";
+import { RuleTag } from "@/components/OrderBits";
 import { useRoadEta } from "@/components/useRoadEta";
-import { DEFAULT_CENTER } from "@/lib/geo";
-import { omrValue } from "@/lib/pricing";
+import { distanceKm, DEFAULT_CENTER } from "@/lib/geo";
+import { useT } from "@/lib/i18n";
+import { supabase } from "@/lib/supabase/client";
+import type { Order, OrderMessage } from "@/lib/types";
 
-const STEP_LABEL: Record<string, [string, "act" | "ok"]> = {
-  accepted: ["Driving to customer", "act"],
-  arriving: ["Driving to customer", "act"],
-  arrived: ["Arrived at the customer", "ok"],
-};
+const QUICK = ["msgLate", "msgGate", "msgCover"];
 
 export default function TripPage() {
-  const { job, me, advance, acting, wakeLock, demoMode, sim, startSimulation, stopSimulation } = useDriver();
-  const eta = useRoadEta(job && job.order.status !== "arrived" ? me : null, job?.loc ? { lat: job.loc.lat, lng: job.loc.lng } : null);
+  const { job, leg, finished } = useDriver();
+  if (!job) return <NoTrip finished={finished} />;
+  // Remount per leg so the ETA and simulator state start fresh for the new target.
+  return <Trip key={`${job.order.id}:${leg}`} />;
+}
 
-  if (!job) {
-    return (
-      <main className="screen">
-        <div className="dj-h">
-          <div>
-            <h3>Trip</h3>
-            <small>No trip in progress</small>
+function NoTrip({ finished }: { finished: Order | null }) {
+  const t = useT(DICT);
+  const f = useFmt();
+  const ww = finished?.service_type === "WW";
+  return (
+    <main className="screen">
+      <div className="dj-h">
+        <div>
+          <h3>{t("tTrip")}</h3>
+          <small>{t("noTrip")}</small>
+        </div>
+      </div>
+      {finished && (
+        <>
+          <div className="done-hero">
+            <Icon name="check" />
+            <div>
+              <b>{t(ww ? "dischargedX" : "deliveredX", { order: f.order(finished.order_no) })}</b>
+              <small>{t("youEarned", { amt: f.omr(finished.driver_earnings) })}</small>
+            </div>
           </div>
-        </div>
-        <div className="empty">
-          Accept a job to start a trip.
-          <br />
-          <br />
-          <Link href="/driver/jobs" className="btn pri">
-            Open jobs
-          </Link>
-        </div>
-      </main>
-    );
+          {ww && finished.discharge_verified != null && (
+            <div className={`banner ${finished.discharge_verified ? "okb" : ""}`}>{finished.discharge_verified ? t("valveOk") : t("valveFlagged")}</div>
+          )}
+          {!ww && finished.fill_verified != null && (
+            <div className={`banner ${finished.fill_verified ? "okb" : ""}`}>{finished.fill_verified ? t("fillOk") : t("fillFlagged")}</div>
+          )}
+        </>
+      )}
+      <div className="empty">
+        {t("acceptToStart")}
+        <br />
+        <br />
+        <Link href="/driver/jobs" className="btn pri">
+          {t("openJobs")}
+        </Link>
+      </div>
+    </main>
+  );
+}
+
+function Trip() {
+  const { job, legs, leg, me, jobAction, acting, wakeLock, demoMode, sim, startSimulation, stopSimulation, toast } = useDriver();
+  const t = useT(DICT);
+  const f = useFmt();
+  const errText = useErrText();
+  const [pod, setPod] = useState(false);
+  const [issue, setIssue] = useState(false);
+  const [msgs, setMsgs] = useState<OrderMessage[]>([]);
+  const o = job!.order;
+  const loc = job!.loc;
+  const cur = legs[leg];
+  const next = legs[leg + 1];
+  const site = cur?.site ?? null;
+  const ww = o.service_type === "WW";
+  const arrived = cur?.kind === "cust" && o.status === "arrived";
+  const inside = cur?.kind !== "cust" && insideGeofence(site, me);
+  const atTarget = arrived || inside;
+  const eta = useRoadEta(!atTarget ? me : null, cur?.target ?? null);
+  const legKey = `${o.id}:${leg}`;
+
+  // Messages with the customer (live).
+  useEffect(() => {
+    const db = supabase();
+    db.from("order_messages")
+      .select("*")
+      .eq("order_id", o.id)
+      .order("created_at")
+      .then(({ data }) => setMsgs((data ?? []) as OrderMessage[]));
+    const ch = db
+      .channel(`msgs-${o.id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_messages", filter: `order_id=eq.${o.id}` }, (payload) => {
+        const m = payload.new as OrderMessage;
+        setMsgs((ms) => (ms.some((x) => x.id === m.id) ? ms : [...ms, m]));
+      })
+      .subscribe();
+    return () => {
+      db.removeChannel(ch);
+    };
+  }, [o.id]);
+
+  async function send(body: string) {
+    const { data, error } = await supabase().rpc("send_message", { p_order_id: o.id, p_body: body }).single<OrderMessage>();
+    if (error) return toast(errText(error));
+    setMsgs((ms) => (ms.some((x) => x.id === data.id) ? ms : [...ms, data]));
   }
 
-  const o = job.order;
-  const dest = job.loc ? { lat: job.loc.lat, lng: job.loc.lng } : null;
-  const [label, tone] = STEP_LABEL[o.status] ?? ["On the job", "act"];
-  const arrived = o.status === "arrived";
+  async function confirmFill() {
+    const r = await jobAction("confirm_fill");
+    if (r) toast(r.fill_verified ? t("fillOk") : t("fillFlagged"));
+  }
+
+  async function confirmDischarge() {
+    const r = await jobAction("confirm_discharge");
+    if (r) toast(r.discharge_verified ? t("valveOk") : t("valveFlagged"));
+  }
+
+  if (!cur) return null;
+  const titles = { fill: site?.name ?? t("noSite"), cust: loc?.address || o.area, discharge: site?.name ?? t("noSite") };
+  const away = metresTo(site, me);
+  const etaText = eta
+    ? t(eta.source === "osrm" ? "etaRoad" : "etaLine", { km: f.km(eta.km), min: f.d(eta.minutes) })
+    : cur.target
+      ? t("waitingGps")
+      : t("noTarget");
+  const pill: [string, string] =
+    cur.kind === "fill"
+      ? inside
+        ? [t("insideFill"), "ok"]
+        : [t("drivingFill"), "act"]
+      : cur.kind === "discharge"
+        ? inside
+          ? [t("insideDischarge"), "ok"]
+          : [t("drivingDischarge"), "act"]
+        : arrived
+          ? [t("arrivedCust"), "ok"]
+          : [t("drivingCust"), "act"];
+  const geofence = site && (
+    <div>
+      <Icon name="shield" />
+      <span>
+        <small>{cur.kind === "fill" ? t("stationGeofence") : t("approvedSite")}</small>
+        <b>{inside ? t("insideR", { r: f.d(site.radius_m) }) : away != null ? t("awayUnlocks", { d: f.km(away / 1000) }) : t("unlocks")}</b>
+      </span>
+      {inside && <span className="st ok">{t("geofenceOk")}</span>}
+    </div>
+  );
 
   return (
     <main className="screen flush">
       <div className="tr-map short">
-        <Map center={dest ?? me ?? DEFAULT_CENTER} destination={dest} me={me} follow padBottom={30} />
+        <Map center={cur.target ?? me ?? DEFAULT_CENTER} destination={cur.target} me={me} follow padBottom={30} />
         <div className="tr-chip">
-          <b>{orderNo(o.order_no)}</b>
-          <span className="mut">· {arrived ? "Step 2 of 2" : "Step 1 of 2"}</span>
+          <b>{f.order(o.order_no)}</b>
+          <span className="mut">· {t("stepOf", { n: f.d(leg + 1), m: f.d(legs.length) })}</span>
         </div>
       </div>
 
       <div className="sheet2">
         <i className="grab" aria-hidden="true" />
-        <span className={`st ${tone}`}>{label}</span>
-        <h3 className="tj-t">{job.loc?.address || o.area}</h3>
-        <small className="mut">
-          {arrived
-            ? "You’re at the delivery point"
-            : eta
-              ? `${kmText(eta.km)} to go · about ${eta.minutes} min${eta.source === "osrm" ? " by road" : " (straight-line estimate)"}`
-              : "Waiting for GPS…"}
-        </small>
+        <span className={`st ${pill[1]}`}>{pill[0]}</span>
+        <h3 className="tj-t">{titles[cur.kind]}</h3>
+        <small className="mut">{arrived ? t("atDeliveryPoint") : inside ? t("insideNote") : etaText}</small>
+
+        {cur.kind === "cust" && o.fill_verified === false && (
+          <div className="banner" style={{ marginTop: 12 }}>
+            {t("fillFlagged")}
+          </div>
+        )}
 
         <div className="tj-box">
-          <div>
-            <Icon name="drop" />
-            <span>
-              <small>Deliver</small>
-              <b>
-                {o.gallons.toLocaleString()} gal · {SERVICE_SHORT[o.service_type]}
-              </b>
-            </span>
-          </div>
-          <div>
-            <Icon name="pin" />
-            <span>
-              <small>Area</small>
-              <b>{o.area}</b>
-            </span>
-          </div>
-          <div>
-            <Icon name="user" />
-            <span>
-              <small>Customer</small>
-              <b>{job.customer?.full_name || "Customer"}</b>
-            </span>
-          </div>
-          <div>
-            <Icon name="coins" />
-            <span>
-              <small>Your earnings</small>
-              <b>
-                {omrValue(o.driver_earnings)} <RuleTag status={o.price_basis?.earnings} />
-              </b>
-            </span>
-          </div>
+          {cur.kind === "fill" && (
+            <>
+              <div>
+                <Icon name="drop" />
+                <span>
+                  <small>{t("fill")}</small>
+                  <b>
+                    {f.n(o.gallons)} {t("gal")} · {t(`svc_${o.service_type}`)}
+                  </b>
+                </span>
+              </div>
+              <div>
+                <Icon name="chart" />
+                <span>
+                  <small>{t("stationMeter")}</small>
+                  <b>
+                    {f.n(o.gallons)} {t("gal")}
+                  </b>
+                </span>
+                <span className="st">{t("waiting")}</span>
+              </div>
+              <div>
+                <Icon name="coins" />
+                <span>
+                  <small>{t("fillCredit")}</small>
+                  <b>{t("deductedAtStation", { amt: f.omr(o.water_charge) })}</b>
+                </span>
+              </div>
+              {geofence}
+            </>
+          )}
+          {cur.kind === "cust" && (
+            <>
+              <div>
+                <Icon name="drop" />
+                <span>
+                  <small>{ww ? t("collect") : t("deliver")}</small>
+                  <b>
+                    {f.n(o.gallons)} {t("gal")} · {t(`svc_${o.service_type}`)}
+                  </b>
+                </span>
+              </div>
+              {o.filled_at && (
+                <>
+                  <div>
+                    <Icon name="chart" />
+                    <span>
+                      <small>{t("stationMeter")}</small>
+                      <b>
+                        {f.n(o.fill_meter_gal ?? o.gallons)} {t("gal")}
+                      </b>
+                    </span>
+                    {o.fill_verified ? <span className="st ok">{t("match")}</span> : <span className="st warn">{t("flagged")}</span>}
+                  </div>
+                  <div>
+                    <Icon name="coins" />
+                    <span>
+                      <small>{t("fillCreditDeducted")}</small>
+                      <b>−{f.omr(o.water_charge)}</b>
+                    </span>
+                  </div>
+                </>
+              )}
+              <div>
+                <Icon name="pin" />
+                <span>
+                  <small>{t("custNote")}</small>
+                  <b>{o.driver_note || t("noNote")}</b>
+                </span>
+              </div>
+              <div>
+                <Icon name="user" />
+                <span>
+                  <small>{t("customer")}</small>
+                  <b>
+                    {job!.customer?.full_name || t("customer")} · {t("maskedNo")}
+                  </b>
+                </span>
+              </div>
+              <div>
+                <Icon name="coins" />
+                <span>
+                  <small>{t("yourEarnings")}</small>
+                  <b>
+                    {f.omr(o.driver_earnings)} <RuleTag status={o.price_basis?.earnings} />
+                  </b>
+                </span>
+              </div>
+            </>
+          )}
+          {cur.kind === "discharge" && (
+            <>
+              <div>
+                <Icon name="drop" />
+                <span>
+                  <small>{t("discharge")}</small>
+                  <b>{t("galWastewater", { n: f.n(o.gallons) })}</b>
+                </span>
+              </div>
+              {geofence}
+              <div>
+                <Icon name="zap" />
+                <span>
+                  <small>{t("valveSensor")}</small>
+                  <b>{t("valveOpens")}</b>
+                </span>
+              </div>
+              <div>
+                <Icon name="check" />
+                <span>
+                  <small>{t("collectedAt")}</small>
+                  <b>{loc?.address || o.area}</b>
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
-        {arrived ? (
-          <button className="cta" disabled={acting} onClick={() => advance("mark_delivered")}>
-            {acting ? "Saving…" : "Mark delivered"}
-          </button>
-        ) : (
-          <button className="cta" disabled={acting} onClick={() => advance("mark_arrived")}>
-            {acting ? "Saving…" : "Mark arrived"}
-          </button>
+        {cur.kind === "fill" &&
+          (inside ? (
+            <button className="cta" disabled={acting} onClick={confirmFill}>
+              {acting ? t("saving") : t("confirmFill", { n: f.n(o.gallons) })}
+            </button>
+          ) : (
+            <>
+              <button className="cta" disabled>
+                {t("unlocks")}
+              </button>
+              <button type="button" className="lk small d-override" disabled={acting} onClick={confirmFill}>
+                {t("fillAnyway")}
+              </button>
+            </>
+          ))}
+        {cur.kind === "cust" &&
+          (arrived ? (
+            <button className="cta" onClick={() => setPod(true)}>
+              {ww ? t("capturePodC") : t("capturePodD")}
+            </button>
+          ) : (
+            <button className="cta" disabled={acting} onClick={() => jobAction("mark_arrived")}>
+              {acting ? t("saving") : t("markArrived")}
+            </button>
+          ))}
+        {cur.kind === "discharge" &&
+          (inside ? (
+            <button className="cta" disabled={acting} onClick={confirmDischarge}>
+              {acting ? t("saving") : t("confirmDischarge", { name: site?.name ?? "" })}
+            </button>
+          ) : (
+            <>
+              <button className="cta" disabled>
+                {t("unlocks")}
+              </button>
+              <button type="button" className="lk small d-override" disabled={acting} onClick={confirmDischarge}>
+                {t("dischargeAnyway")}
+              </button>
+            </>
+          ))}
+
+        {next && (
+          <div className="d-next">
+            <Icon name="pin" />
+            <span>
+              <b>{t("nextX", { name: next.kind === "cust" ? loc?.address || o.area : (next.site?.name ?? t("noSite")) })}</b>
+              <small>
+                {cur.target && next.target ? `${f.km(distanceKm(cur.target, next.target))} · ` : ""}
+                {t("custNotified")}
+              </small>
+            </span>
+          </div>
         )}
 
         {demoMode && !arrived && (
           <div className="reco sim">
-            {!sim ? (
+            {!sim || sim.leg !== legKey ? (
               <>
-                <button type="button" className="btn sm" onClick={startSimulation}>
-                  Simulate trip
+                <button type="button" className="btn sm" onClick={startSimulation} disabled={!cur.target}>
+                  {t("simulate")}
                 </button>
-                <span>Demo only: drives a road route to the customer through the normal location updates.</span>
+                <span>{t(`simNote_${cur.kind}`)}</span>
               </>
             ) : (
               <>
                 <button type="button" className="btn sm" onClick={stopSimulation}>
-                  Stop
+                  {t("stop")}
                 </button>
                 <span>
                   {sim.status === "loading"
-                    ? "Planning a route…"
+                    ? t("simPlanning")
                     : sim.status === "done"
-                      ? "Simulated tanker has reached the customer."
-                      : `Simulating: ${kmText(sim.leftKm)} left of ${kmText(sim.totalKm)}${sim.source === "osrm" ? " by road" : " (straight line — routing unavailable)"}`}
+                      ? t(`simDone_${cur.kind}`)
+                      : t(sim.source === "osrm" ? "simRunning" : "simRunningLine", { left: f.km(sim.leftKm), total: f.km(sim.totalKm) })}
                 </span>
               </>
             )}
           </div>
         )}
 
+        {cur.kind !== "discharge" && (
+          <>
+            <h4 className="ch-sec">{t("msgCustomer")}</h4>
+            <div className="opts">
+              {QUICK.map((k) => (
+                <button key={k} type="button" className="opt" onClick={() => send(t(k))}>
+                  {t(k)}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {msgs.length > 0 && (
+          <div className="d-chat" aria-live="polite">
+            {msgs.map((m) => (
+              <div key={m.id} className={`d-bub ${m.sender_role === "driver" ? "me" : ""}`}>
+                {m.sender_role === "staff" && <small>{t("nwsControl")}</small>}
+                {m.body}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="tj-links">
-          {job.customer?.phone ? (
-            <a className="lk" href={`tel:${job.customer.phone}`}>
-              Call customer
-            </a>
-          ) : (
-            <span className="mut small">No phone on file</span>
-          )}
-          {dest && (
-            <a className="lk" href={`https://www.openstreetmap.org/directions?route=%3B${dest.lat}%2C${dest.lng}`} target="_blank" rel="noreferrer">
-              Open directions
-            </a>
+          <button type="button" className="lk" onClick={() => toast(t("callMasked"))}>
+            {t("callCustomer")}
+          </button>
+          {o.status !== "collected" && (
+            <button type="button" className="lk bad" onClick={() => setIssue(true)}>
+              {t("reportProblem")}
+            </button>
           )}
         </div>
         <p className="tr-note">
-          Sharing your location while on this job.{" "}
-          {wakeLock === "held" ? "The screen will stay on." : wakeLock === "off" ? "" : "Keep the screen on yourself — this browser can’t hold it on."}
+          {t("sharingLoc")} {wakeLock === "held" ? t("screenOn") : wakeLock === "off" ? "" : t("screenOff")}
         </p>
       </div>
+
+      {pod && <PodSheet onClose={() => setPod(false)} />}
+      {issue && <IssueSheet onClose={() => setIssue(false)} />}
     </main>
   );
 }

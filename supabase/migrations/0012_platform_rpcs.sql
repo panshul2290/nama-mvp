@@ -906,7 +906,7 @@ begin
     perform public.settle_order(o.id);
     select * into o from public.orders where id = o.id;
   end if;
-  if p_meter_gal < o.gallons * 0.95 then
+  if o.service_type <> 'WW' and p_meter_gal < o.gallons * 0.95 then
     perform public.issue_penalty('short_volume', o.id, o.tanker_id,
       format('Delivered %s of %s gal (%s%% short)', p_meter_gal, o.gallons, round((1 - p_meter_gal::numeric / o.gallons) * 100)), 'Flow meter reading on proof of delivery');
     perform public.raise_alert(o.tanker_id, o.id, 'Short volume', 'med', format('TO-%s: %s of %s gal delivered', o.order_no, p_meter_gal, o.gallons),
@@ -975,9 +975,10 @@ begin
   t := public.my_tanker();
   select * into o from public.orders where id = p_order_id and driver_id = auth.uid() for update;
   if not found then raise exception 'not_found'; end if;
-  if o.status not in ('accepted', 'arriving', 'arrived') then raise exception 'invalid_transition'; end if;
+  if o.status not in ('accepted', 'arriving', 'arrived', 'collected') then raise exception 'invalid_transition'; end if;
   if p_kind not in ('breakdown', 'customer_unreachable', 'wrong_address', 'station_closed', 'accident') then raise exception 'invalid_kind'; end if;
-  rel := p_kind in ('breakdown', 'accident', 'station_closed');
+  -- A collected load can't go back to dispatch: control handles it from the alert.
+  rel := p_kind in ('breakdown', 'accident', 'station_closed') and o.status <> 'collected';
   insert into public.trip_issues (order_id, driver_id, tanker_id, kind, note, released)
   values (o.id, auth.uid(), t.id, p_kind, coalesce(left(p_note, 500), ''), rel) returning * into i;
   perform public.raise_alert(t.id, o.id,
@@ -986,6 +987,10 @@ begin
     case when p_kind = 'accident' then 'high' when rel then 'med' else 'low' end,
     format('%s on TO-%s: %s', t.plate, o.order_no, coalesce(nullif(btrim(p_note), ''), replace(p_kind, '_', ' '))), t.last_lat, t.last_lng, 'issue:' || i.id);
   if rel then
+    if o.filled_at is not null and t.company_id is not null then
+      insert into public.company_tx (company_id, driver_id, tanker_id, bucket, kind, amount, order_id, memo)
+      values (t.company_id, auth.uid(), t.id, 'fill_credit', 'fill_charge', o.water_charge, o.id, 'Filling refunded: TO-' || o.order_no || ' released');
+    end if;
     update public.orders
        set status = 'requested', driver_id = null, tanker_id = null, driver_name = null, tanker_plate = null,
            accepted_at = null, arriving_at = null, arrived_at = null, filled_at = null, fill_site_id = null, fill_meter_gal = null, fill_verified = null
