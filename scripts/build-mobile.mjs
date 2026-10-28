@@ -50,7 +50,7 @@ import { useEffect, useState } from "react";
 import { Loading } from "@/components/Shell";
 import { supabase } from "@/lib/supabase/client";
 
-const APP = ${JSON.stringify(app)};
+const APP: string = ${JSON.stringify(app)};
 
 // Mobile build: route by role; a user of the other app is told which app to use.
 export default function MobileHome() {
@@ -94,7 +94,8 @@ export default nextConfig;
 `,
 );
 const env = { ...process.env, NEXT_PUBLIC_APP_TARGET: app, NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE ?? "true", NEXT_TELEMETRY_DISABLED: "1" };
-run("npx", ["next", "build"], { cwd: stage, env });
+// Webpack follows the node_modules junction; Turbopack refuses files outside the staging root.
+run("npx", ["next", "build", "--webpack"], { cwd: stage, env });
 
 // ---- 2. Capacitor -----------------------------------------------------------------
 mkdirSync(project, { recursive: true });
@@ -114,6 +115,12 @@ writeFileSync(
     2,
   ) + "\n",
 );
+// Capacitor runs from an npm package root and finds native plugins in its dependencies
+// (resolved from the repo's node_modules), so mirror the repo's Capacitor versions.
+const rootPkg = JSON.parse(readFileSync("package.json", "utf8"));
+const deps = { ...rootPkg.dependencies, ...rootPkg.devDependencies };
+const capDeps = Object.fromEntries(Object.entries(deps).filter(([k]) => k.startsWith("@capacitor")));
+writeFileSync(join(project, "package.json"), JSON.stringify({ name: `nama-${app}-android`, private: true, dependencies: capDeps }, null, 2) + "\n");
 if (!existsSync(join(project, "android"))) run("npx", ["cap", "add", "android"], { cwd: project });
 run("npx", ["cap", "sync", "android"], { cwd: project });
 patchManifest(join(project, "android", "app", "src", "main", "AndroidManifest.xml"));
@@ -123,7 +130,7 @@ if (gradle) {
   const javaHome = process.env.JAVA_HOME || join(homedir(), "android-build", "jdk-21");
   const sdk = process.env.ANDROID_HOME || join(homedir(), "android-build", "sdk");
   writeFileSync(join(project, "android", "local.properties"), `sdk.dir=${sdk.replace(/\\/g, "\\\\")}\n`);
-  run(process.platform === "win32" ? "gradlew.bat" : "./gradlew", ["assembleDebug", "--no-daemon"], {
+  run(join(project, "android", process.platform === "win32" ? "gradlew.bat" : "gradlew"), ["assembleDebug", "--no-daemon"], {
     cwd: join(project, "android"),
     env: { ...process.env, JAVA_HOME: javaHome, ANDROID_HOME: sdk, ANDROID_SDK_ROOT: sdk },
   });

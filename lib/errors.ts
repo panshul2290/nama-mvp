@@ -26,7 +26,7 @@ const MESSAGES: Record<string, string> = {
   driver_already_assigned: "That driver already has a tanker.",
   tanker_already_assigned: "That tanker already has a driver.",
   not_assigned: "This tanker has no driver assigned.",
-  invalid_state: "That isn’t possible in the permit’s current state.",
+  invalid_state: "That isn’t possible in its current state.",
   invalid_dates: "The expiry date must be after the issue date.",
   permit_no_taken: "That permit number already exists.",
   cannot_change_own_role: "You can’t change your own role.",
@@ -95,6 +95,7 @@ const MESSAGES: Record<string, string> = {
   invalid_stage: "That stage isn't valid.",
   invalid_result: "Choose pass or fail.",
   unknown_penalty_rule: "Unknown penalty rule.",
+  no_penalty_rule_for_alert: "The penalty framework has no rule for this alert type. Issue a penalty from Permits → Violations instead.",
 };
 
 export function errorCode(error: { message?: string } | null | undefined): string | null {

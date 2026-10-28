@@ -17,6 +17,11 @@ begin
   select * into o from public.orders where id = p_order;
   if o.customer_id is null or o.billing = 'account' then return 0; end if;
   select * into pay from public.payments where order_id = p_order and status in ('authorized', 'captured', 'partially_refunded') order by created_at desc limit 1;
+  if found and pay.method = 'cash' and pay.status = 'authorized' then
+    update public.payments set status = 'refunded' where id = pay.id;
+    update public.orders set payment_status = 'refunded' where id = p_order;
+    return 0;
+  end if;
   if found then
     amt := least(amt, pay.amount - pay.refunded_amount);
     if amt <= 0 then return 0; end if;
@@ -413,7 +418,7 @@ declare p public.properties; org uuid := public.my_org_id(); r public.user_role 
 begin
   if r = 'customer' then org := null;
   elsif r = 'business' then
-    if public.my_org_role() not in ('admin', 'site_manager') then raise exception 'forbidden_for_role'; end if;
+    if coalesce(public.my_org_role(), '') not in ('admin', 'site_manager') then raise exception 'forbidden_for_role'; end if;
   else raise exception 'forbidden_for_role'; end if;
   if p_lat is null or p_lng is null then raise exception 'invalid_location'; end if;
   if p_id is null then
@@ -1176,7 +1181,7 @@ end $$;
 create function public.org_outstanding(p_org uuid)
 returns numeric language sql stable security definer set search_path = public
 as $$
-  select coalesce((select sum(total) from public.orders where org_id = p_org and billing = 'account' and invoice_id is null and status <> 'cancelled'), 0)
+  select coalesce((select sum(total) from public.orders where org_id = p_org and billing = 'account' and invoice_id is null and status not in ('cancelled', 'pending_approval')), 0)
        + coalesce((select sum(total) from public.invoices where org_id = p_org and status <> 'paid'), 0)
 $$;
 
@@ -1214,7 +1219,7 @@ as $$
 declare
   org public.organizations; prop public.properties; o public.orders; q record; st public.order_status; i integer; z public.zones;
 begin
-  if public.my_org_role() not in ('admin', 'site_manager') then raise exception 'forbidden_for_role'; end if;
+  if coalesce(public.my_org_role(), '') not in ('admin', 'site_manager') then raise exception 'forbidden_for_role'; end if;
   select * into org from public.organizations where id = public.my_org_id();
   if org.status <> 'active' then raise exception 'account_not_active'; end if;
   if org.paused then raise exception 'account_paused'; end if;
@@ -1249,7 +1254,7 @@ language plpgsql security definer set search_path = public
 as $$
 declare o public.orders;
 begin
-  if public.my_org_role() is distinct from 'admin' then raise exception 'forbidden_for_role'; end if;
+  if coalesce(public.my_org_role(), '') <> 'admin' then raise exception 'forbidden_for_role'; end if;
   update public.orders
      set status = case when not p_approve then 'cancelled'::public.order_status
                        when slot_start is not null and slot_start > now() + interval '2 hours' then 'scheduled'::public.order_status
@@ -1270,7 +1275,7 @@ language plpgsql security definer set search_path = public
 as $$
 declare p public.profiles; uid uuid;
 begin
-  if public.my_org_role() is distinct from 'admin' then raise exception 'forbidden_for_role'; end if;
+  if coalesce(public.my_org_role(), '') <> 'admin' then raise exception 'forbidden_for_role'; end if;
   if p_role not in ('admin', 'site_manager', 'finance') then raise exception 'invalid_role'; end if;
   select id into uid from auth.users where lower(email) = lower(btrim(p_email));
   select * into p from public.profiles where id = uid;
@@ -1306,7 +1311,7 @@ returns public.invoices
 language plpgsql security definer set search_path = public
 as $$
 begin
-  if public.my_org_role() not in ('admin', 'finance') then raise exception 'forbidden_for_role'; end if;
+  if coalesce(public.my_org_role(), '') not in ('admin', 'finance') then raise exception 'forbidden_for_role'; end if;
   return public.invoice_org(public.my_org_id());
 end $$;
 
@@ -1316,7 +1321,7 @@ language plpgsql security definer set search_path = public
 as $$
 declare inv public.invoices;
 begin
-  if public.my_org_role() not in ('admin', 'finance') then raise exception 'forbidden_for_role'; end if;
+  if coalesce(public.my_org_role(), '') not in ('admin', 'finance') then raise exception 'forbidden_for_role'; end if;
   update public.invoices set status = 'paid', paid_at = now() where id = p_invoice_id and org_id = public.my_org_id() and status <> 'paid' returning * into inv;
   if not found then raise exception 'not_found'; end if;
   update public.payments set status = 'captured', captured_at = now() where order_id in (select id from public.orders where invoice_id = inv.id) and status = 'on_account';
@@ -1354,11 +1359,13 @@ begin
   -- Delivery window breach (and the late-delivery penalty after 30 minutes).
   for r in select o.*, t.last_lat as tl, t.last_lng as tg from public.orders o left join public.tankers t on t.id = o.tanker_id
             where o.slot_end is not null and o.slot_end < now() and o.status in ('requested', 'accepted', 'arriving') loop
+    if not exists (select 1 from public.alerts where dedupe_key = 'window:' || r.id) and r.status in ('accepted', 'arriving') then
+      perform public.notify(r.customer_id, 'driver_delayed', r.id, jsonb_build_object('order', 'TO-' || r.order_no));
+    end if;
     perform public.raise_alert(r.tanker_id, r.id, 'Delivery window breach', 'med', format('TO-%s missed its %s window', r.order_no, coalesce(r.slot_label, 'delivery')), r.tl, r.tg, 'window:' || r.id);
     if r.tanker_id is not null and r.slot_end < now() - interval '30 minutes' then
       perform public.issue_penalty('late_delivery', r.id, r.tanker_id, format('More than 30 minutes past the %s window', coalesce(r.slot_label, 'delivery')), 'Slot end vs. arrival time');
     end if;
-    if r.status in ('accepted', 'arriving') then perform public.notify(r.customer_id, 'driver_delayed', r.id, jsonb_build_object('order', 'TO-' || r.order_no)); end if;
   end loop;
   -- Idle with load: filled, but no movement for 20 minutes.
   for r in select o.id, o.order_no, t.id as tid, t.plate, t.last_lat, t.last_lng from public.orders o join public.tankers t on t.id = o.tanker_id
@@ -1415,11 +1422,16 @@ begin
     update public.alerts set state = 'resolved', acted_by = auth.uid(), acted_at = now(), action_note = 'Tanker suspended: ' || coalesce(p_note, '') where id = b.id returning * into a;
   elsif p_action = 'penalty' then
     rule := case b.type when 'Discharge outside approved zone' then 'discharge_outside' when 'Non-renewed tanker on active trip' then 'expired_permit_trip'
-                        when 'Delivery window breach' then 'late_delivery' when 'Short volume' then 'short_volume' else 'driver_cancel' end;
-    perform public.issue_penalty(rule, b.order_id, b.tanker_id, coalesce(nullif(btrim(p_note), ''), b.type), 'Control room alert #' || b.id);
+                        when 'Delivery window breach' then 'late_delivery' when 'Short volume' then 'short_volume' end;
+    if rule is null then raise exception 'no_penalty_rule_for_alert'; end if;
+    if (public.issue_penalty(rule, b.order_id, b.tanker_id, coalesce(nullif(btrim(p_note), ''), b.type), 'Control room alert #' || b.id)).id is null then
+      raise exception 'penalty_not_issued';
+    end if;
     update public.alerts set state = 'resolved', acted_by = auth.uid(), acted_at = now(), action_note = 'Penalty issued (' || rule || ')' where id = b.id returning * into a;
   elsif p_action = 'inspector' then
-    insert into public.inspections (tanker_id, inspector_id, result, notes, scheduled_for) values (b.tanker_id, null, 'scheduled', 'From alert: ' || b.type, current_date);
+    insert into public.inspections (tanker_id, permit_id, inspector_id, result, notes, scheduled_for)
+    values (b.tanker_id, (select id from public.permits where tanker_id = b.tanker_id order by (status = 'pending') desc, expires_at desc limit 1),
+            null, 'scheduled', 'From alert: ' || b.type, current_date);
     update public.alerts set state = 'acknowledged', acted_by = auth.uid(), acted_at = now(), action_note = 'Inspector dispatched' where id = b.id returning * into a;
   else raise exception 'invalid_action'; end if;
   perform public.write_audit('alert.' || p_action, 'alert', b.id::text, to_jsonb(b), to_jsonb(a), p_note);
@@ -1557,6 +1569,8 @@ begin
       refunded := round(p_amount, 3);
     end if;
     update public.complaints set refund_amount = refund_amount + refunded where id = b.id returning * into a;
+    insert into public.complaint_notes (complaint_id, author_id, author_role, body)
+    values (b.id, auth.uid(), 'staff', 'Refunded ' || to_char(refunded, 'FM9990.000') || ' OMR to the customer''s wallet.');
   elsif p_action = 'resolve' then
     if char_length(btrim(coalesce(p_body, ''))) < 3 then raise exception 'reason_required'; end if;
     update public.complaints set state = 'resolved', resolved_at = now(), resolution = btrim(p_body) where id = b.id returning * into a;
@@ -1812,7 +1826,7 @@ begin
   return jsonb_build_array(
     jsonb_build_object('check', 'ROP vehicle record', 'ok', t.plate !~ '13$', 'detail', case when t.plate ~ '13$' then 'Owner name mismatch on ROP record' else 'Plate, chassis and owner match' end),
     jsonb_build_object('check', 'IVMS device', 'ok', exists (select 1 from public.devices where tanker_id = t.id), 'detail', coalesce((select id || ' reporting' from public.devices where tanker_id = t.id), 'No device installed')),
-    jsonb_build_object('check', 'Water quality test', 'ok', t.service_type <> 'DW' or (wt.passed and wt.tested_at > current_date - 180),
+    jsonb_build_object('check', 'Water quality test', 'ok', t.service_type <> 'DW' or coalesce(wt.passed and wt.tested_at > current_date - 180, false),
                        'detail', case when t.service_type <> 'DW' then 'Not required for ' || t.service_type when wt.id is null then 'No test on file' else wt.cert_no || ' · ' || case when wt.passed then 'passed' else 'failed' end || ' ' || wt.tested_at end),
     jsonb_build_object('check', 'Violations in the last 12 months', 'ok', viol < 3, 'detail', viol || ' upheld or open'),
     jsonb_build_object('check', 'Insurance', 'ok', exists (select 1 from public.tanker_documents where tanker_id = t.id and kind = 'insurance' and valid_to >= current_date and status = 'valid'),
@@ -1828,8 +1842,16 @@ begin
   perform public.require_staff(array['inspector', 'permit_officer']::public.staff_role[]);
   if p_result not in ('pass', 'fail', 'scheduled') then raise exception 'invalid_result'; end if;
   if not exists (select 1 from public.tankers where id = p_tanker_id) then raise exception 'not_found'; end if;
-  insert into public.inspections (tanker_id, permit_id, inspector_id, result, notes, checklist, scheduled_for)
-  values (p_tanker_id, p_permit_id, auth.uid(), p_result, coalesce(p_notes, ''), coalesce(p_checklist, '{}'::jsonb), current_date) returning * into i;
+  update public.inspections
+     set result = p_result, inspector_id = auth.uid(), notes = btrim(notes || E'\n' || coalesce(p_notes, '')), checklist = coalesce(p_checklist, '{}'::jsonb),
+         permit_id = coalesce(p_permit_id, permit_id)
+   where id = (select id from public.inspections where tanker_id = p_tanker_id and result = 'scheduled' and p_result <> 'scheduled' order by created_at limit 1)
+  returning * into i;
+  if i.id is null then
+    insert into public.inspections (tanker_id, permit_id, inspector_id, result, notes, checklist, scheduled_for)
+    values (p_tanker_id, p_permit_id, auth.uid(), p_result, coalesce(p_notes, ''), coalesce(p_checklist, '{}'::jsonb),
+            case when p_result = 'scheduled' then current_date + 1 else current_date end) returning * into i;
+  end if;
   if p_permit_id is not null and p_result = 'pass' then
     update public.permits set stage = 'decision', updated_at = now() where id = p_permit_id and status = 'pending';
   end if;

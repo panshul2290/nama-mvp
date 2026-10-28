@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./env";
 
-const PROTECTED = ["/customer", "/driver", "/onboarding", "/nws"];
+const PROTECTED = ["/customer", "/driver", "/onboarding", "/nws", "/company", "/business"];
 const AUTH_PAGES = ["/login", "/signup"];
 
 // Refreshes the session cookie on every request and does optimistic redirects.

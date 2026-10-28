@@ -1,0 +1,182 @@
+"use client";
+
+import { createContext, use, useCallback, useState } from "react";
+import type { PortalProfile } from "@/components/portal/PortalShell";
+import { useLive } from "@/components/portal/kit";
+import { permitSummary, type Permit } from "@/components/nws/fleetData";
+import { supabase } from "@/lib/supabase/client";
+import type { ServiceType } from "@/lib/pricing";
+import type { Alert, Contract, Device, TankerDocument } from "@/lib/types";
+
+/** public.owner_company(): the company row plus ledger balances. */
+export type OwnerCompany = {
+  id: string; name: string; cr_no: string; phone: string | null; email: string | null; bank_name: string | null; iban: string | null;
+  rating: number | string; since: string; status: "pending" | "active" | "suspended"; created_at: string;
+  earnings_balance: number | string; fill_credit: number | string;
+};
+
+const Ctx = createContext<{ profile: PortalProfile; company: OwnerCompany; reloadCompany: () => Promise<void> } | null>(null);
+
+export function CompanyProvider({ profile, company, reloadCompany, children }: { profile: PortalProfile; company: OwnerCompany; reloadCompany: () => Promise<void>; children: React.ReactNode }) {
+  return <Ctx value={{ profile, company, reloadCompany }}>{children}</Ctx>;
+}
+
+export function useCompany() {
+  const v = use(Ctx);
+  if (!v) throw new Error("useCompany must be used inside the company portal");
+  return v;
+}
+
+// ---------------------------------------------------------------- fleet data
+export type FTanker = {
+  id: string; plate: string; service_type: ServiceType; capacity_gal: number; is_online: boolean; blocked: boolean; blocked_reason: string | null;
+  last_lat: number | null; last_lng: number | null; last_seen_at: string | null; location_age_s: number | null; created_at: string;
+};
+export type FDriver = { id: string; full_name: string; phone: string | null; role: string; created_at: string };
+export type FAssignment = { id: string; tanker_id: string; driver_id: string; assigned_at: string; unassigned_at: string | null };
+export type FPermit = Permit & { tanker_id: string; stage: "submitted" | "documents" | "inspection" | "decision"; info_requested: string | null; reason: string | null; created_at: string };
+export type FOrder = {
+  id: string; order_no: number; status: string; service_type: ServiceType; gallons: number; area: string; tanker_id: string | null; driver_id: string | null;
+  driver_name: string | null; tanker_plate: string | null; created_at: string; accepted_at: string | null; delivered_at: string | null;
+  slot_start: string | null; slot_end: string | null; slot_label: string | null; rating: number | null; tip: string; driver_earnings: string;
+  contract_id: string | null; org_id: string | null; channel: string;
+};
+
+export type Fleet = {
+  tankers: FTanker[];
+  drivers: FDriver[];
+  assignments: FAssignment[];
+  permits: FPermit[];
+  devices: Device[];
+  docs: TankerDocument[];
+  alerts: Alert[];
+  contracts: Contract[];
+  loaded: boolean;
+};
+
+const EMPTY: Fleet = { tankers: [], drivers: [], assignments: [], permits: [], devices: [], docs: [], alerts: [], contracts: [], loaded: false };
+
+/** Everything the owner can see about their fleet (RLS: owners read their company's rows). */
+export function useFleet(key: string, extraTables: string[] = []) {
+  const { company } = useCompany();
+  const [fleet, setFleet] = useState<Fleet>(EMPTY);
+
+  const load = useCallback(async () => {
+    const db = supabase();
+    const [t, d, a, p, dv, doc, al, c] = await Promise.all([
+      db.from("tankers").select("id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_seen_at, location_age_s, created_at").eq("company_id", company.id).order("plate"),
+      db.from("profiles").select("id, full_name, phone, role, created_at").eq("company_id", company.id).eq("role", "driver").order("full_name"),
+      db.from("tanker_assignments").select("id, tanker_id, driver_id, assigned_at, unassigned_at").is("unassigned_at", null),
+      db.from("permits").select("id, tanker_id, permit_no, type, status, issued_at, expires_at, stage, info_requested, reason, created_at").order("created_at", { ascending: false }),
+      db.from("devices").select("id, tanker_id, firmware, sensors, installed_at"),
+      db.from("tanker_documents").select("id, tanker_id, driver_id, kind, ref_no, valid_to, file_path, status, uploaded_at").order("valid_to", { ascending: false }),
+      db.from("alerts").select("id, tanker_id, order_id, type, severity, message, lat, lng, state, created_at, acted_at, action_note").neq("state", "resolved").order("created_at", { ascending: false }).limit(50),
+      db.from("contracts").select("*").eq("company_id", company.id).order("created_at", { ascending: false }),
+    ]);
+    setFleet({
+      tankers: (t.data ?? []) as FTanker[],
+      drivers: (d.data ?? []) as FDriver[],
+      assignments: (a.data ?? []) as FAssignment[],
+      permits: (p.data ?? []) as FPermit[],
+      devices: (dv.data ?? []) as Device[],
+      docs: (doc.data ?? []) as TankerDocument[],
+      alerts: (al.data ?? []) as Alert[],
+      contracts: (c.data ?? []) as Contract[],
+      loaded: true,
+    });
+  }, [company.id]);
+
+  useLive(`fleet-${key}`, ["tankers", "tanker_assignments", "permits", "tanker_documents", "alerts", "contracts", ...extraTables], load, 45_000);
+  return { ...fleet, reload: load };
+}
+
+// ---------------------------------------------------------------- helpers
+export const driverOf = (f: Pick<Fleet, "assignments" | "drivers">, tankerId: string) => {
+  const a = f.assignments.find((x) => x.tanker_id === tankerId);
+  return a ? (f.drivers.find((d) => d.id === a.driver_id) ?? null) : null;
+};
+export const tankerOf = (f: Pick<Fleet, "assignments" | "tankers">, driverId: string) => {
+  const a = f.assignments.find((x) => x.driver_id === driverId);
+  return a ? (f.tankers.find((t) => t.id === a.tanker_id) ?? null) : null;
+};
+
+export function tankerPermit(t: FTanker, permits: FPermit[]) {
+  return permitSummary({ service_type: t.service_type, permits: permits.filter((p) => p.tanker_id === t.id) });
+}
+
+/** One-word fleet status, as in the prototype's Tankers table. */
+export function tankerStatus(t: FTanker, permits: FPermit[]): [string, "ok" | "warn" | "bad" | ""] {
+  if (t.blocked) return ["Blocked", "bad"];
+  const p = tankerPermit(t, permits);
+  if (!p.valid) return [p.text === "Pending review" ? "Pending permit" : "No valid permit", p.text === "Pending review" ? "warn" : "bad"];
+  return t.is_online ? ["Online", "ok"] : ["Offline", ""];
+}
+
+export const DOC_KINDS = [
+  { kind: "mulkiya", label: "Mulkiya" },
+  { kind: "tank_cleanliness", label: "Tank cleanliness" },
+  { kind: "rop_inspection", label: "ROP inspection" },
+  { kind: "insurance", label: "Insurance" },
+  { kind: "ivms_certificate", label: "IVMS certificate" },
+  { kind: "water_test", label: "Water test" },
+] as const;
+export const DOC_LABEL: Record<string, string> = { ...Object.fromEntries(DOC_KINDS.map((d) => [d.kind, d.label])), heavy_licence: "Heavy vehicle licence" };
+
+/** The document that counts for a tanker/driver and kind: newest not-rejected one. */
+export function currentDoc(docs: TankerDocument[], kind: string, by: { tanker?: string; driver?: string }) {
+  return (
+    docs
+      .filter((d) => d.kind === kind && d.status !== "rejected" && (by.tanker ? d.tanker_id === by.tanker : d.driver_id === by.driver))
+      .sort((a, b) => b.valid_to.localeCompare(a.valid_to))[0] ?? null
+  );
+}
+
+export const STAGE_LABEL: Record<string, string> = { submitted: "Submitted", documents: "Document check", inspection: "Inspection", decision: "Decision" };
+export const FREQ_LABEL: Record<string, string> = { weekly: "Weekly", biweekly: "Every 2 weeks", monthly: "Monthly" };
+export const CONTRACT_STATUS: Record<string, [string, "ok" | "warn" | "bad" | "act" | ""]> = {
+  pending_owner: ["Awaiting your decision", "warn"],
+  active: ["Active", "ok"],
+  paused: ["Paused", ""],
+  ended: ["Ended", ""],
+  declined: ["Declined", "bad"],
+};
+
+const ORDER_COLS =
+  "id, order_no, status, service_type, gallons, area, tanker_id, driver_id, driver_name, tanker_plate, created_at, accepted_at, delivered_at, slot_start, slot_end, slot_label, rating, tip, driver_earnings, contract_id, org_id, channel";
+
+/** Jobs served by the company's tankers since `days` ago (RLS: orders_owner). */
+export function useCompanyOrders(key: string, days = 30) {
+  const [orders, setOrders] = useState<FOrder[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const load = useCallback(async () => {
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const { data } = await supabase().from("orders").select(ORDER_COLS).not("tanker_id", "is", null).gte("created_at", since).order("created_at", { ascending: false }).limit(1000);
+    setOrders((data ?? []) as FOrder[]);
+    setLoaded(true);
+  }, [days]);
+  useLive(`orders-${key}`, ["orders"], load, 30_000);
+  return { orders, loaded, reload: load };
+}
+
+export type FTx = { id: number; driver_id: string | null; tanker_id: string | null; bucket: "earnings" | "fill_credit"; kind: string; amount: string; order_id: string | null; penalty_id: string | null; payout_batch_id: string | null; memo: string; created_at: string };
+
+/** The company's ledger since `days` ago (earnings, tips, penalties, payouts, filling credit). */
+export function useCompanyTx(key: string, days = 90) {
+  const [tx, setTx] = useState<FTx[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const load = useCallback(async () => {
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const { data } = await supabase().from("company_tx").select("id, driver_id, tanker_id, bucket, kind, amount, order_id, penalty_id, payout_batch_id, memo, created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(2000);
+    setTx((data ?? []) as FTx[]);
+    setLoaded(true);
+  }, [days]);
+  useLive(`tx-${key}`, ["company_tx"], load, 60_000);
+  return { tx, loaded, reload: load };
+}
+
+/** On time = delivered by the end of the booked slot, or within 90 minutes of the request when there was no slot. */
+export function onTime(o: Pick<FOrder, "delivered_at" | "slot_end" | "created_at">) {
+  if (!o.delivered_at) return null;
+  const limit = o.slot_end ? Date.parse(o.slot_end) : Date.parse(o.created_at) + 90 * 60_000;
+  return Date.parse(o.delivered_at) <= limit;
+}

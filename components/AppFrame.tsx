@@ -57,7 +57,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   }
 
   // The NWS staff portal is a desktop layout of its own (no phone frame).
-  if (DESKTOP.some((p) => path.startsWith(p))) return <>{children}</>;
+  // The launcher at / is full-screen too.
+  if (path === "/" || DESKTOP.some((p) => path.startsWith(p))) return <>{children}</>;
 
   return (
     <div className="page">

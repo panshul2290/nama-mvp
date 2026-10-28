@@ -1,0 +1,201 @@
+"use client";
+
+// Shared building blocks for the operations screens (Live operations, Orders, Fleet,
+// Permits, Customers, Complaints): tabs, KPI tiles, dialogs, RPC runner, formatting.
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useStaff } from "@/components/nws/StaffContext";
+import { friendlyError } from "@/lib/errors";
+import { supabase } from "@/lib/supabase/client";
+import type { OrderStatus } from "@/lib/types";
+
+export const HOUR = 3_600_000;
+export const DAY = 86_400_000;
+
+/** One-relation embeds come back as an object or a one-element array depending on the FK; normalise. */
+export const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
+
+export const n3 = (v: number | string | null | undefined) => Number(v ?? 0).toFixed(3);
+export const omr3 = (v: number | string | null | undefined) => `${n3(v)} OMR`;
+export const pct = (num: number, den: number) => (den ? `${Math.round((num / den) * 1000) / 10}%` : "—");
+export const hm = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—");
+
+/** "4 min ago" from an ISO time and a ticking clock (keeps render pure). */
+export function ago(iso: string | null | undefined, now: number) {
+  if (!iso) return "—";
+  const s = Math.max(0, (now - Date.parse(iso)) / 1000);
+  if (s < 60) return `${Math.floor(s)} s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+}
+
+/** A clock that ticks every `ms` so screens can show ages without calling Date.now() in render. */
+export function useNow(ms = 10_000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
+}
+
+export const SERVICE_NAME = { DW: "Drinking water", WW: "Wastewater", TE: "Treated effluent" } as const;
+export const CHANNEL_LABEL: Record<string, string> = { app: "App", call_centre: "Call centre", business: "Business", contract: "Contract" };
+export const SEV_LABEL = { high: "High", med: "Medium", low: "Low" } as const;
+export const SEV_TONE = { high: "bad", med: "warn", low: "act" } as const;
+
+/** Order SLA: from the slot end, or 60 minutes after creation for ASAP orders. */
+export function orderSla(
+  o: { status: OrderStatus; slot_end?: string | null; created_at: string; delivered_at?: string | null },
+  now: number,
+): { text: string; tone: "ok" | "warn" | "bad" | "" } {
+  if (o.status === "cancelled") return { text: "—", tone: "" };
+  const due = o.slot_end ? Date.parse(o.slot_end) : Date.parse(o.created_at) + HOUR;
+  if (o.status === "delivered") {
+    const at = o.delivered_at ? Date.parse(o.delivered_at) : due;
+    return at <= due ? { text: "On time", tone: "ok" } : { text: "Late", tone: "bad" };
+  }
+  if (now > due) return { text: "Late", tone: "bad" };
+  if (due - now < 20 * 60_000) return { text: "At risk", tone: "warn" };
+  return { text: "On time", tone: "ok" };
+}
+
+/** Run a staff RPC with a toast; resolves true on success. */
+export function useRpc() {
+  const { toast } = useStaff();
+  return useCallback(
+    async (name: string, args: Record<string, unknown>, ok?: string) => {
+      const { error } = await supabase().rpc(name, args);
+      if (error) {
+        toast(friendlyError(error), true);
+        return false;
+      }
+      if (ok) toast(ok);
+      return true;
+    },
+    [toast],
+  );
+}
+
+/** Subscribe to realtime changes on some tables; calls `onChange` (debounced). */
+export function useRealtime(name: string, tables: string[], onChange: () => void, delay = 600) {
+  const cb = useRef(onChange);
+  useEffect(() => {
+    cb.current = onChange;
+  });
+  const key = tables.join(",");
+  useEffect(() => {
+    const db = supabase();
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const soon = () => {
+      clearTimeout(t);
+      t = setTimeout(() => cb.current(), delay);
+    };
+    let ch = db.channel(name);
+    for (const table of key.split(",")) ch = ch.on("postgres_changes", { event: "*", schema: "public", table }, soon);
+    ch.subscribe();
+    return () => {
+      clearTimeout(t);
+      db.removeChannel(ch);
+    };
+  }, [name, key, delay]);
+}
+
+/** Signed URL for a private file in the evidence bucket (null when missing). */
+export function useSignedUrl(path: string | null | undefined) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (!path) {
+      Promise.resolve().then(() => live && setUrl(null));
+      return;
+    }
+    supabase()
+      .storage.from("evidence")
+      .createSignedUrl(path, 600)
+      .then(({ data }) => live && setUrl(data?.signedUrl ?? null));
+    return () => {
+      live = false;
+    };
+  }, [path]);
+  return url;
+}
+
+/** Download rows as CSV (first row = headers). */
+export function downloadCsv(name: string, rows: (string | number | null | undefined)[][]) {
+  const esc = (v: string | number | null | undefined) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const blob = new Blob(["﻿" + rows.map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${name}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+export function Tabs<K extends string>({ tabs, value, onChange }: { tabs: [K, string, number?][]; value: K; onChange: (k: K) => void }) {
+  return (
+    <div className="otabs" role="tablist">
+      {tabs.map(([k, l, n]) => (
+        <button key={k} role="tab" aria-selected={value === k} className={value === k ? "on" : ""} onClick={() => onChange(k)}>
+          {l}
+          {n != null && <span className="tc">{n}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Kpi({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "ok" | "warn" | "bad" | "" }) {
+  return (
+    <div className="okpi">
+      <span>{label}</span>
+      <b>{value}</b>
+      {sub != null && <small className={tone ?? ""}>{sub}</small>}
+    </div>
+  );
+}
+
+export function St({ tone, children }: { tone?: string; children: React.ReactNode }) {
+  return <span className={`st ${tone ?? ""}`}>{children}</span>;
+}
+
+/** A modal shell (wider than ReasonDialog) for forms. */
+export function Modal({ title, wide, onClose, children }: { title: string; wide?: boolean; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
+      <div className={wide ? "wide" : ""} onClick={(e) => e.stopPropagation()}>
+        <h3>{title}</h3>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Small horizontal bar chart (inline, no dependencies). */
+export function Bars({ rows, unit = "" }: { rows: [string, number][]; unit?: string }) {
+  const max = Math.max(1, ...rows.map((r) => r[1]));
+  return (
+    <div className="obars">
+      {rows.map(([l, v]) => (
+        <div key={l} className="obar">
+          <span>{l}</span>
+          <svg viewBox="0 0 100 12" preserveAspectRatio="none" aria-hidden="true">
+            <rect x="0" y="0" width="100" height="12" rx="3" className="trk" />
+            <rect x="0" y="0" width={(v / max) * 100} height="12" rx="3" className="fil" />
+          </svg>
+          <b>
+            {v.toLocaleString()}
+            {unit}
+          </b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Masked phone, e.g. +968 9••• ••12. */
+export const maskPhone = (p: string | null | undefined) =>
+  p ? [...p].map((c, i) => (i >= 6 && i < p.length - 2 && /\d/.test(c) ? "•" : c)).join("") : "—";

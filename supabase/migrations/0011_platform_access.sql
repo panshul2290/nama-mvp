@@ -102,7 +102,7 @@ begin
   foreach t in array array['properties', 'contracts', 'promotions', 'payments', 'wallet_tx', 'payout_batches', 'company_tx',
     'pods', 'source_events', 'gps_fixes', 'order_messages', 'tanker_documents', 'water_tests', 'devices', 'shift_checks',
     'driver_availability', 'trip_issues', 'complaints', 'complaint_notes', 'alerts', 'penalties', 'inspections',
-    'invoices', 'incidents', 'integrations', 'fraud_flags', 'data_requests', 'scheduled_reports']
+    'invoices', 'incidents', 'integrations', 'fraud_flags', 'data_requests', 'scheduled_reports', 'notifications']
   loop
     execute format('create policy %I on public.%I for select to authenticated using (public.is_staff())', t || '_staff', t);
   end loop;
@@ -168,6 +168,13 @@ create policy devices_owner            on public.devices            for select t
 create policy gps_fixes_owner          on public.gps_fixes          for select to authenticated using (public.in_my_company(tanker_id));
 create policy alerts_owner             on public.alerts             for select to authenticated using (public.in_my_company(tanker_id));
 create policy inspections_owner        on public.inspections        for select to authenticated using (public.in_my_company(tanker_id));
+-- Contract offers: the owner sees the site, the household's name and the business account.
+create policy properties_owner_contract on public.properties for select to authenticated using (
+  public.is_owner() and exists (select 1 from public.contracts k where k.property_id = properties.id and k.company_id = public.my_company_id()));
+create policy organizations_owner_contract on public.organizations for select to authenticated using (
+  public.is_owner() and exists (select 1 from public.contracts k where k.org_id = organizations.id and k.company_id = public.my_company_id()));
+create policy profiles_owner_contract on public.profiles for select to authenticated using (
+  public.is_owner() and exists (select 1 from public.contracts k where k.customer_id = profiles.id and k.company_id = public.my_company_id()));
 
 -- Business (B2B) members: their organisation's orders, sites, invoices and people.
 create policy orders_org            on public.orders          for select to authenticated using (org_id is not null and org_id = public.my_org_id());
@@ -177,7 +184,7 @@ create policy profiles_org_members  on public.profiles        for select to auth
 create policy invoices_org          on public.invoices        for select to authenticated using (org_id = public.my_org_id());
 create policy tankers_org_active    on public.tankers         for select to authenticated using (
   exists (select 1 from public.orders o where o.tanker_id = tankers.id and o.org_id is not null and o.org_id = public.my_org_id()
-             and o.status in ('accepted', 'arriving', 'arrived')));
+             and o.status in ('accepted', 'arriving', 'arrived', 'collected')));
 
 -- ---------------------------------------------------------------------------
 -- Pricing: peak / priority multipliers and discounts on the delivery fee
