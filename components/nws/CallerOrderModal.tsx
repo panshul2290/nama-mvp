@@ -143,7 +143,7 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
         </div>
         <div>
           <div className="minimap">
-            <Map center={center} pick={pick} hint="Click the map or drag the pin to the delivery point" />
+            <Map center={center} pick={pick} hint="Click the map or drag the pin to the delivery point" theme="dark" />
           </div>
           <p className="mut" style={{ fontSize: 12.5, margin: "-4px 0 12px" }}>
             {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)} · {zone ? `Zone: ${zone.name}` : <span style={{ color: "var(--bad)" }}>Outside active service zones</span>}

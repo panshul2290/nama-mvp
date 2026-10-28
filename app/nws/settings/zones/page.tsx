@@ -54,7 +54,7 @@ export default function ZonesPage() {
                 <span><i className="sq" style={{ background: "var(--dw)" }} />DW filling</span>
                 <span><i className="sq" style={{ background: "var(--te)" }} />TE outlet</span>
                 <span><i className="sq" style={{ background: "var(--ww)" }} />WW discharge</span>
-                <span><i className="sq" style={{ background: "#5E7479" }} />Disabled geofence</span>
+                <span><i className="sq" style={{ background: "#8A9A9E" }} />Disabled geofence</span>
               </div>
             </div>
           </div>

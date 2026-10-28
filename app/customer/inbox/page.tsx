@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
+import { useChatHub } from "@/components/chat/OrderChat";
 import { useCx } from "@/components/customer/i18n";
 import { dtshort } from "@/components/customer/fmt";
 import { useUnread } from "@/components/customer/ui";
+import { Icon } from "@/components/icons";
 import { BackButton } from "@/components/Shell";
 import { supabase } from "@/lib/supabase/client";
 import type { Notification } from "@/lib/types";
@@ -16,6 +18,7 @@ export default function InboxPage() {
   const profile = useCustomer();
   const { t, lang } = useCx();
   const { refresh } = useUnread();
+  const { requestOpen } = useChatHub();
   const [list, setList] = useState<Notification[] | null>(null);
 
   // Load, then mark everything read (the dots stay until the next visit); new ones arrive live.
@@ -68,7 +71,17 @@ export default function InboxPage() {
               </span>
             );
             return n.order_id ? (
-              <Link key={n.id} href={`/customer/order?id=${n.order_id}`} className="lrow nrow">
+              <Link
+                key={n.id}
+                href={`/customer/order?id=${n.order_id}`}
+                className={`lrow nrow ${n.event === "new_message" ? "msgrow" : ""}`}
+                onClick={() => n.event === "new_message" && n.order_id && requestOpen(n.order_id)}
+              >
+                {n.event === "new_message" && (
+                  <span className="nicon" aria-hidden="true">
+                    <Icon name="chat" />
+                  </span>
+                )}
                 {body}
               </Link>
             ) : (

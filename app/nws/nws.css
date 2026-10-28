@@ -134,6 +134,9 @@
 .nws .mapfill { position: absolute; inset: 0; }
 .nws .maplibregl-ctrl-attrib { background: rgba(6, 26, 33, 0.7); color: var(--muted); }
 .nws .maplibregl-ctrl-attrib a { color: var(--muted); }
+/* Map legends sit above the (required) map attribution line. */
+.nws .mapcard .ov-bl { bottom: 34px; right: auto; max-width: calc(100% - 32px); }
+.nws .legend2 i.pinsw { width: 9px; height: 9px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
 
 @media (max-width: 1180px) {
   .nws .ops-grid, .nws .two { grid-template-columns: 1fr; }

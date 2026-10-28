@@ -380,12 +380,12 @@ export default function LiveOperations() {
               <span><i style={{ background: "#3B82F6" }} />Drinking water</span>
               <span><i style={{ background: "#C08E35" }} />Wastewater</span>
               <span><i style={{ background: "#2FA36B" }} />Treated effluent</span>
-              <span><i style={{ background: "#5E7479" }} />Stale GPS</span>
+              <span><i style={{ background: "#8A9A9E" }} />Stale GPS</span>
               <span><i style={{ background: "#E5484D" }} />Suspended</span>
               <span><i style={{ background: "none", boxShadow: "inset 0 0 0 2px #E5484D" }} />Open alert</span>
-              <span><i style={{ background: "#061a21", boxShadow: "inset 0 0 0 2px #93aeb3" }} />Delivery point</span>
-              <span><i style={{ background: "rgba(59,130,246,.35)", boxShadow: "inset 0 0 0 1px #3B82F6" }} />Filling station</span>
-              <span><i style={{ background: "rgba(192,142,53,.35)", boxShadow: "inset 0 0 0 1px #C08E35" }} />Approved discharge</span>
+              <span><i className="pinsw" style={{ background: "#93aeb3" }} />Delivery point</span>
+              <span><i className="sq" style={{ background: "#3B82F6" }} />Filling station</span>
+              <span><i className="sq" style={{ background: "#C08E35" }} />Approved discharge</span>
             </div>
           </div>
         </div>

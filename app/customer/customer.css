@@ -98,3 +98,8 @@ a.cta { text-decoration: none; }
 .faq summary { font-weight: 700; cursor: pointer; }
 .faq p { margin: 6px 0 0; color: var(--muted); font-size: 13.5px; }
 .banner svg { vertical-align: -3px; }
+
+/* inbox: chat messages open the conversation */
+.nrow.msgrow { justify-content: flex-start; gap: 12px; }
+.nrow.msgrow > span:last-child { flex: 1; min-width: 0; }
+.nrow .nicon { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--link); margin-top: 2px; }

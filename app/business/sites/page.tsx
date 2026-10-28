@@ -168,7 +168,7 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
         }}
       >
         <div className="mapbox">
-          <PinMap center={center} pick={pick} hint="Drag the pin or click the map to the delivery point" />
+          <PinMap center={center} pick={pick} hint="Drag the pin or click the map to the delivery point" theme="dark" />
         </div>
         <p className="mut" style={{ fontSize: 12.5, margin: "-4px 0 12px" }}>
           Pin: {point.lat.toFixed(5)}, {point.lng.toFixed(5)}

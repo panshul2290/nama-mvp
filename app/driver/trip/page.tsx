@@ -2,20 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ChatButton, ChatSheet, useChatHub, type ChatLabels } from "@/components/chat/OrderChat";
 import { useDriver } from "@/components/DriverContext";
-import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
+import { useJobChat } from "@/components/driver/DriverChat";
+import { DICT, useFmt } from "@/components/driver/i18n";
 import { insideGeofence, metresTo } from "@/components/driver/legs";
 import { IssueSheet, PodSheet } from "@/components/driver/TripSheets";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { RuleTag } from "@/components/OrderBits";
 import { useRoadEta } from "@/components/useRoadEta";
+import { initials } from "@/lib/format";
 import { distanceKm, DEFAULT_CENTER } from "@/lib/geo";
-import { useT } from "@/lib/i18n";
-import { supabase } from "@/lib/supabase/client";
-import type { Order, OrderMessage } from "@/lib/types";
+import { useLang, useT } from "@/lib/i18n";
+import type { Order } from "@/lib/types";
 
-const QUICK = ["msgLate", "msgGate", "msgCover"];
+const QUICK = ["msgLate", "msg5", "msgGate", "msgCover"];
 
 export default function TripPage() {
   const { job, leg, finished } = useDriver();
@@ -69,10 +71,12 @@ function Trip() {
   const { job, legs, leg, me, jobAction, acting, wakeLock, demoMode, sim, startSimulation, stopSimulation, toast } = useDriver();
   const t = useT(DICT);
   const f = useFmt();
-  const errText = useErrText();
   const [pod, setPod] = useState(false);
   const [issue, setIssue] = useState(false);
-  const [msgs, setMsgs] = useState<OrderMessage[]>([]);
+  const [chatTapped, setChatTapped] = useState(false);
+  const chat = useJobChat();
+  const hub = useChatHub();
+  const { lang, dir } = useLang();
   const o = job!.order;
   const loc = job!.loc;
   const cur = legs[leg];
@@ -82,34 +86,17 @@ function Trip() {
   const arrived = cur?.kind === "cust" && o.status === "arrived";
   const inside = cur?.kind !== "cust" && insideGeofence(site, me);
   const atTarget = arrived || inside;
-  const eta = useRoadEta(!atTarget ? me : null, cur?.target ?? null);
+  const eta = useRoadEta(!atTarget ? me : null, cur?.target ?? null, { withPath: true });
   const legKey = `${o.id}:${leg}`;
 
-  // Messages with the customer (live).
+  // The chat sheet opens from the button here, or from a message banner elsewhere in the app.
+  const chatOpen = chatTapped || hub.pending === o.id;
+  const { setActive } = hub;
   useEffect(() => {
-    const db = supabase();
-    db.from("order_messages")
-      .select("*")
-      .eq("order_id", o.id)
-      .order("created_at")
-      .then(({ data }) => setMsgs((data ?? []) as OrderMessage[]));
-    const ch = db
-      .channel(`msgs-${o.id}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_messages", filter: `order_id=eq.${o.id}` }, (payload) => {
-        const m = payload.new as OrderMessage;
-        setMsgs((ms) => (ms.some((x) => x.id === m.id) ? ms : [...ms, m]));
-      })
-      .subscribe();
-    return () => {
-      db.removeChannel(ch);
-    };
-  }, [o.id]);
-
-  async function send(body: string) {
-    const { data, error } = await supabase().rpc("send_message", { p_order_id: o.id, p_body: body }).single<OrderMessage>();
-    if (error) return toast(errText(error));
-    setMsgs((ms) => (ms.some((x) => x.id === data.id) ? ms : [...ms, data]));
-  }
+    if (!chatOpen) return;
+    setActive(o.id);
+    return () => setActive(null);
+  }, [chatOpen, o.id, setActive]);
 
   async function confirmFill() {
     const r = await jobAction("confirm_fill");
@@ -122,6 +109,23 @@ function Trip() {
   }
 
   if (!cur) return null;
+  const last = chat?.msgs.at(-1) ?? null;
+  const chatLabels: ChatLabels = {
+    title: job!.customer?.full_name || t("customer"),
+    subtitle: t("chatCustSub", { order: f.order(o.order_no) }),
+    initials: job!.customer?.full_name ? initials(job!.customer.full_name) : undefined,
+    placeholder: t("typeMsg"),
+    send: t("send"),
+    close: t("close"),
+    call: t("callCustomer"),
+    masked: t("chatMasked"),
+    empty: t("chatEmpty"),
+    closedNote: t("chatClosed"),
+    sent: t("chatSent"),
+    read: t("chatRead"),
+    nws: t("chatNws"),
+    quickTitle: t("chatQuick"),
+  };
   const titles = { fill: site?.name ?? t("noSite"), cust: loc?.address || o.area, discharge: site?.name ?? t("noSite") };
   const away = metresTo(site, me);
   const etaText = eta
@@ -155,7 +159,16 @@ function Trip() {
   return (
     <main className="screen flush">
       <div className="tr-map short">
-        <Map center={cur.target ?? me ?? DEFAULT_CENTER} destination={cur.target} me={me} follow padBottom={30} />
+        <Map
+          center={cur.target ?? me ?? DEFAULT_CENTER}
+          destination={cur.target}
+          destKind={cur.kind === "cust" ? "home" : cur.kind}
+          geofenceM={site?.radius_m ?? null}
+          me={me}
+          route={atTarget ? null : (eta?.path ?? null)}
+          follow
+          padBottom={30}
+        />
         <div className="tr-chip">
           <b>{f.order(o.order_no)}</b>
           <span className="mut">· {t("stepOf", { n: f.d(leg + 1), m: f.d(legs.length) })}</span>
@@ -373,33 +386,22 @@ function Trip() {
           </div>
         )}
 
-        {cur.kind !== "discharge" && (
-          <>
-            <h4 className="ch-sec">{t("msgCustomer")}</h4>
-            <div className="opts">
-              {QUICK.map((k) => (
-                <button key={k} type="button" className="opt" onClick={() => send(t(k))}>
-                  {t(k)}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        {msgs.length > 0 && (
-          <div className="d-chat" aria-live="polite">
-            {msgs.map((m) => (
-              <div key={m.id} className={`d-bub ${m.sender_role === "driver" ? "me" : ""}`}>
-                {m.sender_role === "staff" && <small>{t("nwsControl")}</small>}
-                {m.body}
-              </div>
-            ))}
-          </div>
+        <div className="oc-actions">
+          <ChatButton label={t("msgCustomer")} unread={chat?.unread ?? 0} lang={lang} onClick={() => setChatTapped(true)} />
+          <button type="button" className="oc-btn sec" onClick={() => toast(t("callMasked"))}>
+            <Icon name="phone" />
+            {t("call")}
+          </button>
+        </div>
+        {last && (
+          <button type="button" className={`d-last ${last.sender_role !== "driver" && !last.read_at ? "new" : ""}`} onClick={() => setChatTapped(true)}>
+            <small>{last.sender_role === "driver" ? t("you") : last.sender_role === "staff" ? t("nwsControl") : t("customer")}</small>
+            <span>{last.body}</span>
+          </button>
         )}
 
         <div className="tj-links">
-          <button type="button" className="lk" onClick={() => toast(t("callMasked"))}>
-            {t("callCustomer")}
-          </button>
+          <span />
           {o.status !== "collected" && (
             <button type="button" className="lk bad" onClick={() => setIssue(true)}>
               {t("reportProblem")}
@@ -411,6 +413,23 @@ function Trip() {
         </p>
       </div>
 
+      {chatOpen && chat && (
+        <ChatSheet
+          chat={chat}
+          me="driver"
+          lang={lang}
+          dir={dir}
+          labels={chatLabels}
+          quick={QUICK.map((k) => ({ text: t(k) }))}
+          canSend
+          onClose={() => {
+            setChatTapped(false);
+            hub.clearPending();
+          }}
+          onCall={() => toast(t("callMasked"))}
+          onError={(m) => toast(m)}
+        />
+      )}
       {pod && <PodSheet onClose={() => setPod(false)} />}
       {issue && <IssueSheet onClose={() => setIssue(false)} />}
     </main>

@@ -1,6 +1,8 @@
 "use client";
 
 import "./customer.css";
+import { useRouter } from "next/navigation";
+import { ChatHub } from "@/components/chat/OrderChat";
 import { CustomerCtx } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { UnreadProvider, useUnread } from "@/components/customer/ui";
@@ -24,14 +26,27 @@ function Tabs() {
   return <TabBar tabs={tabs} />;
 }
 
+/** Message banners anywhere in the app; a tap opens that order's chat. */
+function Chats({ userId, children }: { userId: string; children: React.ReactNode }) {
+  const router = useRouter();
+  const { refresh } = useUnread();
+  return (
+    <ChatHub userId={userId} onOpen={(id) => router.push(`/customer/order?id=${id}`)} onSeen={refresh}>
+      {children}
+    </ChatHub>
+  );
+}
+
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {
   const profile = useProfile("customer");
   if (!profile) return <Loading />;
   return (
     <CustomerCtx value={profile}>
       <UnreadProvider userId={profile.id}>
-        {children}
-        <Tabs />
+        <Chats userId={profile.id}>
+          {children}
+          <Tabs />
+        </Chats>
       </UnreadProvider>
     </CustomerCtx>
   );

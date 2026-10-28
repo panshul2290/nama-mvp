@@ -7,8 +7,9 @@ import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { gal, omr3, tshort, windowText } from "@/components/customer/fmt";
 import { useNow } from "@/components/customer/hooks";
-import { CancelSheet, Chat, DriverCard, PodCard, RateCard, ReschedSheet, useVerification } from "@/components/customer/OrderParts";
-import { Bill, orderToBill, StatusTag, TimelineH } from "@/components/customer/ui";
+import { ChatButton, ChatSheet, useChatHub, useOrderChat, type ChatLabels } from "@/components/chat/OrderChat";
+import { CancelSheet, DriverCard, PodCard, RateCard, ReschedSheet, useVerification } from "@/components/customer/OrderParts";
+import { Bill, orderToBill, StatusTag, TimelineH, useUnread } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { BackButton, Loading } from "@/components/Shell";
@@ -16,7 +17,7 @@ import { useRoadEta } from "@/components/useRoadEta";
 import { usePricingRules } from "@/components/usePricingRules";
 import { useToast } from "@/components/useToast";
 import { announceGone } from "@/lib/feed";
-import { kmText } from "@/lib/format";
+import { initials, kmText } from "@/lib/format";
 import { DEFAULT_CENTER } from "@/lib/geo";
 import { STALE_AFTER_S } from "@/lib/gps";
 import { localDigits } from "@/lib/i18n";
@@ -28,6 +29,7 @@ import { ON_JOB_STATUSES, ref, type LngLat, type Order, type OrderLocation, type
 const TRACKED = ["accepted", "arriving", "arrived"];
 const WAITING = ["requested", "scheduled", "pending_approval"];
 const NO_TANKER_AFTER_MS = 10 * 60_000;
+const isolate = (s: string) => `${String.fromCharCode(0x2068)}${s}${String.fromCharCode(0x2069)}`; // first-strong isolate
 
 export default function OrderPage() {
   return (
@@ -40,8 +42,23 @@ export default function OrderPage() {
 function OrderDetail() {
   const id = useSearchParams().get("id") ?? "";
   const profile = useCustomer();
-  const { t, lang } = useCx();
+  const { t, lang, dir } = useCx();
   const toast = useToast();
+  const chat = useOrderChat(id, "customer");
+  const hub = useChatHub();
+  const { refresh: refreshUnread } = useUnread();
+  const [chatTapped, setChatTapped] = useState(false);
+  // Open from the button here, or from a message banner / inbox tap elsewhere in the app.
+  const chatOpen = chatTapped || (Boolean(id) && hub.pending === id);
+  const { setActive } = hub;
+  useEffect(() => {
+    if (!chatOpen) return;
+    setActive(id);
+    return () => setActive(null);
+  }, [chatOpen, id, setActive]);
+  // Marking messages read also clears their inbox notifications: refresh the badge.
+  const { markRead } = chat;
+  const markReadAndRefresh = useCallback(() => markRead().then(refreshUnread), [markRead, refreshUnread]);
   const now = useNow(5_000);
   const { rules } = usePricingRules();
   const [order, setOrder] = useState<Order | null>(null);
@@ -124,7 +141,7 @@ function OrderDetail() {
   // Road ETA from the tanker to the delivery point (computed before any early return: hooks rule).
   const etaFrom = order && TRACKED.includes(order.status) && tankerFix?.tankerId === order.tanker_id ? tankerFix.pos : null;
   const etaTo = loc ? { lat: loc.lat, lng: loc.lng } : null;
-  const eta = useRoadEta(order?.status === "arrived" ? null : etaFrom, etaTo);
+  const eta = useRoadEta(order?.status === "arrived" ? null : etaFrom, etaTo, { withPath: true });
   const verification = useVerification(id, order?.tanker_id ?? null);
 
   function changed(o: Order) {
@@ -160,8 +177,46 @@ function OrderDetail() {
   const feeOmr = rules ? ruleNumber(rules, "cancel_fee_omr") : 1;
   const place = [propLabel, order.area, loc?.address].filter(Boolean).join(" · ");
   const canCancel = WAITING.includes(order.status) || order.status === "accepted" || order.status === "arriving";
+  const live = ON_JOB_STATUSES.includes(order.status);
+  const plate = order.tanker_plate ?? verification?.plate ?? null;
+  const chatLabels: ChatLabels = {
+    title: order.driver_id ? (order.driver_name ?? t("driver")) : t("nwsSupport"),
+    // Plate and order number isolated so they read correctly inside Arabic text.
+    subtitle: [order.driver_id ? t("chatDrvSub") : null, plate && isolate(plate), isolate(ref.order(order.order_no))].filter(Boolean).join(" · "),
+    initials: order.driver_id ? initials(order.driver_name) : undefined,
+    placeholder: t("typeMsg"),
+    send: t("send"),
+    close: t("close"),
+    call: t("call"),
+    masked: t("masked"),
+    empty: t("chatEmpty"),
+    closedNote: order.status === "delivered" || order.status === "cancelled" ? t("chatClosedAfter") : t("chatClosedBefore"),
+    sent: t("chatSent"),
+    read: t("chatRead"),
+    nws: t("chatNws"),
+    quickTitle: t("chatQuick"),
+  };
+  const closeChat = () => {
+    setChatTapped(false);
+    hub.clearPending();
+  };
+  const callDriver = () => toast.show(t("calling"));
   const sheets = (
     <>
+      {chatOpen && (
+        <ChatSheet
+          chat={{ ...chat, markRead: markReadAndRefresh }}
+          me="customer"
+          lang={lang}
+          dir={dir}
+          labels={chatLabels}
+          quick={["qm1", "qm2", "qm3", "qm4"].map((k) => ({ text: t(k), prefill: k === "qm2" }))}
+          canSend={live}
+          onClose={closeChat}
+          onCall={live && order.driver_id ? callDriver : undefined}
+          onError={toast.show}
+        />
+      )}
       {sheet === "cancel" && <CancelSheet order={order} feeOmr={feeOmr} feeStatus={rules?.cancel_fee_omr?.status} onClose={() => setSheet(null)} onDone={cancelled} />}
       {sheet === "resched" && <ReschedSheet order={order} now={now} onClose={() => setSheet(null)} onDone={changed} />}
       {toast.node}
@@ -184,6 +239,11 @@ function OrderDetail() {
                   ? t("cancelled")
                   : t("cancelledBy", { r: order.cancel_reason ?? "" })}
           </div>
+          {chat.msgs.length > 0 && (
+            <div className="oc-actions" style={{ marginBottom: 12 }}>
+              <ChatButton label={`${t("chatHistory")} (${localDigits(chat.msgs.length, lang)})`} unread={chat.unread} lang={lang} onClick={() => setChatTapped(true)} className="sec" />
+            </div>
+          )}
           <div className="rq-card pad">
             <Bill bill={bill} gallons={order.gallons} />
           </div>
@@ -216,8 +276,15 @@ function OrderDetail() {
           <TimelineH order={order} />
           <PodCard order={order} />
           <RateCard order={order} onRated={setOrder} />
-          {order.tanker_id && <DriverCard order={order} v={verification} today={today} />}
-          <Chat order={order} open={false} onToast={toast.show} />
+          {order.tanker_id && (
+            <DriverCard order={order} v={verification} today={today}>
+              {chat.msgs.length > 0 && (
+                <div className="oc-actions">
+                  <ChatButton label={`${t("chatHistory")} (${localDigits(chat.msgs.length, lang)})`} unread={chat.unread} lang={lang} onClick={() => setChatTapped(true)} className="sec" />
+                </div>
+              )}
+            </DriverCard>
+          )}
           <div className="rq-card pad">
             <Bill bill={bill} gallons={order.gallons} />
           </div>
@@ -251,6 +318,8 @@ function OrderDetail() {
             center={dest ?? DEFAULT_CENTER}
             destination={dest}
             tanker={fix?.pos ?? null}
+            service={order.service_type}
+            route={eta?.path ?? null}
             tankerNote={ageS != null ? `${t("lastUpd")} ${ago(ageS)}` : undefined}
             tankerStale={delayed}
             follow
@@ -326,8 +395,25 @@ function OrderDetail() {
             </button>
           )}
 
-          {onJob && order.tanker_id && <DriverCard order={order} v={verification} today={today} />}
-          <Chat order={order} open={onJob} onToast={toast.show} />
+          {onJob && order.tanker_id ? (
+            <DriverCard order={order} v={verification} today={today}>
+              <div className="oc-actions">
+                <ChatButton label={t("msgDriver")} unread={chat.unread} lang={lang} onClick={() => setChatTapped(true)} />
+                <button type="button" className="oc-btn sec" onClick={callDriver}>
+                  <Icon name="phone" />
+                  {t("call")}
+                </button>
+              </div>
+              <p className="tr-note" style={{ margin: "8px 0 0" }}>
+                {t("masked")}
+              </p>
+            </DriverCard>
+          ) : (
+            // Before a driver accepts: the chat explains when it opens (and shows any NWS messages).
+            <div className="oc-actions" style={{ marginBottom: 12 }}>
+              <ChatButton label={chat.msgs.length ? t("nwsMsgs") : t("msgDriver")} unread={chat.unread} lang={lang} onClick={() => setChatTapped(true)} className="sec" />
+            </div>
+          )}
 
           {order.driver_note && (
             <p className="mut small">

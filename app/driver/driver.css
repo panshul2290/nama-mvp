@@ -116,3 +116,15 @@
 .d-notif.unread b { color: var(--link); }
 .d-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
 
+
+/* trip: latest chat message under the Message / Call buttons */
+.d-last {
+  display: flex; gap: 8px; align-items: baseline; width: 100%; margin-top: 8px; padding: 9px 12px; border-radius: 12px; text-align: start;
+  border: 1px solid var(--line); background: var(--sunk); color: var(--ink); font-size: 13.5px;
+}
+.d-last small { flex: none; font-weight: 800; color: var(--muted); font-size: 12px; }
+.d-last span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-last.new { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.d-last.new small { color: var(--link); }
+.d-notif .d-nt { flex: 1; min-width: 0; }
+.d-nicon { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--link); }

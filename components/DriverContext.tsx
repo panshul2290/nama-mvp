@@ -229,8 +229,9 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     const ch = db
       .channel(`notif-${profile.id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${profile.id}` }, (payload) => {
-        setUnread((n) => n + 1);
-        showToast((payload.new as Notification).title);
+        const n = payload.new as Notification;
+        setUnread((u) => u + 1);
+        if (n.event !== "new_message") showToast(n.title); // chat messages get their own banner (components/chat/OrderChat.tsx)
       })
       .subscribe();
     return () => {

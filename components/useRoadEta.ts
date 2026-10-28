@@ -6,8 +6,8 @@ import type { LngLat } from "@/lib/types";
 
 export const ETA_REFRESH_MS = 30_000;
 
-/** Road ETA between two points, recalculated at most every 30 s. */
-export function useRoadEta(from: LngLat | null, to: LngLat | null): RouteEta | null {
+/** Road ETA between two points, recalculated at most every 30 s (with the road geometry for the map when `withPath`). */
+export function useRoadEta(from: LngLat | null, to: LngLat | null, { withPath = false }: { withPath?: boolean } = {}): RouteEta | null {
   const [eta, setEta] = useState<RouteEta | null>(null);
   const last = useRef(0);
   const inFlight = useRef(false);
@@ -22,7 +22,7 @@ export function useRoadEta(from: LngLat | null, to: LngLat | null): RouteEta | n
       if (!a || !b || inFlight.current || Date.now() - last.current < ETA_REFRESH_MS) return;
       inFlight.current = true;
       last.current = Date.now();
-      routeEta(a, b).then((r) => {
+      routeEta(a, b, { withPath }).then((r) => {
         inFlight.current = false;
         setEta(r);
       });
@@ -33,7 +33,7 @@ export function useRoadEta(from: LngLat | null, to: LngLat | null): RouteEta | n
       clearTimeout(first);
       clearInterval(timer);
     };
-  }, []);
+  }, [withPath]);
 
   return from && to ? eta : null;
 }

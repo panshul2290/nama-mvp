@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/icons";
 import { SignatureSvg } from "@/components/SignatureSvg";
 import { friendlyError } from "@/lib/errors";
 import { initials } from "@/lib/format";
 import { localDigits } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
-import type { Order, OrderMessage, Pod } from "@/lib/types";
+import type { Order, Pod } from "@/lib/types";
 import { useCx } from "./i18n";
 import { amt3, ddate, dshort, dtshort, gal, omr3, tshort } from "./fmt";
 import { slotOptions } from "./slots";
@@ -39,8 +39,8 @@ export function useVerification(orderId: string, tankerId: string | null) {
   return tankerId ? v : null;
 }
 
-/** Driver + tanker card with the NWS verification grid (prototype driverCard). */
-export function DriverCard({ order, v, today }: { order: Order; v: Verification; today: string }) {
+/** Driver + tanker card with the NWS verification grid (prototype driverCard); `children` = message / call buttons. */
+export function DriverCard({ order, v, today, children }: { order: Order; v: Verification; today: string; children?: React.ReactNode }) {
   const { t, lang } = useCx();
   const [cert, setCert] = useState(false);
   const valid = (d: string | null | undefined) => Boolean(d && d.slice(0, 10) >= today);
@@ -80,6 +80,7 @@ export function DriverCard({ order, v, today }: { order: Order; v: Verification;
           )}
         </>
       )}
+      {children}
       {cert && wt && <CertSheet wt={wt} plate={plate ?? ""} onClose={() => setCert(false)} />}
     </div>
   );
@@ -129,98 +130,6 @@ function CertSheet({ wt, plate, onClose }: { wt: WaterTest; plate: string; onClo
       </table>
       <p className="mut small">{t("wqStd")}</p>
     </Sheet>
-  );
-}
-
-// ---------------------------------------------------------------- masked chat
-const QUICK = ["qm1", "qm2", "qm3", "qm4"];
-
-export function Chat({ order, open, onToast }: { order: Order; open: boolean; onToast: (m: string) => void }) {
-  const { t, lang } = useCx();
-  const [msgs, setMsgs] = useState<OrderMessage[]>([]);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
-
-  const load = useCallback(
-    () =>
-      supabase()
-        .from("order_messages")
-        .select("*")
-        .eq("order_id", order.id)
-        .order("created_at")
-        .then(({ data }) => setMsgs((data ?? []) as OrderMessage[])),
-    [order.id],
-  );
-  useEffect(() => {
-    load();
-    const db = supabase();
-    const ch = db
-      .channel(`chat-${order.id}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_messages", filter: `order_id=eq.${order.id}` }, (p) =>
-        setMsgs((m) => (m.some((x) => x.id === (p.new as OrderMessage).id) ? m : [...m, p.new as OrderMessage])),
-      )
-      .subscribe((s) => {
-        if (s === "SUBSCRIBED") load();
-      });
-    return () => {
-      db.removeChannel(ch);
-    };
-  }, [order.id, load]);
-  useEffect(() => end.current?.scrollIntoView({ block: "nearest" }), [msgs.length]);
-
-  async function send(body: string) {
-    if (!body.trim()) return;
-    setBusy(true);
-    const { data, error } = await supabase().rpc("send_message", { p_order_id: order.id, p_body: body.trim() }).single<OrderMessage>();
-    setBusy(false);
-    if (error || !data) return onToast(friendlyError(error));
-    setText("");
-    setMsgs((m) => (m.some((x) => x.id === data.id) ? m : [...m, data]));
-  }
-
-  if (!open && msgs.length === 0) return null;
-  return (
-    <div className="cx-chat">
-      {msgs.length > 0 && (
-        <div className="chat">
-          {msgs.map((m) => (
-            <div key={m.id} className={`bub ${m.sender_role === "customer" ? "me" : ""}`}>
-              {m.sender_role === "staff" && <b className="who">{t("nwsSupport")}</b>}
-              {m.body}
-              <small>{tshort(m.created_at, lang)}</small>
-            </div>
-          ))}
-          <div ref={end} />
-        </div>
-      )}
-      {open && (
-        <>
-          <div className="opts qm">
-            {QUICK.map((k) => (
-              <button key={k} type="button" className="opt" disabled={busy} onClick={() => send(t(k))}>
-                {t(k)}
-              </button>
-            ))}
-          </div>
-          <div className="promo">
-            <input value={text} maxLength={500} placeholder={t("typeMsg")} aria-label={t("typeMsg")} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send(text)} />
-            <button type="button" className="btn sm" disabled={busy || !text.trim()} onClick={() => send(text)}>
-              {t("send")}
-            </button>
-          </div>
-          <div className="tr-act" style={{ marginTop: 10 }}>
-            <button type="button" className="cta sec" onClick={() => onToast(t("calling"))}>
-              <Icon name="phone" /> {t("call")}
-            </button>
-            <button type="button" className="cta sec" disabled={busy} onClick={() => send(t("qm1"))}>
-              <Icon name="chat" /> {t("msg")}
-            </button>
-          </div>
-          <p className="tr-note">{t("masked")}</p>
-        </>
-      )}
-    </div>
   );
 }
 

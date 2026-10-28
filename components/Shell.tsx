@@ -4,7 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "@/components/icons";
 
-export type Tab = { href: string; label: string; icon: IconName; badge?: number; match?: (path: string) => boolean };
+export type Tab = {
+  href: string;
+  label: string;
+  icon: IconName;
+  badge?: number;
+  /** Badge style ("msg" = unread messages) and its accessible text. */
+  badgeTone?: "msg";
+  badgeLabel?: string;
+  match?: (path: string) => boolean;
+};
 
 // Bottom tab bar from the prototype's phone screens.
 export function TabBar({ tabs }: { tabs: Tab[] }) {
@@ -17,7 +26,12 @@ export function TabBar({ tabs }: { tabs: Tab[] }) {
           <Link key={t.href} href={t.href} className={on ? "on" : ""} aria-current={on ? "page" : undefined}>
             <Icon name={t.icon} />
             {t.label}
-            {t.badge ? <span className="badge">{t.badge}</span> : null}
+            {t.badge ? (
+              <span className={`badge ${t.badgeTone ?? ""}`} aria-label={t.badgeLabel} title={t.badgeLabel}>
+                {t.badgeTone === "msg" ? <Icon name="chat" size={10} /> : null}
+                {t.badge}
+              </span>
+            ) : null}
           </Link>
         );
       })}

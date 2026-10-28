@@ -4,6 +4,7 @@ import "../../ops.css";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChatBubbles } from "@/components/chat/OrderChat";
 import { FleetMap } from "@/components/nws/FleetMap";
 import type { LatLng, MapSite } from "@/components/nws/FleetMapView";
 import { permitSummary, type Permit } from "@/components/nws/fleetData";
@@ -16,7 +17,7 @@ import { usePricingRules } from "@/components/usePricingRules";
 import { orderNo } from "@/lib/format";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
-import type { Order, OrderLocation } from "@/lib/types";
+import type { Order, OrderLocation, OrderMessage } from "@/lib/types";
 
 type One<T> = T | T[] | null;
 type Detail = Order & {
@@ -37,7 +38,8 @@ type Payment = { id: string; method: string; amount: string; wallet_amount: stri
 type WalletTx = { id: number; kind: string; amount: string; memo: string; created_at: string };
 type Pod = { kind: string; photo_path: string | null; meter_gal: number; signature_path: string | null; signature_svg: string | null; no_signature: boolean; left_at_tank: boolean; created_at: string; status: string; rejected_reason: string | null };
 type SourceEvent = { id: number; source: string; kind: string; meter_gal: number | null; verified: boolean; note: string; created_at: string; site: One<{ code: string; name: string }> };
-type Message = { id: number; sender_role: string; body: string; created_at: string; sender: One<{ full_name: string }> };
+type Message = OrderMessage & { sender: One<{ full_name: string }> };
+const ROLE: Record<OrderMessage["sender_role"], string> = { customer: "Customer", driver: "Driver", staff: "NWS" };
 type Complaint = { id: string; case_no: number; category: string; state: string; created_at: string; due_at: string };
 type Penalty = { id: string; penalty_no: number; amount: string; state: string; reason: string; created_at: string; rule: One<{ label: string }> };
 type Verification = { company: string | null; permit_no: string | null; permit_valid_to: string | null; water_test: { cert_no: string; passed: boolean; tested_at: string } | null; device: string | null } | null;
@@ -107,7 +109,7 @@ export default function OrderDetail() {
       db.from("wallet_tx").select("id, kind, amount, memo, created_at").eq("order_id", id).order("created_at"),
       db.from("pods").select("*").eq("order_id", id).maybeSingle(),
       db.from("source_events").select("id, source, kind, meter_gal, verified, note, created_at, site:sites(code, name)").eq("order_id", id).order("created_at"),
-      db.from("order_messages").select("id, sender_role, body, created_at, sender:profiles!order_messages_sender_id_fkey(full_name)").eq("order_id", id).order("created_at"),
+      db.from("order_messages").select("id, order_id, sender_id, sender_role, body, created_at, read_at, sender:profiles!order_messages_sender_id_fkey(full_name)").eq("order_id", id).order("created_at"),
       db.from("complaints").select("id, case_no, category, state, created_at, due_at").eq("order_id", id).order("created_at"),
       db.from("penalties").select("id, penalty_no, amount, state, reason, created_at, rule:penalty_rules(label)").eq("order_id", id).order("created_at"),
       db.from("gps_fixes").select("lat, lng").eq("order_id", id).order("recorded_at").limit(1000),
@@ -351,17 +353,18 @@ export default function OrderDetail() {
             <h2>
               Messages <small>customer, driver and NWS</small>
             </h2>
-            <div className="msgs">
-              {msgs.length === 0 && <span className="mut" style={{ fontSize: 13 }}>No messages on this order.</span>}
-              {msgs.map((m) => (
-                <div key={m.id} className={`msg ${m.sender_role === "staff" ? "staff" : ""}`}>
-                  <small>
-                    {one(m.sender)?.full_name || m.sender_role} · {m.sender_role === "staff" ? "NWS" : m.sender_role} · {fmtDateTime(m.created_at)}
-                  </small>
-                  {m.body}
-                </div>
-              ))}
-            </div>
+            {msgs.length === 0 ? (
+              <p className="note">No messages on this order.</p>
+            ) : (
+              <ChatBubbles
+                msgs={msgs}
+                me="staff"
+                lang="en"
+                allTicks
+                labels={{ sent: "Sent, not read yet", read: "Read", nws: "NWS" }}
+                who={(m) => `${one((m as Message).sender)?.full_name || ROLE[m.sender_role]} · ${ROLE[m.sender_role]}`}
+              />
+            )}
             <div className="sendrow">
               <input className="in" placeholder="Message the customer and driver as NWS…" value={body} maxLength={500} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} aria-label="Message" />
               <button className="btn pri" disabled={!body.trim() || can("viewer")} onClick={send}>

@@ -220,7 +220,7 @@ export type FraudFlag = { id: number; rule: string; subject_type: string; subjec
 export type DataRequest = { id: string; ref_no: number; customer_id: string | null; kind: "access" | "delete" | "correct"; details: string; state: "open" | "completed" | "rejected"; created_at: string; closed_at: string | null };
 export type Promotion = { code: string; label: string; pct: string; audience: string; max_uses: number; uses: number; active: boolean; valid_to: string | null };
 export type Inspection = { id: string; tanker_id: string; permit_id: string | null; inspector_id: string | null; result: "scheduled" | "pass" | "fail"; notes: string; checklist: Record<string, unknown>; scheduled_for: string | null; created_at: string };
-export type OrderMessage = { id: number; order_id: string; sender_id: string | null; sender_role: "customer" | "driver" | "staff"; body: string; created_at: string };
+export type OrderMessage = { id: number; order_id: string; sender_id: string | null; sender_role: "customer" | "driver" | "staff"; body: string; created_at: string; read_at?: string | null };
 
 /** Display references for numbered records. */
 export const ref = {
