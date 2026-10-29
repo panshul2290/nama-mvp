@@ -110,8 +110,22 @@ export async function testZoneSuite(t: Target, r: Reporter) {
 
   // ---- Oman rules unchanged --------------------------------------------------------------
   const om = await order(C1.id, "DW", 1000, { lat: 23.6, lng: 58.2 });
+
+  // ---- sides never cross (0021) ------------------------------------------------------------
+  // D1's tanker is in Delhi: it neither sees nor takes the Omani order.
+  const fromDelhi = await t.as<{ id: string }>(D1.id, "select id from open_requests_near(28.62, 77.22) where id = $1", [om.id]);
+  r.check("open_requests_near from Delhi does not list an Omani order", fromDelhi.length === 0, fromDelhi);
+  await r.denies("a tanker in the test zone cannot accept an Omani order → not_eligible", () => one(D1.id, "select * from accept_order($1)", [om.id]), "not_eligible");
+  // From Oman, it neither sees nor takes a test order.
+  const delhi2 = await order(C1.id, "DW", 1000, DELHI);
+  await t.admin("update tankers set last_lat = 23.6, last_lng = 58.2, last_fix_at = now() where id = $1", [w.tk.D1]);
+  const fromSeeb = await t.as<{ id: string }>(D1.id, "select id from open_requests_near(23.6, 58.2) where id in ($1, $2)", [om.id, delhi2.id]);
+  r.check("open_requests_near from Seeb lists the Omani order, not the test one", fromSeeb.length === 1 && fromSeeb[0].id === om.id, fromSeeb);
+  await r.denies("a tanker in Oman cannot accept a test-zone order → not_eligible", () => one(D1.id, "select * from accept_order($1)", [delhi2.id]), "not_eligible");
+  await t.admin("update orders set status = 'cancelled', cancelled_at = now() where id = $1", [delhi2.id]);
+
   await one(D1.id, "select * from accept_order($1)", [om.id]);
-  // The tanker is in India (inside the test zone, next to nothing Omani).
+  // The tanker then moves to India (inside the test zone, next to nothing Omani).
   await t.admin("update tankers set last_lat = 28.62, last_lng = 77.22, last_fix_at = now() where id = $1", [w.tk.D1]);
   const omFill = await one<Row>(D1.id, "select * from confirm_fill($1)", [om.id]);
   const [omSite] = await t.admin<{ code: string; is_test: boolean }>("select code, is_test from sites where id = $1", [omFill.fill_site_id]);
@@ -122,8 +136,8 @@ export async function testZoneSuite(t: Target, r: Reporter) {
   await one(D1.id, "select * from submit_pod($1, 1000, $2, 'tz-hash-3', '<svg/>')", [om.id, await t.evidencePhoto(D1.id)]);
 
   const om2 = await order(C1.id, "DW", 1000, { lat: 23.6, lng: 58.2 });
-  await one(D1.id, "select * from accept_order($1)", [om2.id]);
   await t.admin("update tankers set last_lat = 23.6030, last_lng = 58.3870, last_fix_at = now() where id = $1", [w.tk.D1]);
+  await one(D1.id, "select * from accept_order($1)", [om2.id]);
   const omOk = await one<Row>(D1.id, "select * from confirm_fill($1)", [om2.id]);
   const [ghb] = await t.admin<{ code: string }>("select code from sites where id = $1", [omOk.fill_site_id]);
   r.check("an Omani order filled inside Al Ghubrah is still verified there", omOk.fill_verified === true && ghb?.code === "FS-GHB", { omOk: omOk.fill_verified, ghb });
@@ -131,6 +145,7 @@ export async function testZoneSuite(t: Target, r: Reporter) {
   await one(D1.id, "select * from submit_pod($1, 1000, $2, 'tz-hash-4', '<svg/>')", [om2.id, await t.evidencePhoto(D1.id)]);
 
   const omWw = await order(C1.id, "WW", 3000, { lat: 23.6, lng: 58.2 });
+  await t.admin("update tankers set last_lat = 23.6, last_lng = 58.2, last_fix_at = now() where id = $1", [w.tk.D3]);
   await one(D3.id, "select * from accept_order($1)", [omWw.id]);
   await one(D3.id, "select * from mark_arrived($1)", [omWw.id]);
   await one(D3.id, "select * from submit_pod($1, 3000, $2, 'tz-hash-5', '<svg/>')", [omWw.id, await t.evidencePhoto(D3.id)]);
