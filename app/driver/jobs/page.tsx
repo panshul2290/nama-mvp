@@ -52,15 +52,19 @@ export default function JobsPage() {
 
   const tags = (r: OpenRequest) => (
     <>
+      {r.is_test && <span className="st warn">{t("testTag")}</span>}
       {r.is_emergency && <span className="st bad">{t("emergency")}</span>}
       {r.contract_no != null && <span className="st act">{t("contractN", { n: f.d(ref.contract(r.contract_no)) })}</span>}
     </>
   );
   const when = (r: { slot_label?: string | null }) => r.slot_label || t("asap");
   // DW/TE trips start at the nearest filling station; WW ends at a discharge site.
+  // Test-zone jobs (0020) use the test station / plant wherever the tanker is.
   const via = (r: OpenRequest) => {
-    const s = nearestSite(sites, r.service_type === "WW" ? "discharge" : "fill", r.service_type, null);
-    return s ? t(r.service_type === "WW" ? "dischargeAt" : "fillAt", { name: s.name }) : null;
+    const ww = r.service_type === "WW";
+    if (r.is_test) return t(ww ? "dischargeAt" : "fillAt", { name: t(ww ? "testPlant" : "testStation") });
+    const s = nearestSite(sites, ww ? "discharge" : "fill", r.service_type, null);
+    return s ? t(ww ? "dischargeAt" : "fillAt", { name: s.name }) : null;
   };
 
   return (

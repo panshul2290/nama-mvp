@@ -140,6 +140,7 @@ export default function OrderDetail() {
       .from("sites")
       .select("id, code, kind, name, lat, lng, radius_m")
       .eq("active", true)
+      .eq("is_test", false)
       .then(({ data }) => setSites(((data ?? []) as (MapSite & { code: string; name: string })[]).map((s) => ({ ...s, label: `${s.code} · ${s.name}` }))));
     return () => clearTimeout(t);
   }, [load]);
@@ -230,7 +231,8 @@ export default function OrderDetail() {
       <div className="vhead">
         <div>
           <h1>
-            {orderNo(o.order_no)} <span className={`st ${STATUS_TEXT[o.status][1]}`}>{STATUS_TEXT[o.status][0]}</span> {o.is_emergency && <span className="st bad">Priority</span>}
+            {orderNo(o.order_no)} <span className={`st ${STATUS_TEXT[o.status][1]}`}>{STATUS_TEXT[o.status][0]}</span> {o.is_emergency && <span className="st bad">Priority</span>}{" "}
+            {o.is_test && <span className="st warn" title="Test zone order: not counted in KPIs, reports or invoices; no penalties">TEST</span>}
           </h1>
           <p>
             <span className={`tag ${o.service_type}`}>{o.service_type}</span> {o.gallons.toLocaleString()} gal · {o.area}

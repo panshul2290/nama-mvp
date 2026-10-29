@@ -13,9 +13,16 @@ maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
 const siteColor = (s: Site) => (!s.active ? MAP_COLORS.stale : s.kind === "discharge" ? MAP_COLORS.WW : s.service_types.includes("TE") ? MAP_COLORS.TE : MAP_COLORS.DW);
 const fc = (features: GeoJSON.Feature[]): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
 
+// A zone with a bounding box (the test zone, 0020) is drawn as that box.
+const zoneShape = (z: Zone): GeoJSON.Polygon =>
+  z.min_lat != null && z.max_lat != null && z.min_lng != null && z.max_lng != null
+    ? { type: "Polygon", coordinates: [[[z.min_lng, z.min_lat], [z.max_lng, z.min_lat], [z.max_lng, z.max_lat], [z.min_lng, z.max_lat], [z.min_lng, z.min_lat]]] }
+    : circlePolygon(z.center_lat, z.center_lng, Number(z.radius_km) * 1000);
+const zoneInfo = (z: Zone) => `${z.is_test ? "TEST zone · box" : `${z.governorate} · radius ${Number(z.radius_km)} km`}${z.active ? "" : " · disabled"}`;
+
 function data(zones: Zone[], sites: Site[]) {
   return {
-    zones: fc(zones.map((z) => ({ type: "Feature", geometry: circlePolygon(z.center_lat, z.center_lng, Number(z.radius_km) * 1000), properties: { name: z.name, active: z.active, info: `${z.governorate} · radius ${Number(z.radius_km)} km${z.active ? "" : " · disabled"}` } }))),
+    zones: fc(zones.map((z) => ({ type: "Feature", geometry: zoneShape(z), properties: { name: z.name, active: z.active, info: zoneInfo(z) } }))),
     // Geofences are a few hundred metres: draw them at least 600 m so they show at city zoom.
     sites: fc(sites.map((s) => ({ type: "Feature", geometry: circlePolygon(s.lat, s.lng, Math.max(600, s.radius_m)), properties: { name: `${s.code} · ${s.name}`, color: siteColor(s), info: `${s.kind === "fill" ? "Filling" : "Discharge"} · ${s.service_types.join(", ")} · ${s.radius_m} m${s.active ? "" : " · disabled"}` } }))),
     points: fc(sites.map((s) => ({ type: "Feature", geometry: { type: "Point", coordinates: [s.lng, s.lat] }, properties: { name: `${s.code} · ${s.name}`, icon: `site-${s.kind}`, active: s.active, info: `${s.kind === "fill" ? "Filling" : "Discharge"} · ${s.service_types.join(", ")} · ${s.radius_m} m${s.active ? "" : " · disabled"}` } }))),

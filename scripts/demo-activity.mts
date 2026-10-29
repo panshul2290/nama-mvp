@@ -136,7 +136,7 @@ try {
     if (!stopping && orderId) {
       await rpc(driver, "accept_order", { p_order_id: orderId });
       // Same legs as the app: fill at the nearest station for the service, then the customer.
-      const { data: sites } = await driver.from("sites").select("*").eq("kind", "fill").eq("active", true);
+      const { data: sites } = await driver.from("sites").select("*").eq("kind", "fill").eq("active", true).eq("is_test", false);
       const fill = ((sites ?? []) as Site[]).filter((x) => x.service_types.includes("DW")).sort((a, b) => Math.hypot(a.lat - IDLE_SPOT.lat, a.lng - IDLE_SPOT.lng) - Math.hypot(b.lat - IDLE_SPOT.lat, b.lng - IDLE_SPOT.lng))[0];
       if (!fill) throw new Error("No active DW filling station");
       log(`Driver accepted. Driving to ${fill.name} to fill…`);

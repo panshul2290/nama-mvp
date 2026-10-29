@@ -195,6 +195,21 @@ Phones only allow GPS and the wake lock on HTTPS (or `localhost`), so serve the 
 7. Without walking: set `NEXT_PUBLIC_DEMO_MODE=true`, restart, and tap **Simulate trip** on phone B.
 8. Finish with **Mark arrived** and **Mark delivered**. Phone A stops seeing the tanker.
 
+### Testing from India (test zone)
+NWS serves Oman only, but the developers and testers are in India. Migration `0020_test_zone_india.sql` adds a test service zone, **"Test – India"**: a box around mainland India (6.5–37.5° N, 68–97.5° E). It is **active by default**, so the customer and driver apps work end to end on real phones anywhere in India.
+
+- **Customer:** a GPS fix in India pre-fills the delivery pin and centres the map (the app reads the active test zones' boxes and checks the fix on the phone; the position isn't sent). Orders there are priced by the same pricing rules as Muscat, in OMR. Sign up with an Indian mobile in international form (`+91…`).
+- **Driver:** going online, GPS reporting, open requests nearest first and the whole trip work in India. On a test order the fill (DW/TE) and discharge (WW) steps are accepted wherever the tanker is, against the virtual sites **Test station** (`TEST-FILL`) and **Test plant** (`TEST-DIS`), and count as verified.
+- **Oman is unchanged:** `zone_at()` ranks real zones before test zones and the box lies east of every Omani zone, so no Omani point ever resolves to it. Omani orders never use test sites, and Oman geofences, alerts and penalties apply as before (`npm run test:db`, section TZ).
+- **NWS:** each order carries `orders.is_test`. Test orders are tagged **TEST** on Orders, the order page and Fleet trip logs, and left out of the Live operations and Orders KPIs, Reports, driver ratings on Complaints, business invoices (`invoice_org`) and outstanding B2B balances. No penalty is ever issued on a test order. Tankers and orders on the maps inside the test zone are labelled "TEST zone"; the Live operations tanker and alert counts leave them out.
+- **Not separated:** payments, wallet and loyalty points, the company ledger (fill charges, earnings, tips) and payout batches, fraud flags, alerts (except the Live operations count), notifications, and the company and business portals. Drivers anywhere also see open requests from both Oman and India (sorted by distance).
+
+**Switch it off for production** (and whenever nobody is testing): NWS → Settings → Zones and geofences → switch off "Test – India" (admin or control-room operator, with a reason, audited), or as the database owner:
+```sql
+update public.zones set active = false where is_test;
+```
+New orders in India are then refused (`zone_disabled`), and within 5 minutes the apps stop accepting Indian GPS fixes for the pin, with no rebuild. Test orders already in progress can finish. Switch it back on the same way.
+
 ### Demo activity for the NWS board
 `npm run demo` drives the seeded accounts through one full job so the Live operations board has something on it: 4521 TK goes online and waits (about 40 s), the customer requests DW 3,000 gal in Al Khuwair, the driver accepts after 20 s, drives a simulated road route (about 3.6 km, reporting every 10 s), arrives, delivers and goes offline. It takes about 8 minutes. `npm run demo -- --idle` just keeps the tanker online and reporting from one spot until Ctrl+C.
 
@@ -214,6 +229,7 @@ The database suites cover:
 - races: 20 drivers on one order, and one driver on two orders
 - GPS freshness and accuracy
 - location privacy, including Realtime on Supabase
+- the India test zone: Indian cities resolve to it, Omani points never do, test trips and the switch, Oman geofences unchanged
 
 The Supabase run fingerprints every non-test row before and after, and fails if anything changed. See [docs/evidence/test-report.md](docs/evidence/test-report.md).
 

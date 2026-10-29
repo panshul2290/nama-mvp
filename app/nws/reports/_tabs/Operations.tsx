@@ -19,7 +19,7 @@ export default function Operations({ rows, refData, days }: { rows: ORow[]; refD
     const db = supabase();
     const from = new Date(Date.now() - 365 * 86400_000).toISOString();
     Promise.all(
-      SERVICES.map((s) => db.from("orders").select("id", { count: "exact", head: true }).eq("service_type", s).eq("status", "delivered").gte("delivered_at", from)),
+      SERVICES.map((s) => db.from("orders").select("id", { count: "exact", head: true }).eq("is_test", false).eq("service_type", s).eq("status", "delivered").gte("delivered_at", from)),
     ).then((res) => setYear({ DW: res[0].count ?? 0, WW: res[1].count ?? 0, TE: res[2].count ?? 0 }));
   }, []);
 

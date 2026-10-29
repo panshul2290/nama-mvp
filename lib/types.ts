@@ -124,6 +124,8 @@ export type Order = {
   org_id?: string | null;
   contract_id?: string | null;
   zone_id?: string | null;
+  /** Placed in a test zone (0020, "Test – India"): tagged TEST, kept out of NWS KPIs. */
+  is_test?: boolean;
   channel?: "app" | "call_centre" | "business" | "contract";
   genesys_id?: string | null;
   is_emergency?: boolean;
@@ -176,6 +178,7 @@ export type OpenRequest = {
   slot_end?: string | null;
   channel?: string;
   contract_no?: number | null;
+  is_test?: boolean;
 };
 
 export type LngLat = { lat: number; lng: number };
@@ -185,8 +188,12 @@ export type Organization = {
   id: string; name: string; cr_no: string; segment: string; credit_limit: string; terms_days: number; approval_limit: string;
   invoicing: string; paused: boolean; status: "pending" | "active" | "suspended";
 };
-export type Zone = { id: string; name: string; governorate: string; center_lat: number; center_lng: number; radius_km: string; active: boolean };
-export type Site = { id: string; code: string; kind: "fill" | "discharge"; name: string; service_types: ServiceType[]; lat: number; lng: number; radius_m: number; operator: string; active: boolean };
+export type Zone = {
+  id: string; name: string; governorate: string; center_lat: number; center_lng: number; radius_km: string; active: boolean;
+  /** Test zone (0020): contains exactly its bounding box, ranks after every real zone. */
+  is_test?: boolean; min_lat?: number | null; max_lat?: number | null; min_lng?: number | null; max_lng?: number | null;
+};
+export type Site = { id: string; code: string; kind: "fill" | "discharge"; name: string; service_types: ServiceType[]; lat: number; lng: number; radius_m: number; operator: string; active: boolean; is_test?: boolean };
 export type Property = { id: string; customer_id: string | null; org_id: string | null; label: string; address: string; area: string; lat: number; lng: number; tank_gal: number; created_at: string };
 export type Contract = {
   id: string; contract_no: number; customer_id: string | null; org_id: string | null; property_id: string; company_id: string; service_type: ServiceType;

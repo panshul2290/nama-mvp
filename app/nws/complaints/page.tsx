@@ -535,7 +535,7 @@ function QualityTab({ cases, slas }: { cases: Case[]; slas: Sla[] }) {
     const db = supabase();
     const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
     const [r, cx] = await Promise.all([
-      db.from("orders").select("driver_id, rating").not("rating", "is", null).not("driver_id", "is", null).gte("rated_at", since).limit(5000),
+      db.from("orders").select("driver_id, rating").eq("is_test", false).not("rating", "is", null).not("driver_id", "is", null).gte("rated_at", since).limit(5000),
       db.from("complaints").select("category, order:orders(driver_id)").not("order_id", "is", null).limit(2000),
     ]);
     const rows = (r.data ?? []) as Rated[];

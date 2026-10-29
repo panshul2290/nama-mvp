@@ -84,7 +84,7 @@ function Customers() {
       db.from("wallet_tx").select("customer_id, amount"),
       db.from("orders").select("customer_id").limit(10000),
       db.from("organizations").select("*").order("name"),
-      db.from("orders").select("org_id, total").not("org_id", "is", null).eq("billing", "account").is("invoice_id", null).neq("status", "cancelled"),
+      db.from("orders").select("org_id, total").not("org_id", "is", null).eq("billing", "account").eq("is_test", false).is("invoice_id", null).neq("status", "cancelled"),
       db.from("invoices").select("org_id, total, status, due_at").neq("status", "paid"),
       db
         .from("contracts")

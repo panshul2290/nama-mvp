@@ -33,6 +33,7 @@ Payment gateway (card ending 0002 = declined), IVMS telematics, filling-station 
 SMS/WhatsApp/push (logged to `notifications`, not sent), Genesys call centre, national ID check, water-quality LIMS,
 NWS SSO. Map tiles/routing/geocoding use public OSM/OSRM/Nominatim (demo only). Sign-in is mobile number (or email) + password; SMS codes verify the number and reset passwords, written to `sms_outbox` by a Postgres Send SMS hook with no SMS gateway yet (`docs/mobile-auth.md`).
 Supabase is hosted outside Oman for the demo.
+The "Test – India" service zone (`0020`, `zones.is_test`) is deliberate: it lets the team test from India, accepts fill/discharge at the tanker's position on test orders, and must be switched off for production (README, "Testing from India").
 
 ## What to look for (in priority order)
 1. **Security / authorization:** RLS policy gaps (who can read what), RPCs that trust client input, missing role

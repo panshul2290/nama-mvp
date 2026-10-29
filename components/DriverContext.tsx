@@ -397,7 +397,8 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
 
   // ---------------------------------------------------------------- active job
   const jobId = job?.order.id;
-  const legs = useMemo(() => (job ? tripLegs(job.order, job.loc, sites, me) : []), [job, sites, me]);
+  const testNames = useMemo(() => ({ fill: t("testStation"), discharge: t("testPlant") }), [t]);
+  const legs = useMemo(() => (job ? tripLegs(job.order, job.loc, sites, me, testNames) : []), [job, sites, me, testNames]);
   const leg = job ? legIndex(job.order) : 0;
   const legKey = job ? `${job.order.id}:${leg}` : "";
   const target = legs[leg]?.target ?? null;

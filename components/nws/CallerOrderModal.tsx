@@ -46,6 +46,7 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
       .from("zones")
       .select("name, center_lat, center_lng, radius_km")
       .eq("active", true)
+      .eq("is_test", false) // call-centre callers are in Oman
       .then(({ data }) => setZones((data ?? []) as Zone[]));
   }, []);
 

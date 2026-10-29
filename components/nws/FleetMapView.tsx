@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { HEADING_ICON_SVG, ORDER_ICON_SVG, SITE_ICON_SVG, TANKER_ICON_SVG, svgImage } from "@/components/map/glyphs";
 import { distanceKm, inOman } from "@/lib/geo";
 import { MAP_COLORS, MAP_STYLE, bearing, brandStyle, circlePolygon, localizeLabels, type MapTheme } from "@/lib/mapStyle";
+import { inTestArea, useTestAreas } from "@/lib/testArea";
 
 maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
 
@@ -72,10 +73,15 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
   const target = useRef(new Map<string, LatLng>());
   const heading = useRef(new Map<string, number>());
   const glide = useRef(0);
+  // Active test zones (0020): their tankers and orders are tagged TEST and framed like Omani ones.
+  const testAreas = useTestAreas();
+  const areas = useRef(testAreas);
   useEffect(() => {
     onSel.current = onSelect;
     data.current = { tankers, orders, sites, trail, selectedId, alerts };
+    areas.current = testAreas;
   });
+  const tagged = (p: LatLng, label: string) => (inTestArea(p, areas.current) ? `${label} · TEST zone` : label);
 
   useEffect(() => {
     if (!box.current) return;
@@ -221,7 +227,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
             const p = shown.current.get(t.id) ?? t;
             const key: TankerKey = t.blocked ? "blocked" : t.stale ? "stale" : t.type;
             const hdg = heading.current.get(t.id);
-            return pt(p.lng, p.lat, { id: t.id, label: t.label, plate: t.label.split(" · ")[0], stale: t.stale, key, sel: t.id === selectedId, ...(hdg != null ? { hdg } : {}) });
+            return pt(p.lng, p.lat, { id: t.id, label: tagged(t, t.label), plate: t.label.split(" · ")[0], stale: t.stale, key, sel: t.id === selectedId, ...(hdg != null ? { hdg } : {}) });
           }),
         ),
       );
@@ -239,7 +245,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
         fc(trail && trail.length > 1 ? [{ type: "Feature", geometry: { type: "LineString", coordinates: trail.map((p) => [p.lng, p.lat]) }, properties: {} }] : []),
       );
       (m.getSource("nama-rings") as maplibregl.GeoJSONSource).setData(fc(alerts.map((a) => pt(a.lng, a.lat, {}))));
-      (m.getSource("nama-orders") as maplibregl.GeoJSONSource).setData(fc(orders.map((o) => pt(o.lng, o.lat, { id: o.id, label: o.label, icon: `ord-${o.type}` }))));
+      (m.getSource("nama-orders") as maplibregl.GeoJSONSource).setData(fc(orders.map((o) => pt(o.lng, o.lat, { id: o.id, label: tagged(o, o.label), icon: `ord-${o.type}` }))));
 
       // New fixes: work out the heading, then glide every tanker from where it is drawn.
       const ids = new Set(tankers.map((t) => t.id));
@@ -292,8 +298,8 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
       const added = pts.filter((p) => !known.current.has(p.id));
       for (const p of added) known.current.add(p.id);
       if (added.length && !userMoved.current) {
-        // NWS serves Oman: a tanker reporting from far outside (bad GPS) is drawn but doesn't drag the view.
-        const local = pts.filter(inOman);
+        // NWS serves Oman (and any active test zone): a tanker reporting from far outside (bad GPS) is drawn but doesn't drag the view.
+        const local = pts.filter((p) => inOman(p) || inTestArea(p, areas.current));
         const frame = local.length ? local : pts;
         const b = new maplibregl.LngLatBounds([frame[0].lng, frame[0].lat], [frame[0].lng, frame[0].lat]);
         for (const p of frame) b.extend([p.lng, p.lat]);
@@ -302,7 +308,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
     };
     applyRef.current = apply;
     apply();
-  }, [tankers, orders, sites, trail, selectedId, alerts]);
+  }, [tankers, orders, sites, trail, selectedId, alerts, testAreas]);
 
   return <div ref={box} className={`mapfill nm ${theme}`} />;
 }

@@ -192,7 +192,7 @@ begin
         values (o.id, p, o.pay_method, o.total, 'refunded', o.total, t0, '4417');
         continue;
       end if;
-      dis := (select id from public.sites where kind = 'discharge' order by random() limit 1);
+      dis := (select id from public.sites where kind = 'discharge' and not is_test order by random() limit 1);
       v_rating := case when random() < 0.7 then (array[5, 5, 5, 4, 4, 4, 3, 2])[1 + floor(random() * 8)::int] end;
       update public.orders
          set status = 'delivered', driver_id = did, tanker_id = tid, tanker_plate = v_plate,

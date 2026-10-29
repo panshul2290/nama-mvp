@@ -17,7 +17,7 @@ type Row = {
   id: string; order_no: number; service_type: ServiceType; gallons: number; area: string; status: OrderStatus; total: string;
   tanker_plate: string | null; driver_name: string | null; created_at: string; released_at: string | null; collected_at: string | null; delivered_at: string | null;
   slot_end: string | null; slot_label: string | null;
-  channel: string; is_emergency: boolean;
+  channel: string; is_emergency: boolean; is_test: boolean;
   customer: { full_name: string } | null;
   zone: { name: string } | { name: string }[] | null;
   contract: { contract_no: number } | { contract_no: number }[] | null;
@@ -34,7 +34,7 @@ const GROUPS: [Group, string, OrderStatus[] | null][] = [
 ];
 const LIMIT = 300;
 const COLS =
-  "id, order_no, service_type, gallons, area, status, total, tanker_plate, driver_name, created_at, released_at, collected_at, delivered_at, slot_end, slot_label, channel, is_emergency, customer:profiles!orders_customer_id_fkey(full_name), zone:zones!orders_zone_id_fkey(name), contract:contracts!orders_contract_id_fkey(contract_no), org:organizations!orders_org_id_fkey(name)";
+  "id, order_no, service_type, gallons, area, status, total, tanker_plate, driver_name, created_at, released_at, collected_at, delivered_at, slot_end, slot_label, channel, is_emergency, is_test, customer:profiles!orders_customer_id_fkey(full_name), zone:zones!orders_zone_id_fkey(name), contract:contracts!orders_contract_id_fkey(contract_no), org:organizations!orders_org_id_fkey(name)";
 
 const plan = (o: Row) => (o.channel === "contract" && one(o.contract) ? `Contract CT-${one(o.contract)!.contract_no}` : (CHANNEL_LABEL[o.channel] ?? o.channel));
 
@@ -73,17 +73,18 @@ export default function OrdersPage() {
     setRows((data ?? []) as unknown as Row[]);
   }, [group, type, from, to, area, q]);
 
-  // Status counts and dispatch KPIs (independent of the table filters).
+  // Status counts and dispatch KPIs (independent of the table filters). Test-zone orders don't count.
   const loadKpis = useCallback(async () => {
     const db = supabase();
     const day = muscatDayStart();
     const week = new Date(day.getTime() - 7 * 86_400_000).toISOString();
-    const head = (s: OrderStatus[]) => db.from("orders").select("id", { count: "exact", head: true }).in("status", s);
+    const real = () => db.from("orders").select("id", { count: "exact", head: true }).eq("is_test", false);
+    const head = (s: OrderStatus[]) => real().in("status", s);
     const [c, acc, cx, made] = await Promise.all([
       Promise.all(GROUPS.slice(1).map((g) => head(g[2]!))),
-      db.from("orders").select("created_at, accepted_at").gte("accepted_at", week).limit(1000),
-      db.from("orders").select("id", { count: "exact", head: true }).eq("status", "cancelled").gte("cancelled_at", day.toISOString()),
-      db.from("orders").select("id", { count: "exact", head: true }).gte("created_at", day.toISOString()),
+      db.from("orders").select("created_at, accepted_at").eq("is_test", false).gte("accepted_at", week).limit(1000),
+      real().eq("status", "cancelled").gte("cancelled_at", day.toISOString()),
+      real().gte("created_at", day.toISOString()),
     ]);
     setCounts(Object.fromEntries(GROUPS.slice(1).map((g, i) => [g[0], c[i].count ?? 0])));
     const waits = ((acc.data ?? []) as { created_at: string; accepted_at: string }[])
@@ -153,10 +154,10 @@ export default function OrdersPage() {
             disabled={!rows?.length}
             onClick={() =>
               downloadCsv("orders", [
-                ["Order", "Customer", "Service", "Gallons", "Plan", "Zone", "Area", "Status", "Tanker", "Driver", "Total OMR", "SLA", "Created"],
+                ["Order", "Customer", "Service", "Gallons", "Plan", "Zone", "Area", "Status", "Tanker", "Driver", "Total OMR", "SLA", "Created", "Test"],
                 ...(rows ?? []).map((o) => [
                   orderNo(o.order_no), o.customer?.full_name ?? one(o.org)?.name ?? "", o.service_type, o.gallons, plan(o), one(o.zone)?.name ?? "", o.area,
-                  STATUS_TEXT[o.status][0], o.tanker_plate ?? "", o.driver_name ?? "", n3(o.total), orderSla(o, now).text, o.created_at,
+                  STATUS_TEXT[o.status][0], o.tanker_plate ?? "", o.driver_name ?? "", n3(o.total), orderSla(o, now).text, o.created_at, o.is_test ? "TEST" : "",
                 ]),
               ])
             }
@@ -218,6 +219,7 @@ export default function OrdersPage() {
                     <td className={`stripe ${o.service_type}`}>
                       <b>{orderNo(o.order_no)}</b>
                       {o.is_emergency && <span className="st bad ptag">priority</span>}
+                      {o.is_test && <span className="st warn ptag" title="Test zone order: not counted in KPIs, reports or invoices">TEST</span>}
                     </td>
                     <td>
                       {o.customer?.full_name || "—"}

@@ -38,6 +38,7 @@ type SourceEvent = { kind: string; verified: boolean; note: string; source: stri
 type Trip = {
   id: string; order_no: number; service_type: ServiceType; gallons: number; area: string; status: OrderStatus; tanker_plate: string | null; driver_name: string | null;
   created_at: string; filled_at: string | null; delivered_at: string | null; cancelled_at: string | null; fill_verified: boolean | null; discharge_verified: boolean | null;
+  is_test: boolean;
   fill_site: { name: string } | { name: string }[] | null; discharge_site: { name: string } | { name: string }[] | null; source_events: SourceEvent[];
 };
 type Dialog = { kind: "block" | "unblock" | "unassign" | "assign"; tanker: FleetTanker } | null;
@@ -45,7 +46,7 @@ type Tab = "tankers" | "trips" | "ivms";
 type Filter = "all" | ServiceType | "expired";
 
 const TRIP_SELECT =
-  "id, order_no, service_type, gallons, area, status, tanker_plate, driver_name, created_at, filled_at, delivered_at, cancelled_at, fill_verified, discharge_verified, fill_site:sites!orders_fill_site_id_fkey(name), discharge_site:sites!orders_discharge_site_id_fkey(name), source_events(kind, verified, note, source, site_id, created_at)";
+  "id, order_no, service_type, gallons, area, status, tanker_plate, driver_name, created_at, filled_at, delivered_at, cancelled_at, fill_verified, discharge_verified, is_test, fill_site:sites!orders_fill_site_id_fkey(name), discharge_site:sites!orders_discharge_site_id_fkey(name), source_events(kind, verified, note, source, site_id, created_at)";
 
 const latestTest = (t: Row) => [...(t.water_tests ?? [])].sort((a, b) => b.tested_at.localeCompare(a.tested_at))[0] ?? null;
 
@@ -90,7 +91,7 @@ function Fleet() {
         .order("plate"),
       db.from("profiles").select("id, full_name").eq("role", "driver").order("full_name"),
       db.from("tanker_assignments").select("driver_id").is("unassigned_at", null),
-      db.from("sites").select("id, code, kind, name, lat, lng, radius_m").eq("active", true),
+      db.from("sites").select("id, code, kind, name, lat, lng, radius_m").eq("active", true).eq("is_test", false),
     ]);
     setRows((t.data ?? []) as unknown as Row[]);
     setSites((s.data ?? []) as Site[]);
@@ -542,6 +543,7 @@ function TripCells({ t, compact }: { t: Trip; compact?: boolean }) {
     <tr>
       <td className={`stripe ${t.service_type}`}>
         <Link className="lk" href={`/nws/orders/${t.id}`}>{orderNo(t.order_no)}</Link>
+        {t.is_test && <span className="st warn ptag" title="Test zone trip">TEST</span>}
         <small style={{ display: "block" }}>{fmtDateTime(t.created_at)}</small>
       </td>
       {!compact && (

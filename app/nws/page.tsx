@@ -16,6 +16,7 @@ import { agoText, STALE_AFTER_S } from "@/lib/gps";
 import { orderNo } from "@/lib/format";
 import { muscatDayStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
+import { inTestArea, useTestAreas } from "@/lib/testArea";
 import { ON_JOB_STATUSES, type OrderStatus } from "@/lib/types";
 import type { ServiceType } from "@/lib/pricing";
 
@@ -29,20 +30,21 @@ type LiveTanker = {
 type LiveOrder = {
   id: string; order_no: number; service_type: ServiceType; gallons: number; area: string; status: OrderStatus; tanker_id: string | null;
   tanker_plate: string | null; created_at: string; released_at: string | null; slot_end: string | null; collected_at: string | null; delivered_at: string | null;
+  is_test: boolean;
   loc: { lat: number; lng: number } | { lat: number; lng: number }[] | null;
 };
 type Alert = {
   id: number; tanker_id: string | null; order_id: string | null; type: string; severity: "high" | "med" | "low"; message: string;
   lat: number | null; lng: number | null; state: "open" | "acknowledged" | "resolved"; created_at: string; action_note: string | null;
 };
-type Zone = { name: string; center_lat: number; center_lng: number; radius_km: number };
+type Zone = { name: string; center_lat: number; center_lng: number; radius_km: number; is_test: boolean; min_lat: number | null; max_lat: number | null; min_lng: number | null; max_lng: number | null };
 type Emergency = { on: boolean; zone: string | null; reason: string | null; since: string | null };
 type Hit = { kind: "tanker" | "order" | "customer"; id: string; title: string; sub: string };
 
 const ACTIVE: OrderStatus[] = ["requested", "accepted", "arriving", "arrived", "collected"];
 const TYPES: (ServiceType | "all")[] = ["all", "DW", "WW", "TE"];
 const TYPE_LABEL = { all: "All tankers", DW: "Drinking water", WW: "Wastewater", TE: "Treated effluent" };
-const ORDER_COLS = "id, order_no, service_type, gallons, area, status, tanker_id, tanker_plate, created_at, released_at, slot_end, collected_at, delivered_at, loc:order_locations(lat, lng)";
+const ORDER_COLS = "id, order_no, service_type, gallons, area, status, tanker_id, tanker_plate, created_at, released_at, slot_end, collected_at, delivered_at, is_test, loc:order_locations(lat, lng)";
 const SCAN_EVERY = 60_000;
 
 // Haversine distance in km (mirrors public.km).
@@ -76,6 +78,7 @@ export default function LiveOperations() {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  const testAreas = useTestAreas();
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -88,7 +91,8 @@ export default function LiveOperations() {
         )
         .order("plate"),
       db.from("orders").select(ORDER_COLS).in("status", ACTIVE).order("created_at", { ascending: false }),
-      db.from("orders").select(ORDER_COLS).or(`created_at.gte.${day},delivered_at.gte.${day}`),
+      // Today's KPIs leave out test-zone orders (0020).
+      db.from("orders").select(ORDER_COLS).eq("is_test", false).or(`created_at.gte.${day},delivered_at.gte.${day}`),
       db.from("alerts").select("id, tanker_id, order_id, type, severity, message, lat, lng, state, created_at, action_note").order("created_at", { ascending: false }).limit(60),
       db.from("app_settings").select("value").eq("key", "EMERGENCY").maybeSingle(),
     ]);
@@ -120,7 +124,7 @@ export default function LiveOperations() {
       scan();
     }, 0);
     const db = supabase();
-    Promise.all([db.from("sites").select("id, code, kind, name, lat, lng, radius_m").eq("active", true), db.from("zones").select("name, center_lat, center_lng, radius_km").eq("active", true)]).then(([s, z]) => {
+    Promise.all([db.from("sites").select("id, code, kind, name, lat, lng, radius_m").eq("active", true).eq("is_test", false), db.from("zones").select("name, center_lat, center_lng, radius_km, is_test, min_lat, max_lat, min_lng, max_lng").eq("active", true)]).then(([s, z]) => {
       type Site = { id: string; code: string; kind: "fill" | "discharge"; name: string; lat: number; lng: number; radius_m: number };
       setSites(((s.data ?? []) as Site[]).map((x) => ({ ...x, label: `${x.code} · ${x.name} (${x.kind === "fill" ? "filling" : "discharge"} geofence ${x.radius_m} m)` })));
       setZones((z.data ?? []) as Zone[]);
@@ -144,22 +148,29 @@ export default function LiveOperations() {
     },
     [age],
   );
+  // As zone_at(): a box zone contains its box; real zones rank before test zones, then nearest centre.
   const zoneOf = (p: LatLng | null) => {
     if (!p) return null;
     const hit = zones
       .map((z) => ({ z, d: km(p, { lat: z.center_lat, lng: z.center_lng }) }))
-      .filter((x) => x.d <= x.z.radius_km)
-      .sort((a, b) => a.d - b.d)[0];
+      .filter(({ z, d }) => (z.min_lat != null ? p.lat >= z.min_lat && p.lat <= z.max_lat! && p.lng >= z.min_lng! && p.lng <= z.max_lng! : d <= z.radius_km))
+      .sort((a, b) => Number(a.z.is_test) - Number(b.z.is_test) || a.d - b.d)[0];
     return hit?.z.name ?? null;
   };
 
   const day = startOfDay(now);
   const openAlerts = useMemo(() => alerts.filter((a) => a.state === "open"), [alerts]);
-  const online = tankers.filter((t) => t.is_online);
+  // KPIs leave out tankers and alerts in an active test zone (0020); the map and feed still show them.
+  const inTest = (p: { lat: number | null; lng: number | null }) => p.lat != null && p.lng != null && inTestArea({ lat: p.lat, lng: p.lng }, testAreas);
+  const allOnline = tankers.filter((t) => t.is_online);
+  const online = allOnline.filter((t) => !inTest({ lat: t.last_lat, lng: t.last_lng }));
+  const testOnline = allOnline.length - online.length;
+  const kpiAlerts = openAlerts.filter((a) => !inTest(a));
+  const inProgress = orders.filter((o) => !o.is_test).length;
   const delivered = today.filter((o) => o.status === "delivered" && o.delivered_at && o.delivered_at >= day);
   const onTime = delivered.filter((o) => orderSla(o, now).tone === "ok").length;
   const tripsToday = today.filter((o) => o.created_at >= day && o.status !== "cancelled").length;
-  const highOpen = openAlerts.filter((a) => a.severity === "high").length;
+  const highOpen = kpiAlerts.filter((a) => a.severity === "high").length;
 
   // On the map: online tankers, plus any tanker with an open alert or currently selected.
   const mapTankers = useMemo(() => {
@@ -327,13 +338,14 @@ export default function LiveOperations() {
           <b>{loaded ? online.length : "—"}</b>
           <small>
             {tankers.length} registered · {online.filter(isStale).length} with stale GPS
+            {testOnline > 0 ? ` · ${testOnline} in test zone (not counted)` : ""}
           </small>
         </div>
         <div className="okpi">
           <span>Trips today</span>
           <b>{loaded ? tripsToday : "—"}</b>
           <small className="ok">
-            {delivered.length} delivered · {orders.length} in progress
+            {delivered.length} delivered · {inProgress} in progress
           </small>
         </div>
         <div className="okpi">
@@ -343,7 +355,7 @@ export default function LiveOperations() {
         </div>
         <div className="okpi">
           <span>Open alerts</span>
-          <b>{loaded ? openAlerts.length : "—"}</b>
+          <b>{loaded ? kpiAlerts.length : "—"}</b>
           <small className={highOpen ? "bad" : ""}>{highOpen} high severity</small>
         </div>
       </div>

@@ -15,14 +15,18 @@ export function distanceKm(a: LngLat, b: LngLat): number {
 export const inOman = (p: LngLat) => p.lat >= 16.5 && p.lat <= 26.6 && p.lng >= 51.8 && p.lng <= 60.0;
 
 // The device's position for pre-filling a delivery pin; null when unavailable or
-// outside Oman (the pin then stays in Muscat for the customer to drag).
+// outside the service area: Oman, or an active test zone such as "Test – India"
+// (lib/testArea.ts). The pin then stays in Muscat for the customer to drag.
 export function currentPosition(timeoutMs = 8000): Promise<LngLat | null> {
   if (typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve(null);
   return new Promise((resolve) =>
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const here = { lat: p.coords.latitude, lng: p.coords.longitude };
-        resolve(inOman(here) ? here : null);
+        if (inOman(here)) return resolve(here);
+        import("./testArea")
+          .then(async ({ testAreas, inTestArea }) => resolve(inTestArea(here, await testAreas()) ? here : null))
+          .catch(() => resolve(null));
       },
       () => resolve(null),
       { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 30_000 },

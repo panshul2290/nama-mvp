@@ -77,7 +77,7 @@ export const CX: Dict = {
   dropPin: { en: "Somewhere else", ar: "موقع آخر" },
   dropPinS: { en: "Drop a pin on the map", ar: "حدد الموقع على الخريطة" },
   dragPin: { en: "Drag the pin or tap the map", ar: "اسحب الدبوس أو انقر على الخريطة" },
-  noGps: { en: "Couldn’t use your location (it may be outside Oman) — drag the pin to the delivery address.", ar: "تعذّر استخدام موقعك (قد يكون خارج عُمان) — اسحب الدبوس إلى عنوان التوصيل." },
+  noGps: { en: "Couldn’t use your location (it may be outside the service area) — drag the pin to the delivery address.", ar: "تعذّر استخدام موقعك (قد يكون خارج منطقة الخدمة) — اسحب الدبوس إلى عنوان التوصيل." },
   area: { en: "Area", ar: "المنطقة" },
   areaPh: { en: "e.g. Al Khoud", ar: "مثال: الخوض" },
   bldg: { en: "Building, villa or landmark", ar: "المبنى أو الفيلا أو معلم قريب" },

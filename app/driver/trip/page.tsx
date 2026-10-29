@@ -172,6 +172,7 @@ function Trip() {
         <div className="tr-chip">
           <b>{f.order(o.order_no)}</b>
           <span className="mut">· {t("stepOf", { n: f.d(leg + 1), m: f.d(legs.length) })}</span>
+          {o.is_test && <span className="st warn">{t("testTag")}</span>}
         </div>
       </div>
 
@@ -180,6 +181,12 @@ function Trip() {
         <span className={`st ${pill[1]}`}>{pill[0]}</span>
         <h3 className="tj-t">{titles[cur.kind]}</h3>
         <small className="mut">{arrived ? t("atDeliveryPoint") : inside ? t("insideNote") : etaText}</small>
+
+        {o.is_test && cur.kind !== "cust" && (
+          <div className="banner okb" style={{ marginTop: 12 }}>
+            {t("testNote")}
+          </div>
+        )}
 
         {cur.kind === "cust" && o.fill_verified === false && (
           <div className="banner" style={{ marginTop: 12 }}>

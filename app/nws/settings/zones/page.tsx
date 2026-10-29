@@ -26,11 +26,12 @@ export default function ZonesPage() {
 
   function toggle(kind: "zone" | "site", id: string, name: string, active: boolean) {
     const zone = kind === "zone";
+    const test = zone && zones?.find((z) => z.id === id)?.is_test;
     ask({
       title: `${active ? "Disable" : "Enable"} ${name}`,
       body: active
-        ? zone ? "New requests from this area will be refused (“Tanker service is paused in this area”). Orders in progress continue." : "Filling or discharging here will no longer be accepted as verified and will raise an alert."
-        : zone ? "Customers in this area can order again." : "This geofence becomes an approved site again.",
+        ? test ? "Developers and testers outside Oman can no longer place orders or use their GPS in the apps. Test orders in progress continue." : zone ? "New requests from this area will be refused (“Tanker service is paused in this area”). Orders in progress continue." : "Filling or discharging here will no longer be accepted as verified and will raise an alert."
+        : test ? "Developers and testers in this area can place orders and run trips again. Keep it off in production." : zone ? "Customers in this area can order again." : "This geofence becomes an approved site again.",
       confirm: active ? "Disable" : "Enable",
       danger: active,
       ok: `${name} ${active ? "disabled" : "enabled"}`,
@@ -43,6 +44,11 @@ export default function ZonesPage() {
     <>
       <PageHead title="Zones and geofences" sub="Where tanker service is offered, and the approved filling stations and discharge plants trips are verified against." />
       {!editor && <ReadOnlyNote who="Super admins and control room operators" />}
+      {zones?.some((z) => z.is_test && z.active) && (
+        <div className="banner">
+          <b>A test zone is active.</b> {zones.filter((z) => z.is_test && z.active).map((z) => z.name).join(", ")} lets developers and testers run the apps outside Oman: orders there are tagged TEST, left out of KPIs, reports and invoices, never penalised, and fill / discharge at the tanker&apos;s position. Switch it off for production.
+        </div>
+      )}
       <div className="two">
         <div className="panel">
           <div className="mapcard zonemap" style={{ borderRadius: "16px 16px 0 0", border: 0 }}>
@@ -71,9 +77,9 @@ export default function ZonesPage() {
                   {!zones && <Empty cols={4}>Loading…</Empty>}
                   {zones?.map((z) => (
                     <tr key={z.id}>
-                      <td>{z.name}</td>
+                      <td>{z.name}{z.is_test && <span className="st warn ptag">TEST</span>}</td>
                       <td>{z.governorate}</td>
-                      <td className="num">{Number(z.radius_km)} km</td>
+                      <td className="num">{z.min_lat != null ? "box" : `${Number(z.radius_km)} km`}</td>
                       <td className="num"><Switch on={z.active} disabled={!editor} label={z.active ? "Active" : "Disabled"} onClick={() => toggle("zone", z.id, z.name, z.active)} /></td>
                     </tr>
                   ))}
@@ -90,7 +96,7 @@ export default function ZonesPage() {
                   {!sites && <Empty cols={5}>Loading…</Empty>}
                   {sites?.map((s) => (
                     <tr key={s.id}>
-                      <td>{s.name}<small style={{ display: "block" }}>{s.code} · {s.operator}</small></td>
+                      <td>{s.name}{s.is_test && <span className="st warn ptag">TEST</span>}<small style={{ display: "block" }}>{s.code} · {s.operator}{s.is_test ? " · accepted at the tanker’s position on test orders" : ""}</small></td>
                       <td>{s.kind === "fill" ? "Filling" : "Discharge"}</td>
                       <td>{s.service_types.map((t) => <span key={t} className={`tag ${t}`} title={SERVICE_LABEL[t]} style={{ marginRight: 4 }}>{t}</span>)}</td>
                       <td className="num">{s.radius_m} m</td>

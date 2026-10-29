@@ -49,7 +49,7 @@ async function load(ds: Dataset, days: number): Promise<{ raw: Raw | null; error
   if (ds === "Orders" || ds === "Revenue" || ds === "Ratings") {
     const field = ds === "Revenue" ? "delivered_at" : ds === "Ratings" ? "rated_at" : "created_at";
     const { rows, error, truncated } = await fetchPaged<ORow & { water_charge: string; delivery_fee: string; vat: string }>((a, b) => {
-      const q = db.from("orders").select(`${ORDER_COLS}, water_charge, delivery_fee, vat`);
+      const q = db.from("orders").select(`${ORDER_COLS}, water_charge, delivery_fee, vat`).eq("is_test", false);
       const f = ds === "Revenue" ? q.eq("status", "delivered").gte("delivered_at", from) : ds === "Ratings" ? q.not("rating", "is", null).gte("rated_at", from) : q.gte("created_at", from);
       return f.order(field, { ascending: false }).order("id").range(a, b);
     }, ROW_CAP);
@@ -65,7 +65,7 @@ async function load(ds: Dataset, days: number): Promise<{ raw: Raw | null; error
   if (ds === "Fleet") {
     const [t, o] = await Promise.all([
       fetchPaged<{ id: string; service_type: ServiceType; company_id: string | null; is_online: boolean; blocked: boolean }>((a, b) => db.from("tankers").select("id, service_type, company_id, is_online, blocked").order("id").range(a, b), ROW_CAP),
-      fetchPaged<{ tanker_id: string | null }>((a, b) => db.from("orders").select("tanker_id").eq("status", "delivered").gte("delivered_at", from).order("delivered_at", { ascending: false }).order("id").range(a, b), ROW_CAP),
+      fetchPaged<{ tanker_id: string | null }>((a, b) => db.from("orders").select("tanker_id").eq("is_test", false).eq("status", "delivered").gte("delivered_at", from).order("delivered_at", { ascending: false }).order("id").range(a, b), ROW_CAP),
     ]);
     const trips = new Map<string, number>();
     for (const r of o.rows) if (r.tanker_id) trips.set(r.tanker_id, (trips.get(r.tanker_id) ?? 0) + 1);

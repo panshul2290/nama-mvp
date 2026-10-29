@@ -18,7 +18,7 @@ export default function BusinessInvoices() {
     const db = supabase();
     const [i, o] = await Promise.all([
       db.from("invoices").select("*").eq("org_id", org.id).order("issued_at", { ascending: false }),
-      db.from("orders").select("total").eq("org_id", org.id).eq("status", "delivered").is("invoice_id", null),
+      db.from("orders").select("total").eq("org_id", org.id).eq("status", "delivered").eq("is_test", false).is("invoice_id", null),
     ]);
     setInvoices((i.data ?? []) as Invoice[]);
     const rows = (o.data ?? []) as { total: string }[];

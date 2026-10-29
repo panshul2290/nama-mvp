@@ -5,6 +5,7 @@ import { isOnTime } from "@/lib/sla";
 
 // Report rows. Aggregation is client-side over a capped, date-bounded query
 // (fine for demo volumes; a BI extract would replace this in production).
+// Test-zone orders (0020, is_test) are never part of a report.
 
 export const ROW_CAP = 5000;
 
@@ -41,7 +42,7 @@ export async function loadRef(): Promise<Ref> {
 /** Orders created in the last `days` days (or by `field` timestamp), newest first; `truncated` past ROW_CAP. */
 export async function loadOrders(days: number, field: "created_at" | "rated_at" | "delivered_at" = "created_at") {
   const from = sinceIso(days);
-  return fetchPaged<ORow>((a, b) => supabase().from("orders").select(ORDER_COLS).gte(field, from).order(field, { ascending: false }).order("id").range(a, b), ROW_CAP);
+  return fetchPaged<ORow>((a, b) => supabase().from("orders").select(ORDER_COLS).eq("is_test", false).gte(field, from).order(field, { ascending: false }).order("id").range(a, b), ROW_CAP);
 }
 
 export const CHANNEL_LABEL: Record<string, string> = { app: "Customer app", call_centre: "Call centre", business: "Business portal", contract: "Contract" };

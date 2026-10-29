@@ -8,7 +8,7 @@ export const AUTH: Dict = {
   idLabel: { en: "Mobile number or email", ar: "رقم الهاتف أو البريد الإلكتروني" },
   idHint: { en: "e.g. 9123 4567", ar: "مثال: 9123 4567" },
   mobile: { en: "Mobile number", ar: "رقم الهاتف" },
-  mobileHint: { en: "Omani mobile, 8 digits. We’ll send a code by SMS to check it.", ar: "رقم هاتف عماني من ٨ أرقام. سنرسل رمزاً برسالة نصية للتحقق منه." },
+  mobileHint: { en: "Omani mobile, 8 digits (other countries: start with + and the country code). We’ll send a code by SMS to check it.", ar: "رقم هاتف عماني من ٨ أرقام (للدول الأخرى: ابدأ بـ + ورمز الدولة). سنرسل رمزاً برسالة نصية للتحقق منه." },
   emailOpt: { en: "Email (optional)", ar: "البريد الإلكتروني (اختياري)" },
   workEmailOpt: { en: "Work email (optional)", ar: "البريد الإلكتروني للعمل (اختياري)" },
   password: { en: "Password", ar: "كلمة المرور" },
@@ -28,7 +28,7 @@ export const AUTH: Dict = {
     ar: "الدخول الموحد محاكى — غير متصل في هذا العرض. سجّل الدخول ببريدك في نماء أو رقم هاتفك وكلمة المرور.",
   },
   badId: { en: "Enter your mobile number (e.g. 9123 4567) or your email.", ar: "أدخل رقم هاتفك (مثال: 9123 4567) أو بريدك الإلكتروني." },
-  badMobile: { en: "Enter an Omani mobile number: 8 digits starting with 7 or 9.", ar: "أدخل رقم هاتف عماني: ٨ أرقام تبدأ بـ ٧ أو ٩." },
+  badMobile: { en: "Enter an Omani mobile number (8 digits starting with 7 or 9), or a number starting with + and the country code.", ar: "أدخل رقم هاتف عماني (٨ أرقام تبدأ بـ ٧ أو ٩)، أو رقماً يبدأ بـ + ورمز الدولة." },
   badEmail: { en: "That email doesn’t look right. Leave it empty if you don’t have one.", ar: "البريد الإلكتروني غير صحيح. اتركه فارغاً إن لم يكن لديك بريد." },
   resetEmailSent: { en: "If {email} has an account, a reset link is on its way. Open it on this device.", ar: "إذا كان للبريد {email} حساب، فسيصلك رابط لإعادة التعيين. افتحه على هذا الجهاز." },
 
