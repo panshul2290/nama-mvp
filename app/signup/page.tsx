@@ -177,7 +177,7 @@ function Signup() {
             ))}
           </div>
         )}
-        {role === "driver" && <div className="banner info">Driving for a tanker company? Sign up here, then give your company owner this email so they can add you in the Company portal.</div>}
+        {role === "driver" && <div className="banner info">Driving for a tanker company? Sign up here, then give your company owner this email. They'll send you an invitation to accept in this app.</div>}
         {error && <div className="banner badb">{error}</div>}
         <div className="fld">
           <label htmlFor="name">Full name</label>
