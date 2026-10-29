@@ -8,7 +8,7 @@ import type { AppKey } from "./session";
 // Copy for each app's sign-in and sign-up screens (prototype.html: vSignin, vLauncher).
 export const APP_INFO: Record<
   AppKey,
-  { name: string; platform: string; icon: IconName; title: string; sub: string; emailLabel: string; blurb: string; signupRole: "customer" | "driver" | "owner" | "business" | null }
+  { name: string; platform: string; icon: IconName; title: string; sub: string; blurb: string; signupRole: "customer" | "driver" | "owner" | "business" | null }
 > = {
   nws: {
     name: "NWS staff portal",
@@ -16,7 +16,6 @@ export const APP_INFO: Record<
     icon: "map",
     title: "Sign in",
     sub: "For Nama staff — control room, permits, customer care and finance.",
-    emailLabel: "Work email",
     blurb: "Control room, permits and enforcement, customers, complaints, reports and settings.",
     signupRole: null,
   },
@@ -26,7 +25,6 @@ export const APP_INFO: Record<
     icon: "phone",
     title: "Sign in",
     sub: "Order drinking water, wastewater pickup or treated water from permitted tankers.",
-    emailLabel: "Email",
     blurb: "Households order water, pay, track the tanker live and rate every delivery.",
     signupRole: "customer",
   },
@@ -36,7 +34,6 @@ export const APP_INFO: Record<
     icon: "building",
     title: "Sign in to your business account",
     sub: "Hotels, compounds, farms and government sites ordering on account.",
-    emailLabel: "Work email",
     blurb: "Hotels, compounds, farms and government sites order in bulk on credit.",
     signupRole: "business",
   },
@@ -46,7 +43,6 @@ export const APP_INFO: Record<
     icon: "truck",
     title: "Sign in",
     sub: "For drivers of NWS-permitted tankers. Your company adds you in the Company portal.",
-    emailLabel: "Email",
     blurb: "Drivers go online, accept jobs, fill at NWS stations and prove every delivery.",
     signupRole: "driver",
   },
@@ -56,7 +52,6 @@ export const APP_INFO: Record<
     icon: "users",
     title: "Sign in to your company",
     sub: "Tanker owners — fleet, drivers, permits, contracts and earnings.",
-    emailLabel: "Email",
     blurb: "Owners register tankers and drivers, renew permits, accept contracts and track earnings.",
     signupRole: "owner",
   },

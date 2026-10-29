@@ -23,6 +23,7 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
 
 3. **Configure auth.** Under **Authentication → URL Configuration**, set **Site URL** to `http://localhost:3000` and add `http://localhost:3000/auth/callback` to **Redirect URLs**.
    For quick local testing you can turn off **Authentication → Providers → Email → Confirm email**, so new sign-ups land in the app straight away. Seeded accounts are pre-confirmed either way.
+   **Mobile sign-in:** new accounts sign up with a mobile number, a password and an SMS code. Enable the Phone provider and the Send SMS hook (`public.send_sms_hook`) as described in [`docs/mobile-auth.md`](docs/mobile-auth.md); there is no SMS gateway yet, so for a demo also switch on `DEMO_SMS_CODES` to show the code on screen.
 
 4. **Environment**
    ```bash
@@ -47,13 +48,13 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    ```
    First set `SEED_PASSWORD` in `.env.local` (at least 12 characters, no default). The script fails without it. Both accounts use that password, and the script never prints it.
 
-   | Role | Email |
-   |---|---|
-   | Customer | `customer@nama.test` |
-   | Driver | `driver@nama.test` (tanker `4521 TK`, DW, 5,000 gal, approved 12-month DW permit) |
-   | NWS admin | `nws-admin@nama.test` |
-   | NWS operator | `nws-operator@nama.test` |
-   | NWS permit officer | `nws-permits@nama.test` |
+   | Role | Email | Mobile (sign in with either) |
+   |---|---|---|
+   | Customer | `customer@nama.test` | `+968 9124 4512` |
+   | Driver | `driver@nama.test` (tanker `4521 TK`, DW, 5,000 gal, approved 12-month DW permit) | `+968 9555 0142` |
+   | NWS admin | `nws-admin@nama.test` | — |
+   | NWS operator | `nws-operator@nama.test` | — |
+   | NWS permit officer | `nws-permits@nama.test` | — |
 
    The script is safe to re-run; it resets both accounts to the current `SEED_PASSWORD`.
 

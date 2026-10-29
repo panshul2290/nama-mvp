@@ -58,7 +58,9 @@ function Account() {
       db.from("profiles").select("full_name, phone, id_verified").eq("id", profile.id).maybeSingle<Pick<Me, "full_name" | "phone" | "id_verified">>(),
       db.rpc("my_private_profile"),
     ]).then(([{ data: pub }, { data: priv }]) => {
-      const p = (priv ?? {}) as Pick<Me, "id_type" | "id_no">;
+      const p = (priv ?? {}) as Pick<Me, "id_type" | "id_no"> & { email?: string | null };
+      // Optional contact email (phone sign-ups may have none).
+      setEmail(p.email ?? null);
       setMe(pub ? { ...pub, id_type: p.id_type ?? null, id_no: p.id_no ?? null } : null);
     });
   }, [profile.id]);
@@ -75,9 +77,6 @@ function Account() {
   useEffect(() => {
     loadMe();
     loadDsr();
-    supabase()
-      .auth.getUser()
-      .then(({ data }) => setEmail(data.user?.email ?? null));
     supabase()
       .from("complaints")
       .select("*")
@@ -130,7 +129,7 @@ function Account() {
               <small dir="ltr" style={{ display: "block", textAlign: "start" }}>
                 {me?.phone || profile.phone || t("noPhone")}
               </small>
-              <small>{email}</small>
+              {email && <small dir="ltr">{email}</small>}
             </div>
             <button className="btn sm" onClick={() => setSheet("edit")}>
               <Icon name="edit" size={14} /> {t("edit")}

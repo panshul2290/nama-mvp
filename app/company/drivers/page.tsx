@@ -5,6 +5,7 @@ import { currentDoc, tankerOf, useCompany, useCompanyOrders, useFleet } from "@/
 import { isOnTime } from "@/lib/sla";
 import { Dialog, St, daysUntil, fmtDate, useAction } from "@/components/portal/kit";
 import { useSentInvitations } from "@/components/useInvitations";
+import { formatPhone } from "@/lib/phone";
 import { supabase } from "@/lib/supabase/client";
 
 export default function CompanyDrivers() {
@@ -30,7 +31,7 @@ export default function CompanyDrivers() {
     <div className="panel">
       <div className="toolbar">
         <span className="mut" style={{ fontSize: 13 }}>
-          Drivers sign up in the Driver app, then you invite them here by email and assign a tanker once they accept
+          Drivers sign up in the Driver app, then you invite them here by mobile number and assign a tanker once they accept
         </span>
         <button className="btn pri" onClick={() => setAdding(true)}>
           Invite driver
@@ -96,7 +97,7 @@ export default function CompanyDrivers() {
             {fleet.loaded && !fleet.drivers.length && (
               <tr>
                 <td colSpan={7} className="empty">
-                  No drivers yet. Ask each driver to create an account in the Driver app, then invite them here with the email they used.
+                  No drivers yet. Ask each driver to create an account in the Driver app, then invite them here with the mobile number they signed up with.
                 </td>
               </tr>
             )}
@@ -112,7 +113,7 @@ export default function CompanyDrivers() {
             <table>
               <thead>
                 <tr>
-                  <th>Email</th>
+                  <th>Mobile / email</th>
                   <th>Sent</th>
                   <th>Expires</th>
                   <th />
@@ -121,7 +122,7 @@ export default function CompanyDrivers() {
               <tbody>
                 {sent.invitations.map((i) => (
                   <tr key={i.id}>
-                    <td>{i.email}</td>
+                    <td dir="ltr">{i.phone ? formatPhone(i.phone) : i.email}</td>
                     <td>{fmtDate(i.created_at)}</td>
                     <td>{i.expired ? <St tone="bad">Expired</St> : fmtDate(i.expires_at)}</td>
                     <td className="num">
@@ -144,25 +145,25 @@ export default function CompanyDrivers() {
 
 function InviteDriver({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { busy, run } = useAction();
-  const [email, setEmail] = useState("");
+  const [contact, setContact] = useState("");
   return (
     <Dialog
       title="Invite driver"
-      body="Enter the email the driver used to sign up in the Driver app. They join your company when they accept the invitation in the app; a tanker they registered themselves joins with them."
+      body="Enter the mobile number the driver signed up with in the Driver app (or their email, for older accounts). They join your company when they accept the invitation in the app; a tanker they registered themselves joins with them. Only an account that has verified this number by SMS can see the invitation."
       onClose={onClose}
     >
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          await run("add", () => supabase().rpc("owner_add_driver", { p_email: email.trim() }), `Invitation sent to ${email.trim()}`, () => {
+          await run("add", () => supabase().rpc("owner_add_driver", { p_contact: contact.trim() }), `Invitation sent to ${contact.trim()}`, () => {
             onDone();
             onClose();
           });
         }}
       >
         <div className="fld">
-          <label htmlFor="drE">Driver’s email</label>
-          <input id="drE" className="in" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="driver@example.com" autoFocus />
+          <label htmlFor="drE">Driver’s mobile number or email</label>
+          <input id="drE" className="in" type="text" inputMode="tel" dir="ltr" required value={contact} onChange={(e) => setContact(e.target.value)} placeholder="+968 9123 4567" autoFocus />
         </div>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn" onClick={onClose}>

@@ -50,7 +50,9 @@ export type Invitation = {
   company_id: string | null;
   org_id: string | null;
   org_role: OrgRole | null;
-  email: string;
+  /** Exactly one of phone (E.164) and email (lower case) is set. */
+  phone: string | null;
+  email: string | null;
   invited_by: string | null;
   status: "pending" | "accepted" | "declined" | "revoked";
   created_at: string;

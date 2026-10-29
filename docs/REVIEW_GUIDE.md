@@ -31,7 +31,7 @@ built to prototype parity with `prototype.html`. If the bid is won it becomes th
 ## Deliberately simulated (not bugs)
 Payment gateway (card ending 0002 = declined), IVMS telematics, filling-station meters (TFS), ROP vehicle checks,
 SMS/WhatsApp/push (logged to `notifications`, not sent), Genesys call centre, national ID check, water-quality LIMS,
-NWS SSO. Map tiles/routing/geocoding use public OSM/OSRM/Nominatim (demo only). Email login only (no OTP).
+NWS SSO. Map tiles/routing/geocoding use public OSM/OSRM/Nominatim (demo only). Sign-in is mobile number (or email) + password; SMS codes verify the number and reset passwords, written to `sms_outbox` by a Postgres Send SMS hook with no SMS gateway yet (`docs/mobile-auth.md`).
 Supabase is hosted outside Oman for the demo.
 
 ## What to look for (in priority order)

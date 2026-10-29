@@ -8,8 +8,10 @@ import type { Invitation } from "@/lib/types";
 export type MyInvitation = Invitation & { from: string | null };
 
 /**
- * Pending, unexpired invitations sent to the signed-in user's email (company → driver,
- * organisation → business user). respond() accepts or declines through respond_invitation.
+ * Pending, unexpired invitations sent to the signed-in user's verified mobile number or
+ * confirmed email (company → driver, organisation → business user). RLS returns the same
+ * set (invitation_is_mine); the filter here also drops the organisation's own outgoing
+ * invitations that a business admin can read. respond() accepts or declines through respond_invitation.
  */
 export function useMyInvitations(kind: Invitation["kind"], enabled = true) {
   const [items, setItems] = useState<MyInvitation[]>([]);
@@ -17,17 +19,19 @@ export function useMyInvitations(kind: Invitation["kind"], enabled = true) {
   const load = useCallback(async () => {
     const db = supabase();
     const { data: auth } = await db.auth.getUser();
-    const email = auth.user?.email?.toLowerCase();
-    if (!email) return setItems([]);
+    const u = auth.user;
+    // Supabase stores the phone without "+"; invitations store E.164 and lower-cased emails.
+    const phone = u?.phone && u.phone_confirmed_at ? `+${u.phone.replace(/^\+/, "")}` : null;
+    const email = u?.email && u.email_confirmed_at ? u.email.toLowerCase() : null;
+    if (!phone && !email) return setItems([]);
     const { data } = await db
       .from("invitations")
       .select("*")
       .eq("kind", kind)
       .eq("status", "pending")
-      .eq("email", email) // stored lower-cased by the inviting RPC
       .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
-    const rows = (data ?? []) as Invitation[];
+    const rows = ((data ?? []) as Invitation[]).filter((r) => (phone && r.phone === phone) || (email && r.email === email));
     const ids = [...new Set(rows.map((r) => (kind === "driver" ? r.company_id : r.org_id)).filter(Boolean))] as string[];
     const names = new Map<string, string>();
     if (ids.length) {
@@ -72,7 +76,7 @@ export function useSentInvitations(kind: Invitation["kind"], ownerId: string | n
       .eq(kind === "driver" ? "company_id" : "org_id", ownerId)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
-    // An expired invitation still blocks a new one to the same email until it is revoked.
+    // An expired invitation still blocks a new one to the same number or email until it is revoked.
     const now = Date.now();
     setItems(((data ?? []) as Invitation[]).map((i) => ({ ...i, expired: Date.parse(i.expires_at) < now })));
   }, [kind, ownerId]);

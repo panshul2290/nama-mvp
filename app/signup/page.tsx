@@ -5,29 +5,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { NamaLogo } from "@/components/icons";
 import { AuthFrame } from "@/components/portal/AuthChrome";
+import { AUTH, authError } from "@/components/portal/authI18n";
+import { OtpStep } from "@/components/portal/OtpStep";
 import { asApp, homeFor, rememberSession, type AppKey } from "@/components/portal/session";
 import { BackButton, Loading } from "@/components/Shell";
+import { LangToggle, useT } from "@/lib/i18n";
+import { isEmail, normalizePhone } from "@/lib/phone";
 import { supabase } from "@/lib/supabase/client";
 
 type SignupRole = "customer" | "driver" | "owner" | "business";
 
-const COPY: Record<SignupRole, { title: string; sub: string; app: AppKey; nameLabel: string; next: string }> = {
-  customer: { title: "Create account", sub: "Order water to your door", app: "customer", nameLabel: "Full name", next: "" },
-  driver: { title: "Create account", sub: "You’ll add your tanker next", app: "driver", nameLabel: "Full name", next: "" },
-  owner: {
-    title: "Register your fleet",
-    sub: "Create the owner login for your tanker company. Next you’ll add your commercial registration and bank details, then your tankers and drivers.",
-    app: "company",
-    nameLabel: "Your full name",
-    next: "NWS reviews every new company before its tankers can take jobs.",
-  },
-  business: {
-    title: "Open an account",
-    sub: "Create your login for the Business portal. Next you’ll add your organisation and sites; NWS sets your credit limit when it activates the account.",
-    app: "business",
-    nameLabel: "Your full name",
-    next: "Your colleagues create their own logins, then you invite them from Team.",
-  },
+// Dictionary keys (components/portal/authI18n.ts) for each role's copy.
+const COPY: Record<SignupRole, { title: string; sub: string; app: AppKey; nameLabel: string; next: string; button: string }> = {
+  customer: { title: "createAccount", sub: "subCustomer", app: "customer", nameLabel: "fullName", next: "", button: "createAccount" },
+  driver: { title: "createAccount", sub: "subDriver", app: "driver", nameLabel: "fullName", next: "", button: "createAccount" },
+  owner: { title: "ownerTitle", sub: "ownerSub", app: "company", nameLabel: "yourFullName", next: "ownerNext", button: "ownerBtn" },
+  business: { title: "bizTitle", sub: "bizSub", app: "business", nameLabel: "yourFullName", next: "bizNext", button: "bizBtn" },
 };
 
 const roleFor = (app: AppKey | null): SignupRole => (app === "company" ? "owner" : app === "business" ? "business" : app === "driver" ? "driver" : "customer");
@@ -40,121 +33,122 @@ export default function SignupPage() {
   );
 }
 
+// Every account signs up with a mobile number and a password (email is optional).
+// Supabase sends an SMS code to verify the number; the second step enters it.
 function Signup() {
   const app = asApp(useSearchParams().get("app"));
   const router = useRouter();
+  const t = useT(AUTH);
   const [role, setRole] = useState<SignupRole>(() => roleFor(app));
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [codeFor, setCodeFor] = useState<string | null>(null); // E.164 the code was sent to
   const [busy, setBusy] = useState(false);
   const copy = COPY[role];
   const desktop = role === "owner" || role === "business";
   // Phone apps let people switch between customer and driver, as before.
   const pickable = !app || app === "customer" || app === "driver";
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const { data, error } = await supabase().auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: { role, full_name: fullName.trim(), phone: phone.trim() || null },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-    setBusy(false);
-    if (error) return setError(error.message);
-    if (!data.session) return setSentTo(email.trim());
+  function done() {
     rememberSession(true);
     router.replace(homeFor(role));
   }
 
-  const loginHref = `/login?app=${copy.app}`;
-
-  if (sentTo) {
-    const body = (
-      <>
-        We sent a confirmation link to <b>{sentTo}</b>. Open it on this device to finish signing up.
-      </>
-    );
-    if (desktop) {
-      return (
-        <AuthFrame app={copy.app}>
-          <div>
-            <h2>Check your email</h2>
-            <p>{body}</p>
-          </div>
-          <Link className="si-btn gh" href={loginHref}>
-            Back to sign in
-          </Link>
-        </AuthFrame>
-      );
-    }
-    return (
-      <main className="screen">
-        <div className="dlogin">
-          <NamaLogo className="ph-logo" />
-          <h2>Check your email</h2>
-          <p>{body}</p>
-          <Link href={loginHref} className="cta sec">
-            Back to sign in
-          </Link>
-        </div>
-      </main>
-    );
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const e164 = normalizePhone(phone);
+    if (!e164) return setError(t("badMobile"));
+    const mail = email.trim().toLowerCase();
+    if (mail && !isEmail(mail)) return setError(t("badEmail"));
+    setBusy(true);
+    const { data, error } = await supabase().auth.signUp({
+      phone: e164,
+      password,
+      // The sign-up trigger copies these into the profile (contact_email: optional, unverified).
+      options: { data: { role, full_name: fullName.trim(), phone: e164, contact_email: mail || null } },
+    });
+    setBusy(false);
+    if (error) return setError(authError(t, error));
+    if (data.session) return done(); // phone confirmation switched off in Supabase
+    setCodeFor(e164);
   }
+
+  const loginHref = `/login?app=${copy.app}`;
+  const otp = codeFor && (
+    <OtpStep
+      phone={codeFor}
+      desktop={desktop}
+      resend={() => supabase().auth.resend({ type: "sms", phone: codeFor })}
+      onVerified={done}
+      onChangeNumber={() => setCodeFor(null)}
+    />
+  );
 
   if (desktop) {
     return (
       <AuthFrame app={copy.app}>
-        <div>
-          <h2>{copy.title}</h2>
-          <p>{copy.sub}</p>
-        </div>
-        <form onSubmit={submit}>
-          {error && <div className="si-msg">{error}</div>}
-          <div className="si-f">
-            <label htmlFor="suN">{copy.nameLabel}</label>
-            <div className="in">
-              <input id="suN" required maxLength={120} autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        {otp || (
+          <>
+            <div>
+              <h2>{t(copy.title)}</h2>
+              <p>{t(copy.sub)}</p>
             </div>
-          </div>
-          <div className="si-f">
-            <label htmlFor="suP">Mobile number (optional)</label>
-            <div className="in">
-              <input id="suP" type="tel" maxLength={32} autoComplete="tel" dir="ltr" placeholder="+968" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <form onSubmit={submit}>
+              {error && <div className="si-msg">{error}</div>}
+              <div className="si-f">
+                <label htmlFor="suN">{t(copy.nameLabel)}</label>
+                <div className="in">
+                  <input id="suN" required maxLength={120} autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+                </div>
+              </div>
+              <div className="si-f">
+                <label htmlFor="suP">{t("mobile")}</label>
+                <div className="in">
+                  <input id="suP" type="tel" required maxLength={20} autoComplete="tel" dir="ltr" placeholder="+968 9123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                </div>
+                <small style={{ display: "block", marginTop: 6, fontSize: 12, opacity: 0.75 }}>{t("mobileHint")}</small>
+              </div>
+              <div className="si-f">
+                <label htmlFor="suE">{role === "business" ? t("workEmailOpt") : t("emailOpt")}</label>
+                <div className="in">
+                  <input id="suE" type="email" autoComplete="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </div>
+              </div>
+              <div className="si-f">
+                <label htmlFor="suW">{t("password")}</label>
+                <div className="in">
+                  <input id="suW" type="password" required minLength={6} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+              </div>
+              <button className="si-btn" disabled={busy}>
+                {busy ? t("creating") : t(copy.button)}
+              </button>
+            </form>
+            <p style={{ margin: 0, fontSize: 13 }}>{t(copy.next)}</p>
+            <div className="si-links">
+              {t("already")}{" "}
+              <Link className="lk" href={loginHref}>
+                {t("signIn")}
+              </Link>
             </div>
-          </div>
-          <div className="si-f">
-            <label htmlFor="suE">{role === "business" ? "Work email" : "Email"}</label>
-            <div className="in">
-              <input id="suE" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </div>
-          </div>
-          <div className="si-f">
-            <label htmlFor="suW">Password</label>
-            <div className="in">
-              <input id="suW" type="password" required minLength={6} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-            </div>
-          </div>
-          <button className="si-btn" disabled={busy}>
-            {busy ? "Creating account…" : role === "owner" ? "Create owner account" : "Create business login"}
-          </button>
-        </form>
-        <p style={{ margin: 0, fontSize: 13 }}>{copy.next}</p>
-        <div className="si-links">
-          Already registered?{" "}
-          <Link className="lk" href={loginHref}>
-            Sign in
-          </Link>
-        </div>
+          </>
+        )}
       </AuthFrame>
+    );
+  }
+
+  if (otp) {
+    return (
+      <main className="screen">
+        <div className="dlogin">
+          <NamaLogo className="ph-logo" />
+          {otp}
+        </div>
+      </main>
     );
   }
 
@@ -162,41 +156,43 @@ function Signup() {
     <main className="screen">
       <div className="rq-h">
         <BackButton href={app ? loginHref : "/login"} />
-        <div>
-          <h3>{copy.title}</h3>
-          <small>{copy.sub}</small>
+        <div style={{ flex: 1 }}>
+          <h3>{t(copy.title)}</h3>
+          <small>{t(copy.sub)}</small>
         </div>
+        <LangToggle />
       </div>
       <form onSubmit={submit}>
         {pickable && (
-          <div className="seg" role="radiogroup" aria-label="Account type">
+          <div className="seg" role="radiogroup" aria-label={t("accountType")}>
             {(["customer", "driver"] as const).map((r) => (
               <button key={r} type="button" role="radio" aria-checked={role === r} className={role === r ? "on" : ""} onClick={() => setRole(r)}>
-                {r === "customer" ? "Customer" : "Driver"}
+                {t(r)}
               </button>
             ))}
           </div>
         )}
-        {role === "driver" && <div className="banner info">Driving for a tanker company? Sign up here, then give your company owner this email. They'll send you an invitation to accept in this app.</div>}
+        {role === "driver" && <div className="banner info">{t("driverBanner")}</div>}
         {error && <div className="banner badb">{error}</div>}
         <div className="fld">
-          <label htmlFor="name">Full name</label>
+          <label htmlFor="name">{t("fullName")}</label>
           <input id="name" required maxLength={120} autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
         </div>
         <div className="fld">
-          <label htmlFor="phone">Mobile number (optional)</label>
-          <input id="phone" type="tel" maxLength={32} autoComplete="tel" dir="ltr" placeholder="+968" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <label htmlFor="phone">{t("mobile")}</label>
+          <input id="phone" type="tel" required maxLength={20} autoComplete="tel" dir="ltr" placeholder="+968 9123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <small style={{ display: "block", marginTop: 4, fontSize: 12, color: "var(--muted)" }}>{t("mobileHint")}</small>
         </div>
         <div className="fld">
-          <label htmlFor="email">Email</label>
-          <input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label htmlFor="email">{t("emailOpt")}</label>
+          <input id="email" type="email" autoComplete="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="fld">
-          <label htmlFor="password">Password</label>
+          <label htmlFor="password">{t("password")}</label>
           <input id="password" type="password" required minLength={6} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         <button className="cta" disabled={busy}>
-          {busy ? "Creating account…" : "Create account"}
+          {busy ? t("creating") : t("createAccount")}
         </button>
       </form>
     </main>

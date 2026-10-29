@@ -5,8 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import { NamaLogo } from "@/components/icons";
 import { APP_INFO, AuthFrame } from "@/components/portal/AuthChrome";
+import { AUTH, authError } from "@/components/portal/authI18n";
 import { asApp, isDesktopApp, rememberSession, type AppKey } from "@/components/portal/session";
 import { Loading } from "@/components/Shell";
+import { LangToggle, useT } from "@/lib/i18n";
+import { parseContact } from "@/lib/phone";
 import { supabase } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -26,48 +29,60 @@ const SIGNUP: Record<AppKey, [string, string] | null> = {
   company: ["New tanker company?", "Register your fleet"],
 };
 
+// One field takes a mobile number or an email: mobile accounts (sign-up since 0019) sign in
+// by phone, older and staff accounts by email. Both use a password.
 function Login() {
   const app = asApp(useSearchParams().get("app"));
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const t = useT(AUTH);
+  const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [keep, setKeep] = useState(true);
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const emailRef = useRef<HTMLInputElement>(null);
+  const idRef = useRef<HTMLInputElement>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
     setNote(null);
-    const { error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
+    const who = parseContact(id);
+    if (!who) {
+      idRef.current?.focus();
+      return setError(t("badId"));
+    }
+    setBusy(true);
+    const { error } = await supabase().auth.signInWithPassword({ ...who, password });
     setBusy(false);
-    if (error) return setError(error.message);
+    if (error) return setError(authError(t, error));
     rememberSession(keep);
     router.replace("/");
   }
 
+  // Email accounts get a reset link; everyone else resets by SMS code on /login/reset.
   async function forgot() {
     setError(null);
     setNote(null);
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      emailRef.current?.focus();
-      return setError("Enter your email above, then choose “Forgot password?” again.");
+    const who = parseContact(id);
+    if (who && "email" in who) {
+      const { error } = await supabase().auth.resetPasswordForEmail(who.email, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/login/reset`,
+      });
+      if (error) return setError(authError(t, error));
+      return setNote(t("resetEmailSent", { email: who.email }));
     }
-    const { error } = await supabase().auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/auth/callback?next=/login/reset`,
-    });
-    if (error) return setError(error.message);
-    setNote(`If ${email.trim()} has an account, a reset link is on its way. Open it on this device.`);
+    const q = new URLSearchParams();
+    if (who) q.set("phone", who.phone);
+    if (app) q.set("app", app);
+    router.push(`/login/reset${q.size ? `?${q}` : ""}`);
   }
 
   function sso() {
     setError(null);
-    setNote("SSO simulated — NWS single sign-on isn’t connected in this demo. Sign in with your NWS email and password.");
-    emailRef.current?.focus();
+    setNote(t("ssoNote"));
+    idRef.current?.focus();
   }
 
   const signupHref = `/signup${app ? `?app=${app}` : ""}`;
@@ -86,38 +101,38 @@ function Login() {
           {error && <div className="si-msg">{error}</div>}
           {note && <div className="si-msg info">{note}</div>}
           <div className="si-f">
-            <label htmlFor="siE">{info.emailLabel}</label>
+            <label htmlFor="siE">{t("idLabel")}</label>
             <div className="in">
-              <input id="siE" ref={emailRef} type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input id="siE" ref={idRef} type="text" inputMode="email" autoComplete="username" dir="ltr" required placeholder={t("idHint")} value={id} onChange={(e) => setId(e.target.value)} />
             </div>
           </div>
           <div className="si-f">
-            <label htmlFor="siP">Password</label>
+            <label htmlFor="siP">{t("password")}</label>
             <div className="in">
               <input id="siP" type={show ? "text" : "password"} autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
               <button type="button" className="lk" onClick={() => setShow((s) => !s)} aria-pressed={show}>
-                {show ? "Hide" : "Show"}
+                {show ? t("hide") : t("show")}
               </button>
             </div>
           </div>
           <div className="si-row">
             <label className="si-ck">
               <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
-              Keep me signed in
+              {t("keep")}
             </label>
             <button type="button" className="lk" onClick={forgot}>
-              Forgot password?
+              {t("forgot")}
             </button>
           </div>
           <button className="si-btn" disabled={busy}>
-            {busy ? "Signing in…" : "Sign in"}
+            {busy ? t("signingIn") : t("signIn")}
           </button>
         </form>
         {app === "nws" && (
           <>
-            <div className="si-or">or</div>
+            <div className="si-or">{t("or")}</div>
             <button type="button" className="si-btn gh" onClick={sso}>
-              Continue with NWS single sign-on
+              {t("sso")}
             </button>
           </>
         )}
@@ -138,31 +153,34 @@ function Login() {
   return (
     <main className="screen">
       <div className="dlogin">
-        <NamaLogo className="ph-logo" />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <NamaLogo className="ph-logo" />
+          <LangToggle />
+        </div>
         <h2>{info ? info.name : "Water tankers you can trust, on time"}</h2>
         <p>{info ? info.sub : "Order drinking water, wastewater pickup or treated water from permitted tankers — or sign in as a driver to pick up jobs."}</p>
         <form onSubmit={submit}>
           {error && <div className="banner badb">{error}</div>}
           {note && <div className="banner info">{note}</div>}
           <div className="fld">
-            <label htmlFor="email">Email</label>
-            <input id="email" ref={emailRef} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <label htmlFor="email">{t("idLabel")}</label>
+            <input id="email" ref={idRef} type="text" inputMode="email" autoComplete="username" dir="ltr" required placeholder={t("idHint")} value={id} onChange={(e) => setId(e.target.value)} />
           </div>
           <div className="fld">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t("password")}</label>
             <input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, margin: "-2px 0 14px", fontSize: 13.5 }}>
             <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
               <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
-              Keep me signed in
+              {t("keep")}
             </label>
             <button type="button" onClick={forgot} style={{ background: "none", border: 0, padding: 0, color: "var(--link)", fontWeight: 700, font: "inherit", cursor: "pointer" }}>
-              Forgot password?
+              {t("forgot")}
             </button>
           </div>
           <button className="cta" disabled={busy}>
-            {busy ? "Signing in…" : "Sign in"}
+            {busy ? t("signingIn") : t("signIn")}
           </button>
         </form>
         {signup && (

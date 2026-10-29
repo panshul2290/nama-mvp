@@ -64,10 +64,15 @@ const SUPABASE_STUB = `
   create role anon nologin;
   create role authenticated nologin;
   create role service_role nologin;
+  create role supabase_auth_admin nologin;
   create schema auth;
+  -- Supabase Auth stores phone without the "+". Stub users get a confirmed email by default.
   create table auth.users (
     id uuid primary key default gen_random_uuid(),
     email text unique,
+    email_confirmed_at timestamptz default now(),
+    phone text unique,
+    phone_confirmed_at timestamptz,
     raw_user_meta_data jsonb not null default '{}'
   );
   create function auth.uid() returns uuid language sql stable as $$

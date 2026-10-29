@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { ORG_ROLE_LABEL, useBiz } from "@/components/business/BizContext";
 import { Dialog, fmtDate, St, useAction, useLive } from "@/components/portal/kit";
 import { useSentInvitations } from "@/components/useInvitations";
+import { formatPhone } from "@/lib/phone";
 import { supabase } from "@/lib/supabase/client";
 import type { OrgRole } from "@/lib/types";
 
@@ -76,7 +77,7 @@ export default function BusinessTeam() {
               <table>
                 <thead>
                   <tr>
-                    <th>Email</th>
+                    <th>Mobile / email</th>
                     <th>Role</th>
                     <th>Sent</th>
                     <th>Expires</th>
@@ -86,7 +87,7 @@ export default function BusinessTeam() {
                 <tbody>
                   {sent.invitations.map((i) => (
                     <tr key={i.id}>
-                      <td>{i.email}</td>
+                      <td dir="ltr">{i.phone ? formatPhone(i.phone) : i.email}</td>
                       <td>{i.org_role ? ORG_ROLE_LABEL[i.org_role] : "—"}</td>
                       <td>{fmtDate(i.created_at)}</td>
                       <td>{i.expired ? <St tone="bad">Expired</St> : fmtDate(i.expires_at)}</td>
@@ -110,27 +111,27 @@ export default function BusinessTeam() {
 }
 
 function InviteDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [email, setEmail] = useState("");
+  const [contact, setContact] = useState("");
   const [role, setRole] = useState<OrgRole>("site_manager");
   const { busy, run } = useAction();
   return (
     <Dialog
       title="Invite user"
-      body="The person must first create a Business portal account (at /signup?app=business) with this email. They join your organisation when they accept the invitation after signing in."
+      body="The person must first create a Business portal account (at /signup?app=business) with this mobile number (or email, for older accounts). They join your organisation when they accept the invitation after signing in."
       onClose={onClose}
     >
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          run("inv", async () => supabase().rpc("org_add_member", { p_email: email.trim(), p_role: role }), `Invitation sent to ${email.trim()} as ${ORG_ROLE_LABEL[role]}`, () => {
+          run("inv", async () => supabase().rpc("org_add_member", { p_contact: contact.trim(), p_role: role }), `Invitation sent to ${contact.trim()} as ${ORG_ROLE_LABEL[role]}`, () => {
             onDone();
             onClose();
           });
         }}
       >
         <div className="fld">
-          <label htmlFor="iEmail">Work email</label>
-          <input id="iEmail" className="in" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
+          <label htmlFor="iEmail">Mobile number or work email</label>
+          <input id="iEmail" className="in" type="text" inputMode="tel" dir="ltr" required value={contact} onChange={(e) => setContact(e.target.value)} placeholder="+968 9123 4567" autoFocus />
         </div>
         <div className="fld">
           <label htmlFor="iRole">Role</label>

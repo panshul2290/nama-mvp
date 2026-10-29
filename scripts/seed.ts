@@ -1,11 +1,13 @@
 // Creates the demo accounts: customers, drivers (Salim gets his assigned,
 // permitted tanker here; the rest of the fleet comes from `npm run seed:demo`),
 // tanker company owners, business (B2B) users and NWS staff for every role.
-// Safe to re-run.
+// Accounts with a mobile number also get it as a verified auth phone, so they can sign
+// in with the number or the email (same password). Safe to re-run.
 //   npm run seed
 // This is the only code that uses the service-role key. It runs locally in
 // Node and is never bundled into the Next.js app.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { normalizePhone } from "../lib/phone";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -78,19 +80,26 @@ async function findUserId(db: SupabaseClient, email: string): Promise<string | n
 }
 
 async function ensureAuthUser(email: string, meta: Record<string, string>): Promise<string> {
-  const id = await findUserId(admin, email);
+  let id = await findUserId(admin, email);
   if (id) {
     const { error } = await admin.auth.admin.updateUserById(id, { password, email_confirm: true, user_metadata: meta });
     if (error) throw error;
-    return id;
+  } else {
+    const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: meta });
+    if (error) throw error;
+    id = data.user.id;
   }
-  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: meta });
-  if (error) throw error;
-  return data.user.id;
+  // Mobile numbers only (business landlines can't receive an SMS code).
+  const phone = normalizePhone(meta.phone);
+  if (phone) {
+    const { error } = await admin.auth.admin.updateUserById(id, { phone, phone_confirm: true });
+    if (error) console.warn(`  ${email}: mobile sign-in not set up (${error.message})`);
+  }
+  return id;
 }
 
 async function ensureUser(u: (typeof USERS)[number]): Promise<string> {
-  const meta = { role: u.role, full_name: u.full_name, phone: u.phone };
+  const meta = { role: u.role, full_name: u.full_name, phone: normalizePhone(u.phone) ?? u.phone };
   const id = await ensureAuthUser(u.email, meta);
   // The sign-up trigger creates the profile; upsert in case the user predates the migration.
   const { error } = await admin.from("profiles").upsert({ id, ...meta }, { onConflict: "id" });
@@ -168,7 +177,7 @@ async function main() {
   const permit = await ensurePermit(tankerId, staffIds.permit_officer);
 
   console.log("Seeded (password for every account: SEED_PASSWORD in .env.local):");
-  for (const u of USERS) console.log(`  ${u.role.padEnd(15)} ${u.email}${u.email === "driver@nama.test" ? `   tanker ${TANKER.plate} · ${TANKER.service_type} · ${TANKER.capacity_gal} gal · permit ${permit}` : ""}`);
+  for (const u of USERS) console.log(`  ${u.role.padEnd(15)} ${u.email.padEnd(28)} ${(normalizePhone(u.phone) ?? "").padEnd(13)}${u.email === "driver@nama.test" ? `   tanker ${TANKER.plate} · ${TANKER.service_type} · ${TANKER.capacity_gal} gal · permit ${permit}` : ""}`);
   for (const s of STAFF) console.log(`  ${s.staff_role.padEnd(15)} ${s.email}`);
 }
 
