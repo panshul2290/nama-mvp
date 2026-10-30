@@ -57,7 +57,7 @@ import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
 
-const APP = ${JSON.stringify(app)};
+const APP: string = ${JSON.stringify(app)};
 
 // Mobile build: open the app; an account of another kind (signed in before this build) is signed out.
 export default function MobileHome() {
