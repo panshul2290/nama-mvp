@@ -4,12 +4,14 @@ import "./nws.css";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, NamaLogo, type IconName } from "@/components/icons";
+import { canSee } from "@/components/nws/access";
+import { RoleGate } from "@/components/nws/RoleGate";
 import { STAFF_ROLE_LABEL, StaffProvider, type Staff } from "@/components/nws/StaffContext";
 import { Loading } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
 import { signOutApp } from "@/components/portal/session";
 
-// Sidebar exactly as labelled in the prototype's staff portal.
+// Sidebar exactly as labelled in the prototype's staff portal; each role sees only its sections.
 const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/nws", label: "Live operations", icon: "map" },
   { href: "/nws/orders", label: "Orders", icon: "list" },
@@ -43,7 +45,7 @@ export default function NwsLayout({ children }: { children: React.ReactNode }) {
               <small>NWS staff portal</small>
             </span>
           </div>
-          {NAV.map((n) => {
+          {NAV.filter((n) => canSee(profile.staff_role!, n.href)).map((n) => {
             const on = n.href === "/nws" ? path === "/nws" : path.startsWith(n.href);
             return (
               <Link key={n.href} href={n.href} className={`navbtn ${on ? "on" : ""}`} aria-current={on ? "page" : undefined}>
@@ -58,7 +60,9 @@ export default function NwsLayout({ children }: { children: React.ReactNode }) {
             <button onClick={signOut}>Sign out</button>
           </div>
         </nav>
-        <main>{children}</main>
+        <main>
+          <RoleGate>{children}</RoleGate>
+        </main>
       </div>
     </StaffProvider>
   );

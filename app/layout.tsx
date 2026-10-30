@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Nunito_Sans } from "next/font/google";
+import { Nunito_Sans, Tajawal } from "next/font/google";
 import { AppFrame } from "@/components/AppFrame";
 import "./globals.css";
 
 const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["400", "600", "700", "800"], variable: "--font-nunito" });
+// Arabic text (the prototype pairs Nunito Sans with Tajawal).
+const tajawal = Tajawal({ subsets: ["arabic"], weight: ["500", "700"], variable: "--font-tajawal", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Nama Tanker",
@@ -19,7 +21,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={nunito.variable}>
+    <html lang="en" className={`${nunito.variable} ${tajawal.variable}`}>
       <body>
         <AppFrame>{children}</AppFrame>
       </body>

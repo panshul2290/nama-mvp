@@ -1,7 +1,7 @@
 /* Design system from prototype.html ("Figma design system" + phone screens 04–08).
    Dark teal page, framed phone with a light surface, Nunito Sans, #17B3C6 accent. */
 :root {
-  --font: var(--font-nunito), "Tajawal", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font: var(--font-nunito), var(--font-tajawal), "Tajawal", system-ui, -apple-system, "Segoe UI", sans-serif;
   --pageInk: #e8f1f2;
   --pageMuted: #93aeb3;
   --ok: #26a96f;
@@ -405,7 +405,7 @@ button.st { border: 0; }
 
 /* Language toggle (EN | ع) and right-to-left adjustments */
 .lang-tg { min-width: 34px; height: 34px; border-radius: 17px; border: 1px solid var(--line, #dfe6ea); background: #fff; font-weight: 800; cursor: pointer; }
-.phone[dir="rtl"] { font-family: var(--font-nunito), "Segoe UI", Tahoma, sans-serif; }
+.phone[dir="rtl"] { font-family: var(--font-nunito), var(--font-tajawal), "Segoe UI", Tahoma, sans-serif; }
 .phone[dir="rtl"] .rb .ic { transform: scaleX(-1); }
 
 /* ---------------------------------------------------------------- order chat (components/chat/OrderChat.tsx) */

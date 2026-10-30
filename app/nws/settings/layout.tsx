@@ -3,6 +3,8 @@
 import "../admin.css";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { canSee } from "@/components/nws/access";
+import { useStaff } from "@/components/nws/StaffContext";
 
 // Settings sub-navigation, grouped as in the prototype.
 export const SETTINGS_NAV: { group: string; items: { href: string; label: string }[] }[] = [
@@ -37,10 +39,12 @@ export const SETTINGS_NAV: { group: string; items: { href: string; label: string
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  const { staff } = useStaff();
+  const groups = SETTINGS_NAV.map((g) => ({ ...g, items: g.items.filter((i) => canSee(staff.staff_role, i.href)) })).filter((g) => g.items.length > 0);
   return (
     <div className="settings">
       <nav className="subnav" aria-label="Settings">
-        {SETTINGS_NAV.map((g) => (
+        {groups.map((g) => (
           <div key={g.group}>
             <small>{g.group}</small>
             {g.items.map((i) => (
