@@ -34,3 +34,25 @@ export function slotOptions(now: number, withAsap = true): Slot[] {
   }
   return out;
 }
+
+// ---------------------------------------------------------------- NWS window templates (0044)
+export type Window = Slot & { day: string; from: string; to: string; template: string };
+type WindowRow = { day: string; template_code: string; starts_at: string; ends_at: string; label: string; peak: boolean };
+
+const hm = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Muscat", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
+
+/** delivery_windows(): the active template's windows for the next `days` days (Ramadan, Eid, blocked prayer times). */
+export function windowsFromRows(rows: WindowRow[]): Window[] {
+  return rows.map((r) => ({
+    id: r.starts_at,
+    start: r.starts_at,
+    end: r.ends_at,
+    peak: r.peak,
+    key: "",
+    label: r.label,
+    day: String(r.day).slice(0, 10),
+    from: hm(r.starts_at),
+    to: hm(r.ends_at),
+    template: r.template_code,
+  }));
+}

@@ -42,26 +42,75 @@ export function useVerification(orderId: string, tankerId: string | null) {
   return tankerId ? v : null;
 }
 
+// ---------------------------------------------------------------- driver card (0040)
+type DriverCardData = { first_name: string | null; photo_path: string | null; plate: string | null; company: string | null; rating: number | null; ratings: number; tier: string } | null;
+const ACTIVE = ["accepted", "arriving", "arrived", "collected"];
+
+/** First name, photo, plate, company and rating as soon as a driver is assigned (order_driver_card); the photo by a short-lived signed link. */
+export function useDriverCard(order: Order) {
+  const [card, setCard] = useState<{ key: string; data: DriverCardData; photo: string | null } | null>(null);
+  const key = order.driver_id && ACTIVE.includes(order.status) ? `${order.id}:${order.driver_id}` : "";
+  useEffect(() => {
+    if (!key) return;
+    let live = true;
+    (async () => {
+      const { data } = await supabase().rpc("order_driver_card", { p_order: order.id });
+      const c = (data as DriverCardData) ?? null;
+      let photo: string | null = null;
+      if (c?.photo_path) {
+        const s = await supabase().storage.from("driver-photos").createSignedUrl(c.photo_path, 600);
+        photo = s.data?.signedUrl ?? null;
+      }
+      if (live) setCard({ key, data: c, photo });
+    })();
+    return () => {
+      live = false;
+    };
+  }, [key, order.id]);
+  return key && card?.key === key ? card : null;
+}
+
 /** Driver + tanker card with the NWS verification grid (prototype driverCard); `children` = message / call buttons. */
 export function DriverCard({ order, v, today, children }: { order: Order; v: Verification; today: string; children?: React.ReactNode }) {
   const { t, lang } = useCx();
   const valid = (d: string | null | undefined) => Boolean(d && d.slice(0, 10) >= today);
   const wt = v?.water_test;
   const water = order.service_type !== "WW";
-  const plate = order.tanker_plate ?? v?.plate;
+  const card = useDriverCard(order);
+  const c = card?.data;
+  const plate = c?.plate ?? order.tanker_plate ?? v?.plate;
+  const name = c?.first_name ?? order.driver_name?.split(" ")[0] ?? null;
   return (
     <div className="dcard">
       <div className="dc-top">
-        <span className="av">{initials(order.driver_name)}</span>
+        {card?.photo ? (
+          <span className="av photo">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a signed Storage link, not a static asset */}
+            <img src={card.photo} alt={t("drvPhoto", { name: name ?? t("driver") })} />
+          </span>
+        ) : (
+          <span className="av">{initials(order.driver_name)}</span>
+        )}
         <div>
-          <b>{order.driver_name ?? t("driver")}</b>
+          <b>
+            {name ?? t("driver")}
+            {c?.tier && c.tier !== "bronze" && <span className={`tier ${c.tier}`}> {t(`tier_${c.tier}`)}</span>}
+          </b>
           <small>
-            {[v?.company, v?.company_rating != null ? `${localDigits(Number(v.company_rating).toFixed(1), lang)} ★` : null, v?.capacity_gal ? gal(v.capacity_gal, lang) : null]
+            {[
+              c?.company ?? v?.company,
+              c?.rating != null ? `${t("drvRating")} ${localDigits(Number(c.rating).toFixed(1), lang)} ★` : v?.company_rating != null ? `${localDigits(Number(v.company_rating).toFixed(1), lang)} ★` : null,
+              v?.capacity_gal ? gal(v.capacity_gal, lang) : null,
+            ]
               .filter(Boolean)
               .join(" · ")}
           </small>
         </div>
-        {plate && <span className="plate">{plate}</span>}
+        {plate && (
+          <span className="plate" dir="ltr">
+            {plate}
+          </span>
+        )}
       </div>
       {v && (
         <>

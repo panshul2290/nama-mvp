@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AddressDetailsForm } from "@/components/AddressDetailsForm";
 import { Map } from "@/components/Map";
+import { contactPhoneOk, detailsFromRow, detailsPayload, type DetailsForm } from "@/lib/address";
 import { friendlyError } from "@/lib/errors";
 import { currentPosition, DEFAULT_CENTER, reverseGeocodeArea } from "@/lib/geo";
 import { supabase } from "@/lib/supabase/client";
@@ -11,7 +13,7 @@ import { Sheet } from "./ui";
 
 const TANKS = [1000, 3000, 5000, 10000];
 
-/** Add (or edit) a property: map pin, label, address, tank size → save_property. */
+/** Add (or edit) a property: map pin, label, address, tank size → save_property; optional details → set_property_details. */
 export function PropertySheet({ initial, onClose, onSaved }: { initial?: Property | null; onClose: () => void; onSaved: (p: Property) => void }) {
   const { t } = useCx();
   const start = initial ? { lat: initial.lat, lng: initial.lng } : DEFAULT_CENTER;
@@ -22,6 +24,7 @@ export function PropertySheet({ initial, onClose, onSaved }: { initial?: Propert
   const [area, setArea] = useState(initial?.area ?? "");
   const areaTouched = useRef(Boolean(initial));
   const [tank, setTank] = useState(initial?.tank_gal ?? 3000);
+  const [details, setDetails] = useState<DetailsForm>(() => detailsFromRow(initial));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,9 +73,14 @@ export function PropertySheet({ initial, onClose, onSaved }: { initial?: Propert
         p_tank_gal: tank,
       })
       .single<Property>();
+    if (error || !data) {
+      setBusy(false);
+      return setError(friendlyError(error));
+    }
+    const d = await supabase().rpc("set_property_details", { p_id: data.id, p_details: detailsPayload(details) }).single<Property>();
     setBusy(false);
-    if (error || !data) return setError(friendlyError(error));
-    onSaved(data);
+    if (d.error) return setError(friendlyError(d.error));
+    onSaved(d.data ?? data);
   }
 
   return (
@@ -110,8 +118,9 @@ export function PropertySheet({ initial, onClose, onSaved }: { initial?: Propert
           ))}
         </div>
       </div>
+      <AddressDetailsForm value={details} onChange={setDetails} />
       {error && <div className="banner badb">{error}</div>}
-      <button className="cta" disabled={busy || !label.trim()} onClick={save}>
+      <button className="cta" disabled={busy || !label.trim() || !contactPhoneOk(details)} onClick={save}>
         {busy ? t("saving") : t("save")}
       </button>
     </Sheet>

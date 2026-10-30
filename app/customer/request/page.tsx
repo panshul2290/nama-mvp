@@ -6,18 +6,24 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { gal, omr3 } from "@/components/customer/fmt";
-import { useNow, useOnline, usePaymentMethods, usePrefs, useProperties, useWallet, type PayMethodRow } from "@/components/customer/hooks";
+import { useDeliveryWindows, useNow, useOnline, usePaymentMethods, usePrefs, useProperties, useWallet, type PayMethodRow } from "@/components/customer/hooks";
 import { householdKey, recoFor, RecoCard } from "@/components/customer/Reco";
 import { FeeFactors, type Factors } from "@/components/customer/FeeFactors";
 import { PropertySheet } from "@/components/customer/PropertySheet";
 import { ServiceNotices } from "@/components/customer/ServiceNotices";
-import { slotOptions } from "@/components/customer/slots";
+import { slotOptions, windowsFromRows, type Slot, type Window } from "@/components/customer/slots";
+import { AddressDetailsForm } from "@/components/AddressDetailsForm";
+import { FallbackCard } from "@/components/FallbackCard";
 import { Bill, quoteToBill, SvcTag, Toggle } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { BackButton, Loading } from "@/components/Shell";
 import { usePricingRules } from "@/components/usePricingRules";
+import { contactPhoneOk, detailsFromRow, detailsPayload, EMPTY_DETAILS, hasDetails, type DetailsForm } from "@/lib/address";
+import { ADDR } from "@/lib/addressI18n";
 import { errorCode, friendlyError } from "@/lib/errors";
+import { useT } from "@/lib/i18n";
+import { useSupport } from "@/lib/support";
 import { currentPosition, DEFAULT_CENTER, reverseGeocodeArea } from "@/lib/geo";
 import { ruleNumber, VOLUME_PRESETS, type ServiceType } from "@/lib/pricing";
 import { isMissing } from "@/lib/rpcCompat";
@@ -28,6 +34,10 @@ import { ref, type LngLat, type Order } from "@/lib/types";
 const TYPES: ServiceType[] = ["DW", "WW", "TE"];
 const COLOR: Record<ServiceType, string> = { DW: "var(--dw)", WW: "var(--ww)", TE: "var(--te)" };
 type Plan = "one" | "monthly" | "yearly";
+// Errors the customer fixes in the app; anything else (network, zone off, outside the area) also offers 1442 / WhatsApp.
+const FIXABLE = ["insufficient_wallet", "invalid_promo", "identity_required", "slot_blocked", "account_blocked"];
+const dayLabel = (day: string, lang: string) =>
+  new Intl.DateTimeFormat(lang === "ar" ? "ar-OM" : "en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${day}T12:00:00Z`));
 
 export default function RequestPage() {
   return (
@@ -49,6 +59,9 @@ function RequestWizard() {
   const { wallet } = useWallet();
   const { methods } = usePaymentMethods(profile.id);
   const { prefs, set: setPrefs } = usePrefs(profile.id);
+  const ta = useT(ADDR);
+  const support = useSupport();
+  const windowRows = useDeliveryWindows(7);
 
   const initialType = TYPES.includes(params.get("type") as ServiceType) ? (params.get("type") as ServiceType) : "DW";
   const paramGallons = Number(params.get("gallons"));
@@ -96,6 +109,11 @@ function RequestWizard() {
 
   const prop = props && propChoice !== "pin" ? (props.find((p) => p.id === propChoice) ?? (propChoice === null ? props[0] : undefined)) : undefined;
   const pinMode = props !== null && !prop;
+  // Optional address details and delivery contact (0040): the property's, editable for this order.
+  const [detailsFor, setDetailsFor] = useState<{ key: string; v: DetailsForm }>({ key: "", v: EMPTY_DETAILS });
+  const detailsKey = prop?.id ?? "pin";
+  const details = detailsFor.key === detailsKey ? detailsFor.v : prop ? detailsFromRow(prop) : EMPTY_DETAILS;
+  const setDetails = (v: DetailsForm) => setDetailsFor({ key: detailsKey, v });
 
   function applyPosition(p: LngLat | null) {
     setGpsNote(!p);
@@ -138,8 +156,19 @@ function RequestWizard() {
       .then(({ data }) => setHistory((data ?? []) as Order[]));
   }, [profile.id]);
 
-  const slots = useMemo(() => slotOptions(now), [now]);
+  // NWS window templates (0044) for the next 7 days; the built-in windows if they can't be loaded.
+  const windows = useMemo<Window[] | null>(() => (windowRows && windowRows.length ? windowsFromRows(windowRows as never) : null), [windowRows]);
+  const days = useMemo(() => (windows ? [...new Set(windows.map((w) => w.day))] : []), [windows]);
+  const [dayPick, setDayPick] = useState<string | null>(null);
+  const day = dayPick && days.includes(dayPick) ? dayPick : (days[0] ?? null);
+  const slots: Slot[] = useMemo(() => (windows ? [...slotOptions(now).slice(0, 1), ...windows] : slotOptions(now)), [now, windows]);
   const slot = slots.find((s) => s.id === slotId) ?? slots[0];
+  const slotText = (s: Slot | undefined) => {
+    if (!s) return "";
+    if (s.key) return t(s.key);
+    const w = s as Window;
+    return `${dayLabel(w.day, lang)} · ${w.from}–${w.to}`;
+  };
 
   // Smart recommendation (E11): size and frequency from the tank, the household and past deliveries.
   const household = prefs?.household;
@@ -255,6 +284,10 @@ function RequestWizard() {
       return setError({ code, text: friendlyError(error) });
     }
     if (data.status === "cancelled" && data.payment_status === "failed") return setFailed(data);
+    // The optional details go on the order (the property's are copied already; this sends any edits).
+    if (hasDetails(details) || (prop && hasDetails(detailsFromRow(prop)))) {
+      await supabase().rpc("set_order_details", { p_order: data.id, p_details: detailsPayload(details) });
+    }
     router.replace(`/customer/order?id=${data.id}`);
   }
 
@@ -273,7 +306,7 @@ function RequestWizard() {
   }
 
   const validGallons = Number.isInteger(gallons) && gallons >= 1 && gallons <= 20000;
-  const canNext = step === 1 ? props !== null && (!pinMode || area.trim().length > 0) : step === 2 ? validGallons : true;
+  const canNext = step === 1 ? props !== null && (!pinMode || area.trim().length > 0) && contactPhoneOk(details) : step === 2 ? validGallons : true;
   const vatPct = rules ? Math.round(ruleNumber(rules, "vat_rate") * 1000) / 10 : null;
   const prioMult = rules ? ruleNumber(rules, "priority_multiplier") : NaN;
 
@@ -369,6 +402,7 @@ function RequestWizard() {
             <button type="button" className="lk" onClick={() => setAddingProp(true)}>
               + {t("addProp")}
             </button>
+            {props !== null && <AddressDetailsForm key={detailsKey} value={details} onChange={setDetails} />}
             {pinMode && (
               <div style={{ marginTop: 12 }}>
                 <div className="rq-map">
@@ -456,20 +490,38 @@ function RequestWizard() {
               ))}
             </div>
             {plan !== "one" && <div className="reco">{t("planNote")}</div>}
+            <p className="mut small">
+              {t("recurQ")}{" "}
+              <Link className="lk" href={`/customer/recurring?new=1&type=${type}&gallons=${gallons}${prop ? `&property=${prop.id}` : ""}`}>
+                {t("recurSet")}
+              </Link>
+            </p>
           </>
         )}
 
         {step === 3 && (
           <>
             <h4 className="ch-sec">{t("slot")}</h4>
+            {windows && days.length > 1 && (
+              <div className="seg" role="tablist" aria-label={t("slotDay")}>
+                {days.map((d) => (
+                  <button key={d} type="button" role="tab" aria-selected={d === day} className={d === day ? "on" : ""} onClick={() => setDayPick(d)}>
+                    {dayLabel(d, lang)}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="opts">
-              {slots.map((s) => (
-                <button key={s.id} type="button" className={`opt ${slot?.id === s.id ? "on" : ""}`} onClick={() => setSlotId(s.id)}>
-                  {t(s.key)}
-                  {s.peak ? ` · ${t("peak")}` : ""}
-                </button>
-              ))}
+              {slots
+                .filter((s) => !windows || s.key || (s as Window).day === day)
+                .map((s) => (
+                  <button key={s.id} type="button" className={`opt ${slot?.id === s.id ? "on" : ""}`} onClick={() => setSlotId(s.id)}>
+                    {s.key ? t(s.key) : `${(s as Window).from}–${(s as Window).to}`}
+                    {s.peak ? ` · ${t("peak")}` : ""}
+                  </button>
+                ))}
             </div>
+            {windows && <p className="mut small">{t("slotRule")}</p>}
             {slot?.start && new Date(slot.start).getTime() - now > 2 * 3600_000 && <p className="mut small">{t("willSchedule")}</p>}
             <div className="rq-card rq-split" style={{ marginTop: 14 }}>
               <div>
@@ -507,7 +559,7 @@ function RequestWizard() {
               </div>
               <div className="rq-r">
                 <span>{t("slot")}</span>
-                <b>{slot ? t(slot.key) : ""}</b>
+                <b>{slotText(slot)}</b>
               </div>
               {emergency && (
                 <div className="rq-r">
@@ -572,6 +624,7 @@ function RequestWizard() {
               </div>
             )}
             {walletShort && <div className="banner">{t("walletShort")}</div>}
+            {support.outage && payment().method !== "wallet" && <div className="banner info">{ta("outageNote")}</div>}
             {error && (
               <div className="banner badb">
                 {error.text}
@@ -592,6 +645,9 @@ function RequestWizard() {
                   </>
                 )}
               </div>
+            )}
+            {(!online || (error && !FIXABLE.includes(error.code ?? ""))) && (
+              <FallbackCard service={type} gallons={gallons} point={{ lat: destLat, lng: destLng }} />
             )}
             <div className="paybar">
               <button className="cta" disabled={busy || total == null || !online} onClick={place}>

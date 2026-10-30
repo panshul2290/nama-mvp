@@ -1,3 +1,4 @@
+import type { AddressDetails } from "./address";
 import type { RuleStatus, ServiceType } from "./pricing";
 
 export type Role = "customer" | "driver" | "nws_staff" | "owner" | "business";
@@ -74,6 +75,11 @@ export type Tanker = {
   last_accuracy_m?: number | null;
   blocked?: boolean;
   blocked_reason?: string | null;
+  /** 0041 vehicle papers (Naql, operating card, insurance, tracking device). */
+  naql_reg_no?: string | null; op_card_no?: string | null; op_card_expiry?: string | null; vin?: string | null; make?: string | null; model?: string | null;
+  model_year?: number | null; tank_capacity_gal?: number | null; capacity_verified_gal?: number | null; insurance_company?: string | null;
+  insurance_policy_no?: string | null; insurance_expiry?: string | null; tracking_device_id?: string | null;
+  vehicle_status?: "unverified" | "submitted" | "verified" | "rejected"; vehicle_note?: string | null; vehicle_verified_at?: string | null;
   company_id?: string | null;
 };
 
@@ -148,6 +154,11 @@ export type Order = {
   promo_code?: string | null;
   pay_method?: PayMethod | null;
   payment_status?: PaymentStatus | null;
+  /** 0043: why NWS finance follows the payment up (the delivery went ahead). */
+  payment_followup?: "outage_pay_later" | "payment_pending" | "autopay_failed" | null;
+  payment_followup_resolved_at?: string | null;
+  /** 0044: the recurring plan that created it. */
+  recurring_id?: string | null;
   released_at?: string | null;
   approved_at?: string | null;
   filled_at?: string | null;
@@ -170,7 +181,7 @@ export type Order = {
   short_credit?: string;
 };
 
-export type OrderLocation = { order_id: string; lat: number; lng: number; address: string };
+export type OrderLocation = { order_id: string; lat: number; lng: number; address: string } & AddressDetails;
 
 export type OpenRequest = {
   id: string;
@@ -208,7 +219,7 @@ export type Zone = {
   auto_offer?: boolean; offer_seconds?: number;
 };
 export type Site = { id: string; code: string; kind: "fill" | "discharge"; name: string; service_types: ServiceType[]; lat: number; lng: number; radius_m: number; operator: string; active: boolean; is_test?: boolean };
-export type Property = { id: string; customer_id: string | null; org_id: string | null; label: string; address: string; area: string; lat: number; lng: number; tank_gal: number; created_at: string };
+export type Property = { id: string; customer_id: string | null; org_id: string | null; label: string; address: string; area: string; lat: number; lng: number; tank_gal: number; created_at: string } & AddressDetails;
 export type Contract = {
   id: string; contract_no: number; customer_id: string | null; org_id: string | null; property_id: string; company_id: string; service_type: ServiceType;
   gallons: number; frequency: "weekly" | "biweekly" | "monthly"; plan: "monthly" | "yearly"; slot: "morning" | "evening";

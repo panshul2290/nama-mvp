@@ -149,10 +149,19 @@ const MESSAGES: Record<string, string> = {
   already_reported: "You’ve already reported this order. NWS is looking into it.",
   invalid_vat_number: "A VAT number is OM followed by 10 digits (e.g. OM1100012345).",
   receipt_not_ready: "The receipt is issued once the order is delivered.",
+  // 0040–0045 (addresses, drivers and scheduling)
+  vehicle_documents_expired: "The tanker's vehicle papers have expired:",
+  slot_blocked: "That delivery window is closed on this day (NWS delivery times):",
+  sos_not_on_duty: "Available during a job or while you're online.",
+  too_many_shares: "You already have 3 live links. Revoke one first.",
+  no_charity_site: "No approved site there yet. Pick another site or wilayat.",
+  too_many_plans: "You can have up to 10 recurring orders.",
+  already_created: "That delivery is already an order: cancel the order instead.",
+  invalid_path: "That photo isn't in your folder.",
 };
 
 // Codes whose detail (after "code: ") is worth showing, e.g. which documents are missing.
-const WITH_DETAIL = new Set(["documents_incomplete", "insufficient_fill_credit", "wallet_not_empty", "invalid_value"]);
+const WITH_DETAIL = new Set(["documents_incomplete", "insufficient_fill_credit", "wallet_not_empty", "invalid_value", "vehicle_documents_expired", "slot_blocked"]);
 
 export function errorCode(error: { message?: string } | null | undefined): string | null {
   if (!error?.message) return null;
@@ -172,6 +181,14 @@ export function friendlyError(error: { message?: string } | null | undefined, la
 
 // Arabic for every code above (the web portals pass the viewer's language to friendlyError).
 const MESSAGES_AR: Record<string, string> = {
+  vehicle_documents_expired: "انتهت أوراق المركبة:",
+  slot_blocked: "فترة التوصيل هذه مغلقة في ذلك اليوم (مواعيد نماء):",
+  sos_not_on_duty: "متاح أثناء مهمة أو عندما تكون متصلاً.",
+  too_many_shares: "لديك 3 روابط مباشرة بالفعل. ألغِ أحدها أولاً.",
+  no_charity_site: "لا يوجد موقع معتمد هناك بعد. اختر موقعاً أو ولاية أخرى.",
+  too_many_plans: "يمكنك إنشاء 10 طلبات دورية كحد أقصى.",
+  already_created: "هذا التوصيل أصبح طلباً بالفعل: ألغِ الطلب بدلاً من ذلك.",
+  invalid_path: "هذه الصورة ليست في مجلدك.",
   identity_required: "تحتاج نماء إلى بطاقتك المدنية أو بطاقة الإقامة أو جواز سفرك لهذا الطلب. أضفها من الحساب ← هويتك ثم حاول مجدداً.",
   invalid_channel: "اختر الرسائل النصية أو واتساب لاستلام الرمز.",
   already_escalated: "تم تصعيد هذه الشكوى إلى نماء 1442 بالفعل.",

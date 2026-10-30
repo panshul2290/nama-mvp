@@ -9,6 +9,10 @@ import { collectFromOrder, CollectBox } from "@/components/driver/Collect";
 import { DICT, useFmt } from "@/components/driver/i18n";
 import { insideGeofence, metresTo } from "@/components/driver/legs";
 import { IssueSheet, PodSheet } from "@/components/driver/TripSheets";
+import { SafetyBar } from "@/components/driver/Safety";
+import { Sheet } from "@/components/driver/Sheet";
+import { detailParts, useWilayats } from "@/lib/address";
+import { ADDR } from "@/lib/addressI18n";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { RuleTag } from "@/components/OrderBits";
@@ -75,6 +79,9 @@ function Trip() {
   const [pod, setPod] = useState(false);
   const [issue, setIssue] = useState(false);
   const [chatTapped, setChatTapped] = useState(false);
+  const [calling, setCalling] = useState<"customer" | "contact" | null>(null);
+  const ta = useT(ADDR);
+  const ref = useWilayats();
   const chat = useJobChat();
   const hub = useChatHub();
   const { lang, dir } = useLang();
@@ -277,6 +284,16 @@ function Trip() {
                   <b>{o.driver_note || t("noNote")}</b>
                 </span>
               </div>
+              {(loc?.landmark || detailParts(loc, lang, ref?.wilayats, ta).length > 0) && (
+                <div>
+                  <Icon name="pin" />
+                  <span>
+                    <small>{t("addrDetails")}</small>
+                    <b>{detailParts(loc, lang, ref?.wilayats, ta).join(" · ")}</b>
+                    {loc?.landmark && <small>{loc.landmark}</small>}
+                  </span>
+                </div>
+              )}
               <div>
                 <Icon name="user" />
                 <span>
@@ -286,6 +303,23 @@ function Trip() {
                   </b>
                 </span>
               </div>
+              {loc?.contact_phone && (
+                <div>
+                  <Icon name="phone" />
+                  <span>
+                    <small>{t("deliveryContact")}</small>
+                    <b>{loc.contact_name || t("deliveryContact")}</b>
+                  </span>
+                  <button type="button" className="btn sm" onClick={() => setCalling("contact")}>
+                    {t("call")}
+                  </button>
+                </div>
+              )}
+              {loc?.call_ahead && (
+                <div className="banner" role="note" style={{ margin: 0 }}>
+                  <b>{t("callAheadT")}</b> {t("callAheadS")}
+                </div>
+              )}
               <div>
                 <Icon name="coins" />
                 <span>
@@ -407,7 +441,7 @@ function Trip() {
 
         <div className="oc-actions">
           <ChatButton label={t("msgCustomer")} unread={chat?.unread ?? 0} lang={lang} onClick={() => setChatTapped(true)} />
-          <button type="button" className="oc-btn sec" onClick={() => toast(t("callMasked"))}>
+          <button type="button" className="oc-btn sec" onClick={() => setCalling("customer")}>
             <Icon name="phone" />
             {t("call")}
           </button>
@@ -427,6 +461,7 @@ function Trip() {
             </button>
           )}
         </div>
+        <SafetyBar />
         <p className="tr-note">
           {t("sharingLoc")} {wakeLock === "held" ? t("screenOn") : wakeLock === "off" ? "" : t("screenOff")}
         </p>
@@ -445,9 +480,32 @@ function Trip() {
             setChatTapped(false);
             hub.clearPending();
           }}
-          onCall={() => toast(t("callMasked"))}
+          onCall={() => setCalling("customer")}
           onError={(m) => toast(m)}
         />
+      )}
+      {calling && (
+        <Sheet label={t("callSheetT")} onClose={() => setCalling(null)}>
+          <h3>{calling === "contact" ? loc?.contact_name || t("deliveryContact") : job!.customer?.full_name || t("customer")}</h3>
+          <p className="mut small">{t("callMasked")}</p>
+          <div className="banner" role="status">
+            {t("callConnecting")}
+          </div>
+          {calling === "contact" && loc?.contact_phone && (
+            <p className="small">
+              {t("callFallback")}{" "}
+              <bdi dir="ltr" className="sel">
+                {loc.contact_phone}
+              </bdi>{" "}
+              <a className="lk" href={`tel:${loc.contact_phone}`}>
+                {t("call")}
+              </a>
+            </p>
+          )}
+          <button type="button" className="cta sec" onClick={() => setCalling(null)}>
+            {t("close")}
+          </button>
+        </Sheet>
       )}
       {pod && <PodSheet onClose={() => setPod(false)} />}
       {issue && <IssueSheet onClose={() => setIssue(false)} />}

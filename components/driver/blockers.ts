@@ -17,7 +17,9 @@ export type Blocker =
   | { kind: "permit_expired"; expiredAt: string }
   | { kind: "check" }
   /** NWS requires the in-app training before going online (app_settings DRIVER_TRAINING_REQUIRED). */
-  | { kind: "training"; done: number; total: number };
+  | { kind: "training"; done: number; total: number }
+  /** 0041: an expired vehicle operating card or insurance (the database refuses online and accept). */
+  | { kind: "vehicle"; what: ("op_card" | "insurance")[] };
 
 export function onlineBlockers(s: {
   blocked: boolean;
@@ -28,6 +30,8 @@ export function onlineBlockers(s: {
   shiftChecked: boolean;
   /** Set only when NWS requires the training: lessons passed out of the total. */
   training?: { done: number; total: number } | null;
+  /** The tanker's operating card and insurance expiry dates (YYYY-MM-DD) and today in Muscat. */
+  vehicle?: { opCardExpiry: string | null; insuranceExpiry: string | null; today: string } | null;
 }): Blocker[] {
   const out: Blocker[] = [];
   if (s.blocked) out.push({ kind: "blocked", reason: s.blockedReason?.trim() || null });
@@ -43,5 +47,12 @@ export function onlineBlockers(s: {
   }
   if (!s.shiftChecked) out.push({ kind: "check" });
   if (s.training && s.training.done < s.training.total) out.push({ kind: "training", ...s.training });
+  const v = s.vehicle;
+  if (v) {
+    const what = [v.opCardExpiry && v.opCardExpiry < v.today ? ("op_card" as const) : null, v.insuranceExpiry && v.insuranceExpiry < v.today ? ("insurance" as const) : null].filter(
+      (x): x is "op_card" | "insurance" => x !== null,
+    );
+    if (what.length) out.push({ kind: "vehicle", what });
+  }
   return out;
 }

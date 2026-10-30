@@ -4,15 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
+import { AvailabilityEditor } from "@/components/driver/Availability";
 import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
+import { DriverPhoto, TierCard, VehicleCard } from "@/components/driver/ProfileExtras";
 import { InvitationCards } from "@/components/driver/Invitations";
 import { permitState, usePermits } from "@/components/driver/permit";
 import { Sheet } from "@/components/driver/Sheet";
 import { useNow } from "@/components/driver/useNow";
 import { LESSONS } from "@/components/driver/training";
 import { LangToggle, useLang, useT } from "@/lib/i18n";
-import { initials } from "@/lib/format";
-import { SHIFT_KEYS, shiftHours, type Shift } from "@/lib/shifts";
 import { signOutApp } from "@/components/portal/session";
 import { unregisterPush } from "@/lib/push";
 import { supabase } from "@/lib/supabase/client";
@@ -20,7 +20,6 @@ import type { Device, TankerDocument } from "@/lib/types";
 
 const DOC_KINDS = ["heavy_licence", "mulkiya", "tank_cleanliness", "rop_inspection", "insurance", "ivms_certificate", "water_test"] as const;
 type DocKind = (typeof DOC_KINDS)[number];
-type Avail = { weekday: number; available: boolean; shift: Shift };
 const DAY = 86_400_000;
 
 export default function DriverProfile() {
@@ -36,7 +35,6 @@ export default function DriverProfile() {
   const [company, setCompany] = useState<string | null>(null);
   const [device, setDevice] = useState<Device | null | undefined>(undefined);
   const [docs, setDocs] = useState<TankerDocument[]>([]);
-  const [avail, setAvail] = useState<Avail[]>([]);
   const [upload, setUpload] = useState<DocKind | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,10 +59,6 @@ export default function DriverProfile() {
       .eq("tanker_id", tanker.id)
       .maybeSingle()
       .then(({ data }) => setDevice((data as Device) ?? null));
-    db.from("driver_availability")
-      .select("weekday, available, shift")
-      .eq("driver_id", profile.id)
-      .then(({ data }) => setAvail((data ?? []) as Avail[]));
     const t0 = setTimeout(loadDocs, 0);
     return () => clearTimeout(t0);
   }, [tanker.id, tanker.company_id, profile.id, loadDocs]);
@@ -76,15 +70,6 @@ export default function DriverProfile() {
     if (error) return toast(errText(error));
     toast(t("renewalSent"));
     reloadPermits();
-  }
-
-  // Days without a row are available on the day shift (the table defaults).
-  const dayOf = (d: number): Avail => avail.find((a) => a.weekday === d) ?? { weekday: d, available: true, shift: "day" };
-  async function setDay(d: number, patch: Partial<Avail>) {
-    const next = { ...dayOf(d), ...patch };
-    setAvail((as) => [...as.filter((a) => a.weekday !== d), next]);
-    const { error } = await supabase().rpc("set_availability", { p_weekday: d, p_available: next.available, p_shift: next.shift });
-    if (error) toast(errText(error));
   }
 
   async function signOut() {
@@ -113,7 +98,7 @@ export default function DriverProfile() {
       </div>
       <div className="dcard">
         <div className="dc-top">
-          <span className="av">{initials(profile.full_name)}</span>
+          <DriverPhoto />
           <div>
             <b>{profile.full_name || t("driver")}</b>
             <small>
@@ -124,6 +109,7 @@ export default function DriverProfile() {
         </div>
       </div>
       <InvitationCards toast={toast} onJoined={refreshTanker} />
+      <TierCard />
 
       <h4 className="ch-sec">{t("tanker")}</h4>
       <div className="ch-list">
@@ -180,6 +166,8 @@ export default function DriverProfile() {
         )}
       </div>
 
+      <VehicleCard />
+
       <h4 className="d-h4">{t("documents")}</h4>
       {DOC_KINDS.map((k) => {
         const d = docs.find((x) => x.kind === k && (k === "heavy_licence" ? x.driver_id === profile.id : x.tanker_id === tanker.id));
@@ -201,28 +189,8 @@ export default function DriverProfile() {
       })}
 
       <h4 className="d-h4">{t("availability")}</h4>
-      <div className="opts">
-        {[0, 1, 2, 3, 4, 5, 6].map((d) => (
-          <button key={d} type="button" className={`opt ${dayOf(d).available ? "on" : ""}`} aria-pressed={dayOf(d).available} onClick={() => setDay(d, { available: !dayOf(d).available })}>
-            {t(`wd${d}`)}
-          </button>
-        ))}
-      </div>
-      {[0, 1, 2, 3, 4, 5, 6]
-        .filter((d) => dayOf(d).available)
-        .map((d) => (
-          <div key={d} className="lrow">
-            <span>{t(`wdLong${d}`)}</span>
-            <select className="d-sel" aria-label={t("shiftFor", { day: t(`wdLong${d}`) })} value={dayOf(d).shift} onChange={(e) => setDay(d, { shift: e.target.value as Shift })}>
-              {SHIFT_KEYS.map((s) => (
-                <option key={s} value={s}>
-                  {t(`shift_${s}`)} · {f.d(shiftHours(s))}
-                </option>
-              ))}
-            </select>
-          </div>
-        ))}
-      <p className="mut small">{t("availNote", { day: f.d(shiftHours("day")), evening: f.d(shiftHours("evening")), night: f.d(shiftHours("night")) })}</p>
+      <AvailabilityEditor />
+      <p className="mut small">{t("avNote")}</p>
 
       <h4 className="d-h4" id="training">
         {t("training")}

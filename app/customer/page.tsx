@@ -9,6 +9,7 @@ import { useEmergency, useNow, useOnline, usePrefs, useProperties } from "@/comp
 import { recoFor, useRecoText } from "@/components/customer/Reco";
 import { ServiceNotices } from "@/components/customer/ServiceNotices";
 import { fillPending, Progress5, StatusTag, statusKey, useUnread } from "@/components/customer/ui";
+import { FallbackCard } from "@/components/FallbackCard";
 import { Icon } from "@/components/icons";
 import { firstName } from "@/lib/format";
 import { LangToggle } from "@/lib/i18n";
@@ -223,6 +224,27 @@ export default function CustomerHome() {
           </div>
         </div>
       )}
+
+      <div className="ch-list" style={{ marginTop: 12 }}>
+        <Link className="lrow" href="/customer/recurring">
+          <span>
+            <b>{t("recurT")}</b>
+            <small>{t("recurHomeS")}</small>
+          </span>
+          <span className="lk">{t("view")}</span>
+        </Link>
+        <Link className="lrow" href="/customer/sponsor">
+          <span>
+            <b>{t("spT")}</b>
+            <small>{t("spHomeS")}</small>
+          </span>
+          <span className="lk">{t("spGo")}</span>
+        </Link>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <FallbackCard reason="helpS" compact />
+      </div>
     </main>
   );
 }

@@ -150,3 +150,18 @@ export function usePaymentMethods(userId: string) {
   }, [reload]);
   return { methods, reload };
 }
+
+/** The delivery windows NWS offers (0044); null while loading, [] if the call fails (the app then uses the built-in windows). */
+export function useDeliveryWindows(days = 7) {
+  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    supabase()
+      .rpc("delivery_windows", { p_days: days })
+      .then(({ data, error }) => live && setRows(error ? [] : ((data ?? []) as Record<string, unknown>[])));
+    return () => {
+      live = false;
+    };
+  }, [days]);
+  return rows;
+}

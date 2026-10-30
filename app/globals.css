@@ -499,3 +499,29 @@ button.st { border: 0; }
 .nws .oc-b.mine .oc-who { color: var(--link); opacity: 1; }
 .nws .oc-ticks.read { color: #3fd0de; }
 .oc-av.ini { background: var(--deep, #0b2a33); color: #fff; font-weight: 800; font-size: 14px; }
+
+/* Optional address details, fallback card, driver photo, SOS (0040–0045) */
+.addr-more { margin: 4px 0 12px; }
+.addr-toggle { font-size: 13.5px; }
+.addr-s { display: block; font-size: 12px; margin-top: 2px; }
+.addr-body { margin-top: 10px; }
+.addr-h { display: block; font-size: 13.5px; margin-top: 6px; }
+.addr-chk { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; margin: 4px 0 10px; }
+.addr-chk input { margin-top: 3px; }
+.form .full, .addr-body .full { grid-column: 1 / -1; }
+.fallback { border-radius: 12px; padding: 12px; margin: 0 0 12px; background: color-mix(in srgb, var(--accent) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); display: grid; gap: 6px; }
+.fallback > small { font-size: 12.5px; color: var(--muted); }
+.fallback .fb-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.fallback .fb-btns .btn { display: inline-flex; gap: 6px; align-items: center; text-decoration: none; }
+.fallback .fb-btns svg { width: 15px; height: 15px; }
+.fallback.compact { padding: 10px; }
+.sel { user-select: all; -webkit-user-select: all; font-weight: 600; }
+.av.photo { padding: 0; overflow: hidden; }
+.av.photo img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+.tier { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--line); text-transform: uppercase; letter-spacing: .03em; }
+.tier.gold { background: #f6e3a1; color: #6b4e00; border-color: #e0c45a; }
+.tier.silver { background: #e4e8ee; color: #3b4452; border-color: #c4ccd8; }
+.tier.bronze { background: #f1dccb; color: #6e3d16; border-color: #dcb292; }
+.sos-btn { background: var(--bad); color: #fff; border: 0; border-radius: 10px; padding: 9px 14px; font-weight: 700; }
+.safety { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+.sos-row { outline: 2px solid var(--bad); background: color-mix(in srgb, var(--bad) 12%, var(--panel)); }

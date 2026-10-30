@@ -6,7 +6,9 @@ import { useDriver } from "@/components/DriverContext";
 import { DICT, useFmt } from "@/components/driver/i18n";
 import { InvitationCards } from "@/components/driver/Invitations";
 import { pickOffer } from "@/components/driver/offer";
+import { AvailabilityNote } from "@/components/driver/Availability";
 import { BLOCKERS_ID, OnlineBlockers, useBlockerTitle, useOnlineBlockers } from "@/components/driver/OnlineBlockers";
+import { SafetyBar } from "@/components/driver/Safety";
 import { useNow } from "@/components/driver/useNow";
 import { LESSONS } from "@/components/driver/training";
 import { Icon } from "@/components/icons";
@@ -124,6 +126,8 @@ export default function DriverHome() {
         </div>
       </div>
       {!online && !job && <OnlineBlockers blockers={blockers} onApplied={reloadPermits} checkHref="#precheck" />}
+      <AvailabilityNote />
+      <SafetyBar />
       {/* A gentle reminder before going online (required only when NWS switches the rule on: then it's a blocker above). */}
       {!online && !job && training.loaded && !training.complete && !training.required && (
         <Link href="/driver/training" className="card">

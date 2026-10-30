@@ -38,6 +38,9 @@ const DICT_FILES = [
   // Sign-in, messaging and support batch: the one refund policy, the customer app's words.
   "lib/refundPolicy.ts",
   "components/customer/i18n.ts",
+  // Addresses, drivers and scheduling batch (0040–0045): the driver app and the shared address / fallback words.
+  "components/driver/i18n.ts",
+  "lib/addressI18n.ts",
 ].filter((f) => f.endsWith(".ts"));
 
 type Entry = { en: string; ar: string };

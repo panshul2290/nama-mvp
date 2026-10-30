@@ -13,6 +13,7 @@ import { onlineBlockers, PERMIT_STAGES, type Blocker } from "./blockers";
 import { DICT, useErrText, useFmt } from "./i18n";
 import { permitState, usePermits } from "./permit";
 import { useNow } from "./useNow";
+import { omanToday } from "@/lib/time";
 
 export const BLOCKERS_ID = "go-online-blockers";
 
@@ -23,7 +24,9 @@ export function useOnlineBlockers() {
   const { rows, reload } = usePermits(tanker.id);
   const permit = rows && now ? permitState(rows, tanker.service_type, now) : null;
   const req = training.required && training.loaded ? { done: LESSONS.filter((l) => training.done.includes(l.key)).length, total: LESSONS.length } : null;
-  const blockers = onlineBlockers({ blocked: Boolean(tanker.blocked), blockedReason: tanker.blocked_reason ?? null, companySuspended, permit, shiftChecked, training: req });
+  const today = now ? omanToday(now) : null;
+  const vehicle = today ? { opCardExpiry: tanker.op_card_expiry ?? null, insuranceExpiry: tanker.insurance_expiry ?? null, today } : null;
+  const blockers = onlineBlockers({ blocked: Boolean(tanker.blocked), blockedReason: tanker.blocked_reason ?? null, companySuspended, permit, shiftChecked, training: req, vehicle });
   return { permit, blockers, reloadPermits: reload };
 }
 
@@ -52,6 +55,8 @@ export function useBlockerTitle() {
           return t("blkCheckT");
         case "training":
           return t("blkTrainingT", { n: f.d(b.done), m: f.d(b.total) });
+        case "vehicle":
+          return b.what.map((w) => t(w === "op_card" ? "blkOpCardT" : "blkInsuranceT")).join(" · ");
       }
     },
     [t, f, tanker.service_type],
@@ -116,6 +121,14 @@ export function OnlineBlockers({ blockers, onApplied, checkHref }: { blockers: B
               {b.kind === "permit_expired" && t("blkExpiredS")}
               {b.kind === "check" && t("blkCheckS")}
               {b.kind === "training" && t("blkTrainingS")}
+              {b.kind === "vehicle" && (
+                <>
+                  {t("blkVehicleS")}{" "}
+                  <Link className="lk" href="/driver/profile#vehicle">
+                    {t("docsInProfile")}
+                  </Link>
+                </>
+              )}
             </span>
             {(b.kind === "permit_none" || b.kind === "permit_rejected" || b.kind === "permit_expired") && (
               <button

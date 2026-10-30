@@ -12,6 +12,7 @@ import { canReportOvercharge, OverchargeSheet, PaymentCard, useOverchargeCase } 
 import { CancelSheet, DriverCard, PodCard, RateCard, ReschedSheet, useVerification } from "@/components/customer/OrderParts";
 import { SlaChip } from "@/components/customer/sla";
 import { Bill, fillPending, orderToBill, StatusTag, TimelineH, useUnread } from "@/components/customer/ui";
+import { FallbackCard } from "@/components/FallbackCard";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { BackButton, Loading } from "@/components/Shell";
@@ -23,7 +24,9 @@ import { askPush } from "@/lib/push";
 import { initials, kmText } from "@/lib/format";
 import { DEFAULT_CENTER } from "@/lib/geo";
 import { STALE_AFTER_S } from "@/lib/gps";
-import { localDigits } from "@/lib/i18n";
+import { ADDR } from "@/lib/addressI18n";
+import { localDigits, useT } from "@/lib/i18n";
+import { useSupport } from "@/lib/support";
 import { ruleNumber } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import { omanToday } from "@/lib/time";
@@ -48,6 +51,8 @@ function OrderDetail() {
   const id = params.get("id") ?? "";
   const profile = useCustomer();
   const { t, lang, dir } = useCx();
+  const ta = useT(ADDR);
+  const support = useSupport();
   const toast = useToast();
   const chat = useOrderChat(id, "customer");
   const hub = useChatHub();
@@ -181,6 +186,11 @@ function OrderDetail() {
     </div>
   );
 
+  const followNote = order?.payment_followup && !order.payment_followup_resolved_at ? (
+    <div className="banner info" role="note">
+      {ta(order.payment_followup === "outage_pay_later" ? "payLater" : "payFollow")}
+    </div>
+  ) : null;
   if (missing || !id) return <main className="screen">{back}</main>;
   if (!order) return <Loading />;
 
@@ -307,6 +317,7 @@ function OrderDetail() {
             <SlaChip order={order} now={now} />
           </div>
           <TimelineH order={order} />
+          {followNote}
           <PodCard order={order} />
           <RateCard order={order} onRated={setOrder} />
           {order.tanker_id && (
@@ -449,6 +460,10 @@ function OrderDetail() {
               {t("schedInstead")}
             </button>
           )}
+          {order.status === "requested" && now - waitingSince > support.no_tanker_min * 60_000 && (
+            <FallbackCard reason="fbNoTanker" service={order.service_type} gallons={order.gallons} point={dest} />
+          )}
+          {followNote}
 
           {onJob && order.tanker_id ? (
             <DriverCard order={order} v={verification} today={today}>
