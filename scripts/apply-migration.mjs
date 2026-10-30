@@ -6,6 +6,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
+import { scheduleCron } from "./schedule-cron.mjs";
 
 const DIR = "supabase/migrations";
 const TABLES = ["profiles", "tankers", "orders"];
@@ -177,6 +178,11 @@ async function main() {
 }
 
 main()
+  .then(async () => {
+    await client.end().catch(() => {});
+    // pg_cron jobs recorded by migrations, each on its own connection (see schedule-cron.mjs).
+    await scheduleCron();
+  })
   .catch((e) => {
     console.error("Error: " + scrub(e.message));
     process.exitCode = 1;

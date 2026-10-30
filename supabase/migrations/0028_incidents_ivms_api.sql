@@ -933,6 +933,35 @@ end $$;
 
 alter publication supabase_realtime add table public.ivms_sim;
 
+-- ===========================================================================
+-- pg_cron jobs are recorded here and scheduled after the migration commits
+-- (scripts/schedule-cron.mjs, run by db:apply), one job per connection with retries:
+-- on Supabase, cron.schedule can drop the connection, which inside a migration rolls
+-- the whole migration back.
+-- ===========================================================================
+create table if not exists public.cron_wanted (
+  name    text primary key,
+  cron    text not null,
+  command text not null
+);
+revoke all on public.cron_wanted from public, anon, authenticated;
+
+create or replace function public.nama_schedule(p_name text, p_cron text, p_command text)
+returns boolean
+language sql
+as $$
+  insert into public.cron_wanted (name, cron, command) values (p_name, p_cron, p_command)
+  on conflict (name) do update set cron = excluded.cron, command = excluded.command
+  returning true
+$$;
+revoke execute on function public.nama_schedule(text, text, text) from public, anon, authenticated;
+
+-- Jobs from 0026/0027 (some were not scheduled when those ran).
+select public.nama_schedule('nama-notify-dispatch', '* * * * *', 'select public.dispatch_notifications()');
+select public.nama_schedule('nama-advance-offers', '* * * * *', 'select public.advance_offers()');
+select public.nama_schedule('nama-daily-reminders', '0 5 * * *', 'select public.run_daily_jobs()');
+select public.nama_schedule('nama-retention', '0 23 * * *', 'select public.run_retention(false)');
+
 select public.nama_schedule('nama-incident-scan', '* * * * *', 'select public.incident_scan()');
 select public.nama_schedule('nama-ivms-sim', '* * * * *', 'select public.ivms_sim_tick()');
 select public.nama_schedule('nama-webhooks', '* * * * *', 'select public.webhook_dispatch()');
