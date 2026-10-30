@@ -34,7 +34,13 @@ export const SETTINGS_NAV: { group: string; items: { href: string; label: string
       { href: "/nws/settings/audit", label: "Audit log" },
     ],
   },
-  { group: "System", items: [{ href: "/nws/settings/health", label: "System health" }] },
+  {
+    group: "System",
+    items: [
+      { href: "/nws/settings/health", label: "System health" },
+      { href: "/nws/settings/integrations", label: "Integrations" },
+    ],
+  },
 ];
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {

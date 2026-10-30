@@ -7,7 +7,11 @@ import { supabase } from "@/lib/supabase/client";
 import { ref, type Incident, type Integration } from "@/lib/types";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
-type Target = { priority: Incident["priority"]; label: string; response_min: number; resolve_min: number };
+type Target = { priority: Incident["priority"]; label: string; response_min: number; resolve_min: number; response_wd: number | null; resolve_wd: number | null; penalty_pct: number | string };
+// incident_status() (0028): deadlines in working days where the matrix says so, breach flags, escalation level.
+type IncStatus = Incident & { response_due: string; resolve_due: string; response_breached: boolean; resolve_breached: boolean; penalty_pct: number | string; escalation_level: number };
+const target = (min: number, wd: number | null) => (wd != null ? `${wd} working day${wd === 1 ? "" : "s"}` : dur(min));
+const LEVEL = ["", "Control room", "Super admins"];
 const STATUS: Record<Integration["status"], [string, string]> = { ok: ["Operational", "ok"], warn: ["Degraded", "warn"], down: ["Down", "bad"], simulated: ["Simulated", "act"] };
 const dur = (min: number) => (min < 60 ? `${Math.max(0, Math.round(min))} min` : min < 1440 ? `${Math.floor(min / 60)} h ${Math.round(min % 60)} min` : `${(min / 1440).toFixed(1)} days`);
 
@@ -16,7 +20,7 @@ export default function HealthPage() {
   const { ask, dialog } = useAudited();
   const run = useRun();
   const [ints, setInts] = useState<Integration[] | null>(null);
-  const [incs, setIncs] = useState<Incident[] | null>(null);
+  const [incs, setIncs] = useState<IncStatus[] | null>(null);
   const [targets, setTargets] = useState<Map<string, Target>>(new Map());
   const [testing, setTesting] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
@@ -26,9 +30,9 @@ export default function HealthPage() {
   const load = useCallback(() => {
     const db = supabase();
     db.from("integrations").select("*").order("name").then(({ data }) => setInts((data ?? []) as Integration[]));
-    db.from("incidents").select("*").order("opened_at", { ascending: false }).limit(50).then(({ data }) => {
+    db.rpc("incident_status").then(({ data }) => {
       setNow(Date.now());
-      setIncs((data ?? []) as Incident[]);
+      setIncs(((data ?? []) as IncStatus[]).slice(0, 50));
     });
     db.from("incident_targets").select("*").then(({ data }) => setTargets(new Map(((data ?? []) as Target[]).map((t) => [t.priority, t]))));
   }, []);
@@ -40,7 +44,7 @@ export default function HealthPage() {
     setTesting(null);
     load();
   }
-  function act(i: Incident, action: "acknowledge" | "resolve") {
+  function act(i: IncStatus, action: "acknowledge" | "resolve") {
     ask({
       title: `${action === "acknowledge" ? "Acknowledge" : "Resolve"} ${ref.incident(i.inc_no)}`,
       body: i.title,
@@ -54,6 +58,8 @@ export default function HealthPage() {
   const lat = (ints ?? []).map((i) => i.latency_ms).filter((v): v is number => v != null).sort((a, b) => a - b);
   const p95 = lat.length ? lat[Math.min(lat.length - 1, Math.ceil(lat.length * 0.95) - 1)] : null;
   const open = (incs ?? []).filter((i) => i.state !== "resolved");
+  const monthStart = new Date(new Date(now + 4 * 3600_000).toISOString().slice(0, 8) + "01T00:00:00+04:00").getTime();
+  const monthBreaches = (incs ?? []).filter((i) => Date.parse(i.opened_at) >= monthStart && (i.response_breached || i.resolve_breached));
   // Simulated interfaces aren't "OK": they are counted separately.
   const okCount = (ints ?? []).filter((i) => i.status === "ok").length;
   const simCount = (ints ?? []).filter((i) => i.status === "simulated").length;
@@ -67,6 +73,12 @@ export default function HealthPage() {
       <div className="okpis">
         <Kpi label="Uptime, 30 days" value="TBC" sub="uptime = (720 h − lost) / 720 h; measured once the platform is hosted; contract target TBC" />
         <Kpi label="Interface latency p95" value={p95 == null ? "—" : `${p95} ms`} sub={`last test of ${lat.length} interface${lat.length === 1 ? "" : "s"}`} tone={p95 != null && p95 > 500 ? "warn" : undefined} />
+        <Kpi
+          label="SLA breaches this month"
+          value={incs ? monthBreaches.length : "…"}
+          sub={incs ? `penalty exposure ${monthBreaches.reduce((a, i) => a + Number(i.penalty_pct), 0)}% of the monthly invoice (display only)` : ""}
+          tone={monthBreaches.length ? "bad" : "ok"}
+        />
         <Kpi label="Open incidents" value={incs ? open.length : "…"} sub={open.some((i) => i.priority === "P1") ? "including a P1" : "no P1 open"} tone={open.some((i) => i.priority === "P1") ? "bad" : open.length ? "warn" : "ok"} />
         <Kpi
           label="Interfaces OK"
@@ -100,33 +112,35 @@ export default function HealthPage() {
       </div>
 
       <div className="panel">
-        <h2>Incidents</h2>
+        <h2>Incidents <small>tender priority matrix · working days Sun–Thu (Muscat)</small></h2>
         <div className="tblwrap">
           <table>
-            <thead><tr><th>Incident</th><th>Priority</th><th>Opened</th><th>Response</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Incident</th><th>Priority</th><th>Opened</th><th>Response</th><th>Resolution</th><th>Escalation</th><th></th></tr></thead>
             <tbody>
-              {incs?.length === 0 && <Empty cols={6}>No incidents recorded.</Empty>}
+              {incs?.length === 0 && <Empty cols={7}>No incidents recorded.</Empty>}
               {incs?.map((i) => {
                 const t = targets.get(i.priority);
-                const resp = ((i.acknowledged_at ? new Date(i.acknowledged_at).getTime() : now) - new Date(i.opened_at).getTime()) / 60000;
-                const late = t ? resp > t.response_min : false;
+                const resp = ((i.acknowledged_at ? Date.parse(i.acknowledged_at) : now) - Date.parse(i.opened_at)) / 60000;
                 return (
                   <tr key={i.id}>
-                    <td>{ref.incident(i.inc_no)} · {i.title}<small style={{ display: "block" }}>{i.system} · {i.owner}</small></td>
-                    <td>{i.priority}{t && <small style={{ display: "block" }}>{t.label}</small>}</td>
+                    <td>{ref.incident(i.inc_no)} · {i.title}<small style={{ display: "block" }}>{i.system}</small></td>
+                    <td>{i.priority}{t && <small style={{ display: "block" }}>{t.label} · {Number(t.penalty_pct)}% per breach</small>}</td>
                     <td><small>{fmtDateTime(i.opened_at)}</small></td>
                     <td>
-                      <span className={`st ${late ? "bad" : i.acknowledged_at ? "ok" : "warn"}`}>
-                        {i.acknowledged_at ? dur(resp) : `Waiting ${dur(resp)}`}{t ? ` (target ${dur(t.response_min)})` : ""}
+                      <span className={`st ${i.response_breached ? "bad" : i.acknowledged_at ? "ok" : "warn"}`}>
+                        {i.response_breached ? "Breached · " : ""}{i.acknowledged_at ? dur(resp) : `Waiting ${dur(resp)}`}
                       </span>
+                      <small style={{ display: "block" }}>due {fmtDateTime(i.response_due)}</small>
                     </td>
                     <td>
                       {i.state === "resolved" ? (
-                        <span className="st ok">Resolved in {dur((new Date(i.resolved_at!).getTime() - new Date(i.opened_at).getTime()) / 60000)}</span>
+                        <span className={`st ${i.resolve_breached ? "bad" : "ok"}`}>{i.resolve_breached ? "Breached · " : ""}Resolved in {dur((Date.parse(i.resolved_at!) - Date.parse(i.opened_at)) / 60000)}</span>
                       ) : (
-                        <span className={`st ${i.state === "open" ? "bad" : "act"}`}>{i.state === "open" ? "Open" : "In progress"}</span>
+                        <span className={`st ${i.resolve_breached ? "bad" : i.state === "open" ? "warn" : "act"}`}>{i.resolve_breached ? "Breached" : i.state === "open" ? "Open" : "In progress"}</span>
                       )}
+                      <small style={{ display: "block" }}>due {fmtDateTime(i.resolve_due)}</small>
                     </td>
+                    <td>{i.escalation_level ? <span className="st warn">{LEVEL[i.escalation_level] ?? `Level ${i.escalation_level}`}</span> : <span className="mut">—</span>}</td>
                     <td className="num">
                       {responder && i.state !== "resolved" && (
                         <div className="btns" style={{ justifyContent: "flex-end" }}>
@@ -142,8 +156,9 @@ export default function HealthPage() {
           </table>
         </div>
         <p className="note">
-          Response and resolution targets follow the tender&apos;s incident priority matrix:{" "}
-          {[...targets.values()].sort((a, b) => a.priority.localeCompare(b.priority)).map((t) => `${t.priority} respond ${dur(t.response_min)} / resolve ${dur(t.resolve_min)}`).join(" · ")}.
+          Targets (tender incident matrix):{" "}
+          {[...targets.values()].sort((a, b) => a.priority.localeCompare(b.priority)).map((t) => `${t.priority} respond ${target(t.response_min, t.response_wd)} / resolve ${target(t.resolve_min, t.resolve_wd)} (${Number(t.penalty_pct)}%)`).join(" · ")}.
+          Open incidents escalate to the control room at half the target time and to Super admins when it is missed (in-app, push and SMS through the notification pipeline). Penalties are a share of the monthly invoice per breach, shown here only.
         </p>
       </div>
       {opening && <OpenIncident targets={[...targets.values()].sort((a, b) => a.priority.localeCompare(b.priority))} onClose={() => setOpening(false)} onDone={() => { setOpening(false); load(); }} />}

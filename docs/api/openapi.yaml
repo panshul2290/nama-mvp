@@ -1,0 +1,428 @@
+openapi: 3.1.0
+info:
+  title: Nama Tanker integration API
+  version: "1.0.0"
+  summary: Versioned REST API for NWS and partner systems (TAS, TFS/STP, IVMS, BI / data warehouse, notification gateways).
+  description: |
+    Base path `/api/v1`. Every call needs an API key created in **NWS → Settings → Integrations**
+    (`Authorization: Bearer <key>` or `X-Api-Key: <key>`). Each key belongs to one integration,
+    holds a set of scopes and a per-minute rate limit. Only a SHA-256 hash of the key is stored;
+    every call is written to the request log shown on the same screen.
+
+    The handlers are thin: each endpoint is one `api_v1_*` database function (migrations 0028–0029)
+    that checks the key, the scope and the rate limit, then answers.
+
+    **Errors** are JSON: `{"error": {"code": "...", "message": "..."}}`.
+
+    | HTTP | code | when |
+    |---|---|---|
+    | 400 | `invalid_value`, `reason_required` | bad input |
+    | 401 | `api_unauthorized` | missing, unknown or revoked key |
+    | 403 | `api_forbidden` | the key lacks the scope |
+    | 404 | `not_found` | unknown order, permit, site or device |
+    | 409 | `invalid_state` | e.g. a channel not set to an external gateway |
+    | 429 | `api_rate_limited` | over the key's per-minute limit (`Retry-After: 60`) |
+    | 500 | `server_error` | logged |
+
+    **Paging**: list endpoints return `{"data": [...], "next_cursor": "..."}`; pass `cursor` to get
+    the next page; `next_cursor` is null on the last page.
+
+    **Privacy**: no endpoint returns customer names, phone numbers, ID numbers or exact delivery
+    locations; orders carry the area and zone only. Test-zone orders (`is_test`) are left out unless asked for.
+
+    **Webhooks** (outgoing) are described under `webhooks` below.
+servers:
+  - url: https://{host}/api/v1
+    variables:
+      host:
+        default: nama-tanker.example.om
+security:
+  - bearer: []
+tags:
+  - name: Orders
+  - name: Tankers
+  - name: Permits
+    description: Read permits; a TAS-style system records its decisions.
+  - name: Events
+    description: Station (TFS) and treatment-plant (STP) meter events.
+  - name: IVMS
+  - name: Reports
+    description: Paged exports for BI / a data warehouse.
+  - name: Notifications
+    description: The seam for real SMS, WhatsApp, push and email gateways.
+paths:
+  /orders:
+    get:
+      tags: [Orders]
+      summary: List orders (scope orders:read)
+      parameters:
+        - { name: since, in: query, schema: { type: string, format: date-time }, description: Orders created at or after this time }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/OrderStatus" } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: include_test, in: query, schema: { type: boolean, default: false } }
+      responses:
+        "200":
+          description: A page of orders, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Order" } }
+                  next_cursor: { type: [string, "null"] }
+              example:
+                data:
+                  - id: 6f1d0c7e-2b7c-4a6e-9a3f-1c2d3e4f5a6b
+                    order_no: TO-48231
+                    status: delivered
+                    service_type: DW
+                    gallons: 3000
+                    area: Al Khuwair
+                    zone: Bawshar
+                    channel: app
+                    is_emergency: false
+                    slot_start: null
+                    slot_end: null
+                    tanker_plate: 4521 TK
+                    price: { water_charge: 7.7, delivery_fee: 3.5, discount: 0, vat: 0.56, total: 11.76, currency: OMR }
+                    created_at: "2026-10-30T06:10:00Z"
+                    accepted_at: "2026-10-30T06:12:40Z"
+                    filled_at: "2026-10-30T06:31:05Z"
+                    delivered_at: "2026-10-30T07:02:11Z"
+                    cancelled_at: null
+                    sla: on_time
+                    is_test: false
+                next_cursor: "2026-10-30 06:10:00+00|6f1d0c7e-2b7c-4a6e-9a3f-1c2d3e4f5a6b"
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /tankers:
+    get:
+      tags: [Tankers]
+      summary: List tankers (scope tankers:read)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, maximum: 1000, default: 200 } }
+        - { name: cursor, in: query, schema: { type: string }, description: The last plate of the previous page }
+      responses:
+        "200":
+          description: Tankers by plate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Tanker" } }
+                  next_cursor: { type: [string, "null"] }
+              example:
+                data:
+                  - id: 0b2c…
+                    plate: 4521 TK
+                    service_type: DW
+                    capacity_gal: 5000
+                    company: Al Harthy Water Transport
+                    company_cr: "1234567"
+                    online: true
+                    blocked: false
+                    permit_valid: true
+                    device_id: IV-10234
+                    last_fix: { lat: 23.5881, lng: 58.3829, accuracy_m: 3, at: "2026-10-30T07:01:55Z", source: ivms }
+                next_cursor: null
+  /permits:
+    get:
+      tags: [Permits]
+      summary: List permits (scope permits:read)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, approved, rejected] } }
+        - { name: expiring_days, in: query, schema: { type: integer }, description: Approved permits expiring within this many days }
+        - { name: limit, in: query, schema: { type: integer, maximum: 1000, default: 200 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Permits by number
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Permit" } }
+                  next_cursor: { type: [string, "null"] }
+              example:
+                data:
+                  - { permit_no: DW-2026-0412, plate: 4521 TK, type: DW, status: approved, effective_status: approved, stage: decision,
+                      issued_at: "2026-01-04T00:00:00Z", expires_at: "2027-01-04T00:00:00Z", reviewed_at: "2026-01-04T09:12:00Z" }
+                next_cursor: null
+  /permits/{permit_no}:
+    patch:
+      tags: [Permits]
+      summary: Record a permit decision (scope permits:write)
+      description: For a tanker-authorisation (TAS) system. Audited as the integration; the owner is notified.
+      parameters:
+        - { name: permit_no, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [approved, rejected] }
+                reason: { type: string, minLength: 3 }
+                expires_at: { type: [string, "null"], format: date-time }
+            example: { status: rejected, reason: "TAS: ROP inspection failed (brakes)" }
+      responses:
+        "200":
+          description: The permit after the decision
+          content:
+            application/json:
+              example: { permit_no: DW-2026-0412, status: rejected, expires_at: "2027-01-04T00:00:00Z" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /events:
+    post:
+      tags: [Events]
+      summary: Record a station or plant meter event (scope events:write)
+      description: |
+        Recorded as evidence on the order. A meter more than 5 % away from the ordered volume is
+        not verified and raises an NWS alert.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, order_no, site_code, meter_gal]
+              properties:
+                kind: { type: string, enum: [fill, discharge] }
+                order_no: { type: string, example: TO-48231 }
+                plate: { type: string, description: Optional cross-check against the order's tanker }
+                site_code: { type: string, example: FS-GHB }
+                meter_gal: { type: integer, minimum: 0, maximum: 20000 }
+                at: { type: string, format: date-time }
+            example: { kind: fill, order_no: TO-48231, plate: 4521 TK, site_code: FS-GHB, meter_gal: 2990, at: "2026-10-30T06:31:00Z" }
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              example: { id: 9182, order_no: TO-48231, verified: true }
+  /ivms/fixes:
+    post:
+      tags: [IVMS]
+      summary: Send IVMS fixes (scope ivms:write)
+      description: |
+        Up to 500 fixes per call, as an array or `{"fixes": [...]}`. The device must be registered to
+        the tanker (NWS → Settings → Integrations); a device tied to a key accepts fixes only from
+        that key. Fixes older than the tanker's last one are ignored. Fixes within ±10 m are evidence
+        grade for geofence checks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 500
+              items: { $ref: "#/components/schemas/IvmsFix" }
+            example:
+              - { device_id: IV-10234, plate: 4521 TK, lat: 23.58812, lng: 58.38291, accuracy_m: 2.5, speed_kmh: 38, heading: 92, recorded_at: "2026-10-30T07:01:55Z", ignition: true }
+      responses:
+        "200":
+          description: Counts, and the reason for each rejected fix
+          content:
+            application/json:
+              example: { accepted: 1, ignored_older: 0, rejected: [{ device_id: IV-99999, recorded_at: "2026-10-30T07:01:55Z", error: unknown_device }] }
+  /reports/{dataset}:
+    get:
+      tags: [Reports]
+      summary: Paged reporting export (scope reports:read)
+      description: |
+        Datasets: `orders_daily` (orders, deliveries, volume, revenue, on-time per day, zone and
+        service), `orders` (one row per order, same fields as /orders), `complaints` (one row per case,
+        no personal data), `ratings` (rating, driver reference and company per rated order). Test-zone
+        data is excluded. Dates are Muscat days.
+      parameters:
+        - { name: dataset, in: path, required: true, schema: { type: string, enum: [orders_daily, orders, complaints, ratings] } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 5000, default: 1000 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: A page of rows
+          content:
+            application/json:
+              example:
+                dataset: orders_daily
+                data:
+                  - { day: "2026-10-29", zone: Bawshar, service_type: DW, orders: 42, delivered: 39, cancelled: 2, gallons: 118000, revenue_omr: 431.25, on_time: 36 }
+                next_cursor: null
+  /notifications/claim:
+    post:
+      tags: [Notifications]
+      summary: Claim queued messages for an external gateway (scope notify:send)
+      description: |
+        Only for a channel set to "External gateway" in NWS → Settings → Notifications. Claimed
+        messages are hidden from other workers for 5 minutes. Reference worker: `lib/notify/worker.ts`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example: { channel: sms, limit: 50 }
+      responses:
+        "200":
+          description: Messages to send
+          content:
+            application/json:
+              example: { data: [{ id: 1201, channel: sms, to: "+96891234567", lang: ar, title: "تم تعيين صهريج", body: "…", event: tanker_assigned, attempt: 1 }] }
+        "409": { $ref: "#/components/responses/Error" }
+  /notifications/report:
+    post:
+      tags: [Notifications]
+      summary: Report a provider's answer for one message (scope notify:send)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example: { id: 1201, ok: true, provider_ref: SMSC-88213, response: { status: accepted } }
+      responses:
+        "200":
+          description: The message's new status (sent, queued for a retry, or failed)
+          content:
+            application/json:
+              example: { id: 1201, status: sent, attempts: 1 }
+webhooks:
+  event:
+    post:
+      summary: An order or permit event
+      description: |
+        Sent to each active endpoint subscribed to the event (NWS → Settings → Integrations).
+        Events: `order.created`, `order.accepted`, `order.filled`, `order.delivered`, `order.cancelled`,
+        `permit.approved`, `permit.rejected`, `permit.expiring`, and `ping` (test). Test-zone orders
+        are not sent.
+
+        Headers: `X-Nama-Event`, `X-Nama-Delivery` (id), `X-Nama-Signature: t=<unix seconds>,v1=<hex>`
+        where hex = HMAC-SHA256(endpoint secret, `t + "." + raw body`). Verify the raw body before
+        parsing and reject timestamps older than 5 minutes (`lib/webhooks.ts` → `verifyWebhook`).
+
+        Answer 2xx within 5 seconds. Anything else is retried after 1, 2, 4, 8 and 16 minutes; after
+        6 attempts the delivery is marked failed (visible to NWS).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookEvent" }
+            example:
+              id: 1b9a2f44-3a51-4d54-8f8e-6a2b1d0c9e77
+              type: order.delivered
+              created_at: "2026-10-30T07:02:12Z"
+              api_version: v1
+              data: { order_no: TO-48231, id: 6f1d0c7e-2b7c-4a6e-9a3f-1c2d3e4f5a6b, status: delivered, service_type: DW, gallons: 3000, area: Al Khuwair, tanker_plate: 4521 TK, total: 11.76, channel: app, at: "2026-10-30T07:02:12Z" }
+      responses:
+        "200": { description: Received }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: An API key from NWS → Settings → Integrations, e.g. `nama_live_3f…`
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties: { code: { type: string }, message: { type: string } }
+          example: { error: { code: api_forbidden, message: "this key lacks the orders:read scope" } }
+  schemas:
+    OrderStatus:
+      type: string
+      enum: [scheduled, pending_approval, requested, accepted, arriving, arrived, collected, delivered, cancelled]
+    Order:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        order_no: { type: string }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        service_type: { type: string, enum: [DW, WW, TE] }
+        gallons: { type: integer }
+        area: { type: string }
+        zone: { type: [string, "null"] }
+        channel: { type: string, enum: [app, call_centre, business, contract] }
+        is_emergency: { type: boolean }
+        slot_start: { type: [string, "null"], format: date-time }
+        slot_end: { type: [string, "null"], format: date-time }
+        tanker_plate: { type: [string, "null"] }
+        price:
+          type: object
+          properties:
+            water_charge: { type: number }
+            delivery_fee: { type: number }
+            discount: { type: number }
+            vat: { type: number }
+            total: { type: number }
+            currency: { type: string, const: OMR }
+        created_at: { type: string, format: date-time }
+        accepted_at: { type: [string, "null"], format: date-time }
+        filled_at: { type: [string, "null"], format: date-time }
+        delivered_at: { type: [string, "null"], format: date-time }
+        cancelled_at: { type: [string, "null"], format: date-time }
+        sla: { type: string, enum: [on_time, late, on_track, at_risk, overdue, cancelled, not_started] }
+        is_test: { type: boolean }
+    Tanker:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        plate: { type: string }
+        service_type: { type: string, enum: [DW, WW, TE] }
+        capacity_gal: { type: integer }
+        company: { type: [string, "null"] }
+        company_cr: { type: [string, "null"] }
+        online: { type: boolean }
+        blocked: { type: boolean }
+        permit_valid: { type: boolean }
+        device_id: { type: [string, "null"] }
+        last_fix:
+          type: [object, "null"]
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+            accuracy_m: { type: [number, "null"] }
+            at: { type: string, format: date-time }
+            source: { type: [string, "null"], enum: [phone, simulated, ivms, null] }
+    Permit:
+      type: object
+      properties:
+        permit_no: { type: string }
+        plate: { type: string }
+        type: { type: string, enum: [DW, WW, TE] }
+        status: { type: string, enum: [pending, approved, rejected] }
+        effective_status: { type: string, enum: [pending, approved, rejected, expired] }
+        stage: { type: string }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        reviewed_at: { type: [string, "null"], format: date-time }
+    IvmsFix:
+      type: object
+      required: [device_id, lat, lng, accuracy_m, recorded_at]
+      properties:
+        device_id: { type: string, pattern: "^IV-[0-9]{4,6}$" }
+        plate: { type: string, description: Optional cross-check against the registered tanker }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+        accuracy_m: { type: number, minimum: 0, maximum: 500 }
+        speed_kmh: { type: number }
+        heading: { type: number, minimum: 0, maximum: 360 }
+        recorded_at: { type: string, format: date-time, description: Not more than 24 h old or 5 min ahead }
+        ignition: { type: boolean }
+    WebhookEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        created_at: { type: string, format: date-time }
+        api_version: { type: string, const: v1 }
+        data: { type: object }

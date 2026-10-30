@@ -27,6 +27,8 @@ export const SECTION_ROLES: Record<string, StaffRole[]> = {
   "/nws/settings/privacy": ["admin"],
   "/nws/settings/audit": ["admin"],
   "/nws/settings/health": ["admin", "operator"],
+  // API keys and webhooks are admin-only (RLS); operators run IVMS devices and the simulator.
+  "/nws/settings/integrations": ["admin", "operator"],
 };
 
 /** The most specific section a path belongs to (order details belong to Orders, and so on). */

@@ -40,7 +40,7 @@ type Payment = { id: string; method: string; amount: string; wallet_amount: stri
 type WalletTx = { id: number; kind: string; amount: string; memo: string; created_at: string };
 // The proof's location fields come from lib/types (0024); these are the NWS-only extras.
 type Pod = BasePod & { signature_path: string | null; rejected_reason: string | null };
-type SourceEvent = { id: number; source: string; kind: string; meter_gal: number | null; verified: boolean; note: string; created_at: string; site: One<{ code: string; name: string }> };
+type SourceEvent = { id: number; source: string; kind: string; meter_gal: number | null; verified: boolean; note: string; created_at: string; evidence_grade?: string | null; site: One<{ code: string; name: string }> };
 type Message = OrderMessage & { sender: One<{ full_name: string }> };
 const ROLE: Record<OrderMessage["sender_role"], string> = { customer: "Customer", driver: "Driver", staff: "NWS" };
 type Complaint = { id: string; case_no: number; category: string; state: string; created_at: string; due_at: string };
@@ -51,6 +51,8 @@ type Dlg = "reschedule" | "cancel" | "refund" | "penalty" | null;
 const PAY_LABEL: Record<string, string> = { wallet: "Wallet", card: "Card", omannet: "OmanNet", wallet_card: "Wallet + card", account: "On account (B2B)", cash: "Cash on delivery" };
 const PAY_TONE: Record<string, string> = { authorized: "act", captured: "ok", refunded: "warn", partially_refunded: "warn", failed: "bad", on_account: "act" };
 const SOURCE_LABEL: Record<string, string> = { tfs: "Filling station (TFS)", ivms: "IVMS", stp: "Treatment plant (STP)", tas: "TAS" };
+// Evidence grade of a geofence check (0028): the tender's ±10 m.
+const GRADE: Record<string, string> = { ivms: "IVMS ±10 m", gps_precise: "GPS ±10 m", low_accuracy: "Low accuracy", test_zone: "Test zone" };
 const ON_JOB = ["accepted", "arriving", "arrived", "collected"];
 
 /** Tomorrow 08:00–10:00 Muscat time (UTC+4, no daylight saving). */
@@ -100,7 +102,7 @@ export default function OrderDetail() {
       db.from("payments").select("*").eq("order_id", id).order("created_at"),
       db.from("wallet_tx").select("id, kind, amount, memo, created_at").eq("order_id", id).order("created_at"),
       db.from("pods").select("*").eq("order_id", id).maybeSingle(),
-      db.from("source_events").select("id, source, kind, meter_gal, verified, note, created_at, site:sites(code, name)").eq("order_id", id).order("created_at"),
+      db.from("source_events").select("id, source, kind, meter_gal, verified, note, created_at, evidence_grade, site:sites(code, name)").eq("order_id", id).order("created_at"),
       db.from("order_messages").select("id, order_id, sender_id, sender_role, body, created_at, read_at, sender:profiles!order_messages_sender_id_fkey(full_name)").eq("order_id", id).order("created_at"),
       db.from("complaints").select("id, case_no, category, state, created_at, due_at").eq("order_id", id).order("created_at"),
       db.from("penalties").select("id, penalty_no, amount, state, reason, created_at, rule:penalty_rules(label)").eq("order_id", id).order("created_at"),
@@ -317,7 +319,8 @@ export default function OrderDetail() {
                         <td>{one(e.site)?.name ?? "—"}</td>
                         <td className="num">{e.meter_gal != null ? e.meter_gal.toLocaleString() : "—"}</td>
                         <td>
-                          <St tone={e.verified ? "ok" : "bad"}>{e.verified ? "Verified" : "Mismatch"}</St>
+                          <St tone={e.verified ? "ok" : "bad"}>{e.verified ? "Verified" : "Mismatch"}</St>{" "}
+                          {e.evidence_grade && <St tone={e.evidence_grade === "low_accuracy" ? "warn" : "ok"}>{GRADE[e.evidence_grade] ?? e.evidence_grade}</St>}
                           {e.note && <small style={{ display: "block" }}>{e.note}</small>}
                         </td>
                       </tr>

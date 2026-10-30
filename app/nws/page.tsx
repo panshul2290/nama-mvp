@@ -1,5 +1,6 @@
 "use client";
 
+import { FixQuality } from "@/components/nws/FixQuality";
 import "./ops.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -23,7 +24,7 @@ import type { ServiceType } from "@/lib/pricing";
 
 type LiveTanker = {
   id: string; plate: string; service_type: ServiceType; capacity_gal: number; is_online: boolean; blocked: boolean; blocked_reason: string | null;
-  last_lat: number | null; last_lng: number | null; last_fix_at: string | null; last_accuracy_m: number | null; location_age_s: number | null;
+  last_lat: number | null; last_lng: number | null; last_fix_at: string | null; last_accuracy_m: number | null; last_fix_source: string | null; location_age_s: number | null;
   company: { name: string } | { name: string }[] | null;
   assignments: { unassigned_at: string | null; driver: { full_name: string; phone: string | null } | null }[];
   permits: Permit[];
@@ -92,7 +93,7 @@ export default function LiveOperations() {
       db
         .from("tankers")
         .select(
-          "id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_fix_at, last_accuracy_m, location_age_s, company:companies(name), assignments:tanker_assignments(unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
+          "id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_fix_at, last_accuracy_m, last_fix_source, location_age_s, company:companies(name), assignments:tanker_assignments(unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
         )
         .order("plate"),
       db.from("orders").select(ORDER_COLS).in("status", ACTIVE).order("created_at", { ascending: false }),
@@ -146,10 +147,13 @@ export default function LiveOperations() {
     });
     const poll = setInterval(load, 30_000);
     const sc = setInterval(scan, SCAN_EVERY);
+    // The built-in IVMS simulator (Settings → Integrations) moves its tankers while this board is open.
+    const ivms = setInterval(() => void db.rpc("staff_ivms_sim_tick"), 5000);
     return () => {
       clearTimeout(first);
       clearInterval(poll);
       clearInterval(sc);
+      clearInterval(ivms);
     };
   }, [load, scan]);
   useRealtime("nws-live", ["tankers", "orders", "alerts"], load, 5000);
@@ -504,8 +508,8 @@ export default function LiveOperations() {
                   <div>
                     <span>GPS</span>
                     <b>
-                      {tanker.last_accuracy_m != null ? `±${tanker.last_accuracy_m.toFixed(1)} m · ` : ""}
-                      {tAge == null ? "no fix yet" : `fix ${agoText(tAge)}`}
+                      {tanker.last_fix_at ? <FixQuality source={tanker.last_fix_source} accuracy={tanker.last_accuracy_m} /> : null}{" "}
+                      {tAge == null ? "no fix yet" : `· fix ${agoText(tAge)}`}
                     </b>
                   </div>
                   <div>

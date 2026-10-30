@@ -1,5 +1,6 @@
 "use client";
 
+import { FixQuality } from "@/components/nws/FixQuality";
 import "../ops.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -30,7 +31,7 @@ type WaterTest = { cert_no: string; tested_at: string; passed: boolean };
 type Device = { id: string; firmware: string; sensors: Record<string, boolean>; installed_at: string };
 type Row = FleetTanker & {
   company_id: string | null;
-  last_lat: number | null; last_lng: number | null; last_fix_at: string | null; last_accuracy_m: number | null;
+  last_lat: number | null; last_lng: number | null; last_fix_at: string | null; last_accuracy_m: number | null; last_fix_source: string | null;
   company: { name: string } | { name: string }[] | null;
   water_tests: WaterTest[];
   device: Device | Device[] | null;
@@ -88,7 +89,7 @@ function Fleet() {
       db
         .from("tankers")
         .select(
-          "id, plate, service_type, capacity_gal, company_id, is_online, blocked, blocked_reason, blocked_at, location_age_s, last_lat, last_lng, last_fix_at, last_accuracy_m, company:companies(name), water_tests(cert_no, tested_at, passed), device:devices(id, firmware, sensors, installed_at), assignments:tanker_assignments(id, driver_id, assigned_at, unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
+          "id, plate, service_type, capacity_gal, company_id, is_online, blocked, blocked_reason, blocked_at, location_age_s, last_lat, last_lng, last_fix_at, last_accuracy_m, last_fix_source, company:companies(name), water_tests(cert_no, tested_at, passed), device:devices(id, firmware, sensors, installed_at), assignments:tanker_assignments(id, driver_id, assigned_at, unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
         )
         .order("plate"),
       db.from("profiles").select("id, full_name, company_id").eq("role", "driver").order("full_name"),
@@ -278,7 +279,7 @@ function Fleet() {
                     <th>Service</th>
                     <th>Permit</th>
                     <th>Water test</th>
-                    <th className="num">IVMS accuracy</th>
+                    <th className="num">Last fix (source, accuracy)</th>
                     <th>Last fix</th>
                     <th>Status</th>
                     <th></th>
@@ -319,7 +320,7 @@ function Fleet() {
                             <St tone="warn">No test</St>
                           )}
                         </td>
-                        <td className="num">{t.last_accuracy_m != null ? `±${t.last_accuracy_m.toFixed(1)} m` : "—"}</td>
+                        <td className="num"><FixQuality source={t.last_fix_source} accuracy={t.last_accuracy_m} /></td>
                         <td>
                           {t.last_fix_at ? ago(t.last_fix_at, now) : <span className="mut">No fix</span>}
                           {stale ? <small style={{ display: "block", color: "var(--bad)" }}>stale while online</small> : <small style={{ display: "block" }}>{t.is_online ? "online" : "offline"}</small>}
@@ -459,7 +460,7 @@ function Fleet() {
                         <td>{d.firmware}</td>
                         <td>{fmtDate(d.installed_at)}</td>
                         <td>{t.last_fix_at ? ago(t.last_fix_at, now) : "—"}</td>
-                        <td className="num">{t.last_accuracy_m != null ? `±${t.last_accuracy_m.toFixed(1)} m` : "—"}</td>
+                        <td className="num"><FixQuality source={t.last_fix_source} accuracy={t.last_accuracy_m} /></td>
                         <td><St tone={sig[1]}>{sig[0]}</St></td>
                         <td><small>{sensors.join(", ") || "—"}</small></td>
                       </tr>
