@@ -93,6 +93,8 @@ export function Credits({ copy = "© 2026 Nama Water Services. All data in this 
   return (
     <>
       <div className="si-foot">
+        {/* eslint-disable-next-line @next/next/no-img-element -- small static SVG, also in the static mobile export */}
+        <img className="al" src="/brand/aldar-mark.svg" alt="" aria-hidden="true" />
         <span>
           <small>Developed by</small>
           <b>Aldar Development Projects</b>
