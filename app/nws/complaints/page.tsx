@@ -5,11 +5,15 @@ import "../ops.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Bars, CHANNEL_LABEL, HOUR, Kpi, Modal, n3, one, pct, St, Tabs, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
-import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
+import { COMPLAINTS } from "@/components/nws/i18n/complaints";
+import { Bars, CHANNEL_LABEL, HOUR, Kpi, Modal, one, St, Tabs, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
+import { useStaff } from "@/components/nws/StaffContext";
+import { useFmt, type Fmt } from "@/components/portal/i18n";
 import { Loading } from "@/components/Shell";
 import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
+import { useT } from "@/lib/i18n";
+import { label as vocab } from "@/lib/labels";
 import { muscatDayStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
 
@@ -23,20 +27,37 @@ type Case = {
 };
 type Sla = { category: string; label: string; hours: number; team: string };
 type Note = { id: number; body: string; internal: boolean; author_role: string; created_at: string; author: { full_name: string } | { full_name: string }[] | null };
+type T = (key: string, vars?: Record<string, string | number>) => string;
 
 const STATE_TONE: Record<State, string> = { new: "warn", assigned: "act", escalated: "bad", resolved: "ok" };
-const STATE_LABEL: Record<State, string> = { new: "New", assigned: "Assigned", escalated: "Escalated", resolved: "Resolved" };
 type Tab = "cases" | "quality" | "sla";
 
+/** Words for a case: its state, channel, category (complaint_sla label in English) and owner team. */
+function useWords() {
+  const t = useT(COMPLAINTS);
+  const f = useFmt();
+  return useMemo(
+    () => ({
+      t,
+      f,
+      state: (s: State) => t(`st_${s}`),
+      channel: (c: string) => vocab("channel", c, f.lang, CHANNEL_LABEL[c] ?? c),
+      cat: (code: string, fallback?: string) => (COMPLAINTS[`cat_${code}`] ? t(`cat_${code}`) : (fallback ?? code.replace(/_/g, " "))),
+      team: (name: string) => (COMPLAINTS[`team_${name}`] ? t(`team_${name}`) : name),
+    }),
+    [t, f],
+  );
+}
+
 /** "5 h left" / "3 h over" against the case's due time. */
-function slaText(c: Pick<Case, "state" | "due_at" | "resolved_at">, now: number): { text: string; tone: string } {
+function slaText(c: Pick<Case, "state" | "due_at" | "resolved_at">, now: number, t: T, f: Fmt): { text: string; tone: string } {
   if (c.state === "resolved") {
     const ok = c.resolved_at && c.resolved_at <= c.due_at;
-    return { text: ok ? "Met" : "Missed", tone: ok ? "ok" : "bad" };
+    return { text: ok ? t("slaMet") : t("slaMissed"), tone: ok ? "ok" : "bad" };
   }
   const left = (Date.parse(c.due_at) - now) / HOUR;
-  if (left < 0) return { text: `${Math.ceil(-left)} h over`, tone: "bad" };
-  return { text: `${Math.floor(left)} h left`, tone: left < 4 ? "warn" : "" };
+  if (left < 0) return { text: t("hOver", { n: f.n(Math.ceil(-left)) }), tone: "bad" };
+  return { text: t("hLeft", { n: f.n(Math.floor(left)) }), tone: left < 4 ? "warn" : "" };
 }
 
 export default function ComplaintsPage() {
@@ -48,6 +69,7 @@ export default function ComplaintsPage() {
 }
 
 function Complaints() {
+  const t = useT(COMPLAINTS);
   const linked = useSearchParams().get("id");
   const [tab, setTab] = useState<Tab>("cases");
   const [cases, setCases] = useState<Case[] | null>(null);
@@ -87,15 +109,15 @@ function Complaints() {
     <>
       <div className="vhead">
         <div>
-          <h1>Complaints</h1>
-          <p>Case management from submission to resolution, with escalation, refunds and SLA tracking. Synced with the Genesys call centre so agents and the tanker team work the same case.</p>
+          <h1>{t("title")}</h1>
+          <p>{t("lead")}</p>
         </div>
       </div>
       <Tabs<Tab>
         tabs={[
-          ["cases", "Cases", open.length],
-          ["quality", "Service quality"],
-          ["sla", "SLA and call centre"],
+          ["cases", t("tabCases"), open.length],
+          ["quality", t("tabQuality")],
+          ["sla", t("tabSla")],
         ]}
         value={tab}
         onChange={setTab}
@@ -109,6 +131,8 @@ function Complaints() {
 
 function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; slas: Sla[]; sel: string | null; setSel: (id: string) => void; reload: () => Promise<void> }) {
   const { can } = useStaff();
+  const w = useWords();
+  const { t, f: fm } = w;
   const now = useNow(30_000);
   const [f, setF] = useState<"open" | State | "all" | "overdue">("open");
   const [q, setQ] = useState("");
@@ -126,7 +150,7 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
     return String(c.case_no).includes(s) || (cu?.full_name ?? "").toLowerCase().includes(s) || (cu?.phone ?? "").replace(/\s/g, "").includes(s.replace(/\s/g, "")) || (o ? String(o.order_no).includes(s) : false);
   };
   const list = all.filter((c) => match(c, f) && (!cat || c.category === cat) && hit(c));
-  const label = (cat: string) => slas.find((s) => s.category === cat)?.label ?? cat.replace(/_/g, " ");
+  const label = (cat: string) => w.cat(cat, slas.find((s) => s.category === cat)?.label);
   const selected = all.find((c) => c.id === sel) ?? null;
   const canLog = can("complaints_agent", "operator");
   const midnight = muscatDayStart(now).getTime(); // "today" is the Muscat day
@@ -135,10 +159,10 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
   return (
     <>
       <div className="okpis">
-        <Kpi label="Open cases" value={cases ? all.filter((c) => c.state !== "resolved").length : "—"} sub={`${all.filter((c) => c.state === "new").length} new, not yet assigned`} tone="warn" />
-        <Kpi label="Past SLA" value={cases ? all.filter(overdue).length : "—"} sub="open cases over their resolution time" tone={all.some(overdue) ? "bad" : "ok"} />
-        <Kpi label="Escalated" value={cases ? all.filter((c) => c.state === "escalated").length : "—"} sub="with a supervisor" />
-        <Kpi label="Opened today" value={cases ? today : "—"} sub={`${all.filter((c) => c.channel === "call_centre" && Date.parse(c.created_at) >= midnight).length} from the call centre`} />
+        <Kpi label={t("kOpen")} value={cases ? fm.n(all.filter((c) => c.state !== "resolved").length) : "—"} sub={t("kOpenSub", { n: fm.n(all.filter((c) => c.state === "new").length) })} tone="warn" />
+        <Kpi label={t("kPast")} value={cases ? fm.n(all.filter(overdue).length) : "—"} sub={t("kPastSub")} tone={all.some(overdue) ? "bad" : "ok"} />
+        <Kpi label={t("kEscalated")} value={cases ? fm.n(all.filter((c) => c.state === "escalated").length) : "—"} sub={t("kEscalatedSub")} />
+        <Kpi label={t("kToday")} value={cases ? fm.n(today) : "—"} sub={t("kTodaySub", { n: fm.n(all.filter((c) => c.channel === "call_centre" && Date.parse(c.created_at) >= midnight).length) })} />
       </div>
       <div className="two">
         <div className="panel">
@@ -146,65 +170,65 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
             <div className="chips">
               {(
                 [
-                  ["open", "Open"],
-                  ["new", "New"],
-                  ["escalated", "Escalated"],
-                  ["overdue", "Past SLA"],
-                  ["resolved", "Resolved"],
-                  ["all", "All"],
+                  ["open", "fOpen"],
+                  ["new", "fNew"],
+                  ["escalated", "fEscalated"],
+                  ["overdue", "fOverdue"],
+                  ["resolved", "fResolved"],
+                  ["all", "all"],
                 ] as const
               ).map(([k, l]) => (
                 <button key={k} className={`chip ${f === k ? "on" : ""}`} onClick={() => setF(k)}>
-                  {l}
-                  <span className="tc">{all.filter((c) => match(c, k)).length}</span>
+                  {t(l)}
+                  <span className="tc">{fm.n(all.filter((c) => match(c, k)).length)}</span>
                 </button>
               ))}
             </div>
-            <button className="btn pri" disabled={!canLog} title={canLog ? undefined : "Complaints agents and operators only"} onClick={() => setLogging(true)}>
-              Log case from Genesys call
+            <button className="btn pri" disabled={!canLog} title={canLog ? undefined : t("onlyLog")} onClick={() => setLogging(true)}>
+              {t("logCase")}
             </button>
           </div>
           <div className="toolbar">
             <div className="filters">
-              <input className="in" placeholder="Case, customer, mobile or order" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search cases" style={{ width: 230 }} />
-              <select className="in" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
-                <option value="">All categories</option>
+              <input className="in" placeholder={t("searchPh")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("searchAria")} style={{ width: 230 }} />
+              <select className="in" value={cat} onChange={(e) => setCat(e.target.value)} aria-label={t("category")}>
+                <option value="">{t("allCats")}</option>
                 {slas.map((s) => (
-                  <option key={s.category} value={s.category}>{s.label}</option>
+                  <option key={s.category} value={s.category}>{w.cat(s.category, s.label)}</option>
                 ))}
               </select>
             </div>
-            {all.length >= 500 && <small className="mut">Latest 500 cases</small>}
+            {all.length >= 500 && <small className="mut">{t("latest500")}</small>}
           </div>
           <div className="tblwrap">
             <table>
               <thead>
                 <tr>
-                  <th>Case</th>
-                  <th>Category</th>
-                  <th>Channel</th>
-                  <th>Status</th>
-                  <th>SLA</th>
-                  <th>Order</th>
+                  <th>{t("colCase")}</th>
+                  <th>{t("category")}</th>
+                  <th>{t("colChannel")}</th>
+                  <th>{t("status")}</th>
+                  <th>{t("colSla")}</th>
+                  <th>{t("order")}</th>
                 </tr>
               </thead>
               <tbody>
-                {!cases && <tr><td colSpan={6} className="empty">Loading…</td></tr>}
-                {cases && list.length === 0 && <tr><td colSpan={6} className="empty">No cases.</td></tr>}
+                {!cases && <tr><td colSpan={6} className="empty">{t("loading")}</td></tr>}
+                {cases && list.length === 0 && <tr><td colSpan={6} className="empty">{t("noCases")}</td></tr>}
                 {list.map((c) => {
-                  const s = slaText(c, now);
+                  const s = slaText(c, now, t, fm);
                   const o = one(c.order);
                   return (
                     <tr key={c.id} className={`click ${sel === c.id ? "sel" : ""}`} onClick={() => setSel(c.id)}>
                       <td>
-                        <b>C-{c.case_no}</b>
+                        <b dir="ltr">C-{c.case_no}</b>
                         <small style={{ display: "block" }}>{one(c.customer)?.full_name || "—"}</small>
                       </td>
                       <td>{label(c.category)}</td>
-                      <td>{CHANNEL_LABEL[c.channel] ?? c.channel}</td>
-                      <td><St tone={STATE_TONE[c.state]}>{STATE_LABEL[c.state]}</St></td>
+                      <td>{w.channel(c.channel)}</td>
+                      <td><St tone={STATE_TONE[c.state]}>{w.state(c.state)}</St></td>
                       <td>{c.state === "resolved" ? <St tone={s.tone}>{s.text}</St> : s.tone === "bad" ? <St tone="bad">{s.text}</St> : <span className={s.tone === "warn" ? "" : "mut"} style={s.tone === "warn" ? { color: "var(--warn)", fontWeight: 700 } : undefined}>{s.text}</span>}</td>
-                      <td>{o ? orderNo(o.order_no) : "—"}</td>
+                      <td>{o ? <bdi dir="ltr">{orderNo(o.order_no)}</bdi> : "—"}</td>
                     </tr>
                   );
                 })}
@@ -217,8 +241,8 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
             <CaseDetail key={selected.id} c={selected} label={label(selected.category)} teams={[...new Set(slas.map((s) => s.team))]} now={now} reload={reload} />
           ) : (
             <>
-              <h2>Case detail</h2>
-              <div className="empty">Select a case to assign, escalate, refund or resolve it.</div>
+              <h2>{t("detail")}</h2>
+              <div className="empty">{t("selectCase")}</div>
             </>
           )}
         </div>
@@ -239,18 +263,14 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
 }
 
 type Mode = "resolve" | "note" | "reply" | "assign" | "escalate" | "refund";
-const MODE_TEXT: Record<Mode, [label: string, button: string, min: number]> = {
-  resolve: ["Resolution (sent to the customer)", "Resolve and notify", 3],
-  reply: ["Reply to the customer (they see it in the app and get a notification)", "Send reply", 1],
-  note: ["Internal note", "Add note", 3],
-  assign: ["Note for the team (internal, optional)", "Assign", 0],
-  escalate: ["Why it needs a supervisor (internal, optional)", "Escalate", 0],
-  refund: ["Reason (internal, optional)", "Refund to wallet", 0],
-};
+/** Minimum text length for each mode; the field label and button are m_<mode>_l / m_<mode>_b. */
+const MODE_MIN: Record<Mode, number> = { resolve: 3, reply: 1, note: 3, assign: 0, escalate: 0, refund: 0 };
 
 function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; teams: string[]; now: number; reload: () => Promise<void> }) {
   const privacy = usePrivacy();
   const { can } = useStaff();
+  const w = useWords();
+  const { t, f } = w;
   const run = useRpc();
   const photo = useSignedUrl(c.photo_path);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -260,7 +280,7 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const agent = can("complaints_agent", "operator", "admin");
-  const title = agent ? undefined : "Complaints agents, operators and admins only";
+  const title = agent ? undefined : t("onlyAgent");
 
   const loadNotes = useCallback(async () => {
     const { data } = await supabase()
@@ -285,12 +305,12 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
   }
   function submitMode() {
     const body = text.trim() || null;
-    if (mode === "resolve") return act("resolve", { p_body: body }, `C-${c.case_no} resolved — customer notified`);
-    if (mode === "reply") return act("reply", { p_body: body }, "Reply sent — the customer is notified");
-    if (mode === "note") return act("note", { p_body: body }, "Internal note added");
-    if (mode === "assign") return act("assign", { p_team: team, p_body: body }, `Assigned to ${team}`);
-    if (mode === "escalate") return act("escalate", { p_team: team || null, p_body: body }, "Escalated");
-    if (mode === "refund") return act("refund", { p_amount: Number(amount) }, `${n3(amount)} OMR refunded to the customer's wallet`);
+    if (mode === "resolve") return act("resolve", { p_body: body }, t("okResolved", { n: c.case_no }));
+    if (mode === "reply") return act("reply", { p_body: body }, t("okReply"));
+    if (mode === "note") return act("note", { p_body: body }, t("okNote"));
+    if (mode === "assign") return act("assign", { p_team: team, p_body: body }, t("okAssigned", { team: w.team(team) }));
+    if (mode === "escalate") return act("escalate", { p_team: team || null, p_body: body }, t("okEscalated"));
+    if (mode === "refund") return act("refund", { p_amount: Number(amount) }, t("okRefund", { amt: f.omr3(amount) }));
   }
 
   async function act(action: string, extra: Record<string, unknown>, ok: string) {
@@ -306,61 +326,61 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
 
   const o = one(c.order);
   const cu = one(c.customer);
-  const s = slaText(c, now);
+  const s = slaText(c, now, t, f);
   return (
     <>
       <h2>
         <span>
-          C-{c.case_no} <St tone={STATE_TONE[c.state]}>{STATE_LABEL[c.state]}</St>
+          <bdi dir="ltr">C-{c.case_no}</bdi> <St tone={STATE_TONE[c.state]}>{w.state(c.state)}</St>
         </span>
-        <small>{CHANNEL_LABEL[c.channel]}</small>
+        <small>{w.channel(c.channel)}</small>
       </h2>
       <dl className="kv">
-        <dt>Customer</dt>
+        <dt>{t("customer")}</dt>
         <dd>
           {c.customer_id ? (
             <Link className="lk" href={`/nws/customers?id=${c.customer_id}`}>
-              {cu?.full_name || "Customer"}
+              {cu?.full_name || t("customer")}
             </Link>
           ) : (
             "—"
           )}
           {cu?.phone ? <small className="mut"> · <Phone value={cu.phone} maskPhones={privacy.maskPhones} /> {c.customer_id && <RevealButton profileId={c.customer_id} kind="contact" privileged={privacy.privileged} />}</small> : null}
         </dd>
-        <dt>Category</dt>
+        <dt>{t("category")}</dt>
         <dd>{label}</dd>
-        <dt>Order</dt>
+        <dt>{t("order")}</dt>
         <dd>
           {o ? (
             <Link className="lk" href={`/nws/orders/${o.id}`}>
-              {orderNo(o.order_no)}
+              <bdi dir="ltr">{orderNo(o.order_no)}</bdi>
             </Link>
           ) : (
             "—"
           )}
-          {o?.tanker_plate ? <small className="mut"> · {o.tanker_plate}{o.driver_name ? ` · ${o.driver_name}` : ""}</small> : null}
+          {o?.tanker_plate ? <small className="mut"> · <bdi dir="ltr">{o.tanker_plate}</bdi>{o.driver_name ? ` · ${o.driver_name}` : ""}</small> : null}
         </dd>
-        <dt>Owner team</dt>
-        <dd>{c.owner_team || "Unassigned"}</dd>
-        <dt>Opened</dt>
-        <dd>{fmtDateTime(c.created_at)}</dd>
-        <dt>SLA</dt>
+        <dt>{t("ownerTeam")}</dt>
+        <dd>{c.owner_team ? w.team(c.owner_team) : t("unassigned")}</dd>
+        <dt>{t("opened")}</dt>
+        <dd>{f.dateTime(c.created_at)}</dd>
+        <dt>{t("colSla")}</dt>
         <dd>
-          {c.sla_hours} h · due {fmtDateTime(c.due_at)} <St tone={s.tone}>{s.text}</St>
+          {t("slaLine", { h: f.n(c.sla_hours), date: f.dateTime(c.due_at) })} <St tone={s.tone}>{s.text}</St>
         </dd>
         {c.genesys_id && (
           <>
-            <dt>Genesys</dt>
-            <dd>Interaction {c.genesys_id}</dd>
+            <dt>{t("genesys")}</dt>
+            <dd>{t("interaction", { id: "" })}<bdi dir="ltr">{c.genesys_id}</bdi></dd>
           </>
         )}
         {Number(c.refund_amount) > 0 && (
           <>
-            <dt>Refunded</dt>
-            <dd>{n3(c.refund_amount)} OMR to wallet</dd>
+            <dt>{t("refunded")}</dt>
+            <dd>{t("refundedToWallet", { amt: f.omr3(c.refund_amount) })}</dd>
           </>
         )}
-        <dt>Description</dt>
+        <dt>{t("description")}</dt>
         <dd style={{ fontWeight: 400 }}>{c.description}</dd>
       </dl>
       {c.photo_path && (
@@ -368,37 +388,37 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
           {photo ? (
             <a href={photo} target="_blank" rel="noreferrer">
               {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
-              <img className="pod-img" src={photo} alt={`Photo attached to C-${c.case_no}`} />
+              <img className="pod-img" src={photo} alt={t("photoAlt", { n: c.case_no })} />
             </a>
           ) : (
-            <small className="mut">Loading photo…</small>
+            <small className="mut">{t("loadingPhoto")}</small>
           )}
         </div>
       )}
       {/* The resolution is also a timeline entry; show the banner only when it isn't (older cases). */}
-      {c.state === "resolved" && c.resolution && !notes.some((n) => n.body === c.resolution) && <div className="banner info" style={{ margin: "0 16px 12px" }}>Resolution: {c.resolution}</div>}
+      {c.state === "resolved" && c.resolution && !notes.some((n) => n.body === c.resolution) && <div className="banner info" style={{ margin: "0 16px 12px" }}>{t("resolutionX", { text: c.resolution })}</div>}
 
       <h2 style={{ paddingTop: 4 }}>
-        Timeline <small>internal notes are not shown to the customer</small>
+        {t("timeline")} <small>{t("timelineSub")}</small>
       </h2>
       <ul className="tl">
         <li className="done">
-          Case opened via {CHANNEL_LABEL[c.channel]}
-          <small>{fmtDateTime(c.created_at)}</small>
+          {t("openedVia", { channel: w.channel(c.channel) })}
+          <small>{f.dateTime(c.created_at)}</small>
         </li>
         {notes.map((n) => (
           <li key={n.id} className={n.internal ? "int" : "done"}>
-            {n.internal && <b>Internal · </b>}
+            {n.internal && <b>{t("internalDot")}</b>}
             {n.body}
             <small>
-              {n.author_role === "staff" ? one(n.author)?.full_name || "NWS staff" : one(n.author)?.full_name || n.author_role} · {fmtDateTime(n.created_at)}
+              {n.author_role === "staff" ? one(n.author)?.full_name || t("nwsStaff") : one(n.author)?.full_name || n.author_role} · {f.dateTime(n.created_at)}
             </small>
           </li>
         ))}
         {c.resolved_at && (
           <li className="done">
-            Resolved — customer notified by SMS and push
-            <small>{fmtDateTime(c.resolved_at)}</small>
+            {t("resolvedNotified")}
+            <small>{f.dateTime(c.resolved_at)}</small>
           </li>
         )}
       </ul>
@@ -408,45 +428,45 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
           <div className="fld">
             {(mode === "assign" || mode === "escalate") && (
               <>
-                <label htmlFor="cteam">{mode === "assign" ? "Owner team" : "Escalate to"}</label>
+                <label htmlFor="cteam">{mode === "assign" ? t("ownerTeam") : t("escalateTo")}</label>
                 <select id="cteam" className="in" value={team} onChange={(e) => setTeam(e.target.value)} style={{ marginBottom: 8 }}>
-                  {mode === "escalate" && <option value="">Tanker operations supervisor</option>}
-                  {teams.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                  {mode === "escalate" && <option value="">{t("supervisor")}</option>}
+                  {teams.map((x) => (
+                    <option key={x} value={x}>{w.team(x)}</option>
                   ))}
                 </select>
               </>
             )}
             {mode === "refund" && (
               <>
-                <label htmlFor="camt">Amount in OMR (up to 50.000 per refund)</label>
-                <input id="camt" className="in" type="number" min="0.1" max="50" step="0.5" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ marginBottom: 6 }} />
+                <label htmlFor="camt">{t("refundAmt")}</label>
+                <input id="camt" className="in" type="number" dir="ltr" min="0.1" max="50" step="0.5" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ marginBottom: 6 }} />
                 <small className="mut" style={{ display: "block", marginBottom: 8 }}>
-                  Already refunded on this case: {n3(c.refund_amount)} OMR. The money goes back to the order’s payment where possible, otherwise to the wallet as goodwill.
+                  {t("alreadyRefunded", { amt: f.omr3(c.refund_amount) })}
                 </small>
               </>
             )}
             {mode !== "refund" && (
               <>
-                <label htmlFor="cbody">{MODE_TEXT[mode][0]}</label>
+                <label htmlFor="cbody">{t(`m_${mode}_l`)}</label>
                 <textarea id="cbody" className="in" rows={3} value={text} onChange={(e) => setText(e.target.value)} autoFocus />
               </>
             )}
             <div className="btns" style={{ marginTop: 8, justifyContent: "flex-end" }}>
               <button className="btn" onClick={() => setMode(null)} disabled={busy}>
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 className={`btn ${mode === "escalate" ? "bad" : "pri"}`}
                 disabled={
                   busy ||
-                  text.trim().length < MODE_TEXT[mode][2] ||
+                  text.trim().length < MODE_MIN[mode] ||
                   (mode === "assign" && !team) ||
                   (mode === "refund" && !(Number(amount) > 0 && Number(amount) <= 50))
                 }
                 onClick={submitMode}
               >
-                {MODE_TEXT[mode][1]}
+                {t(`m_${mode}_b`)}
               </button>
             </div>
           </div>
@@ -455,32 +475,32 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
           (c.state !== "resolved" ? (
             <div className="btns">
               <button className="btn" disabled={!agent || busy} title={title} onClick={() => start("assign")}>
-                Assign…
+                {t("assignDots")}
               </button>
               <button className="btn bad" disabled={!agent || busy || c.state === "escalated"} title={title} onClick={() => start("escalate")}>
-                Escalate…
+                {t("escalateDots")}
               </button>
-              <button className="btn" disabled={!agent || busy || !c.customer_id} title={!c.customer_id ? "No customer on this case" : title} onClick={() => start("refund")}>
-                Refund…
+              <button className="btn" disabled={!agent || busy || !c.customer_id} title={!c.customer_id ? t("noCustomer") : title} onClick={() => start("refund")}>
+                {t("refundDots")}
               </button>
-              <button className="btn" disabled={!agent || busy || !c.customer_id} title={!c.customer_id ? "No customer on this case" : title} onClick={() => start("reply")}>
-                Reply to customer
+              <button className="btn" disabled={!agent || busy || !c.customer_id} title={!c.customer_id ? t("noCustomer") : title} onClick={() => start("reply")}>
+                {t("replyCust")}
               </button>
               <button className="btn pri" disabled={!agent || busy} title={title} onClick={() => start("resolve")}>
-                Resolve and notify
+                {t("m_resolve_b")}
               </button>
               <button className="btn" disabled={!agent || busy} title={title} onClick={() => start("note")}>
-                Add internal note
+                {t("addNote")}
               </button>
             </div>
           ) : (
             <div className="btns">
-              <St tone="ok">Resolved — customer notified by SMS and push</St>
-              <button className="btn sm" disabled={!agent || busy} title={title} onClick={() => act("reopen", {}, `C-${c.case_no} reopened`)}>
-                Reopen
+              <St tone="ok">{t("resolvedNotified")}</St>
+              <button className="btn sm" disabled={!agent || busy} title={title} onClick={() => act("reopen", {}, t("okReopened", { n: c.case_no }))}>
+                {t("reopen")}
               </button>
               <button className="btn sm" disabled={!agent || busy} title={title} onClick={() => start("note")}>
-                Add internal note
+                {t("addNote")}
               </button>
             </div>
           ))}
@@ -493,6 +513,8 @@ type Caller = { id: string; full_name: string; phone: string | null };
 function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => void; onDone: (id: string) => Promise<void> }) {
   const privacy = usePrivacy();
   const { toast } = useStaff();
+  const w = useWords();
+  const { t, f } = w;
   const [q, setQ] = useState("");
   const [found, setFound] = useState<Caller[]>([]);
   const [cust, setCust] = useState<Caller | null>(null);
@@ -521,7 +543,7 @@ function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => v
   }
 
   async function submit() {
-    if (!cust || !cat || desc.trim().length < 3) return toast("Choose the caller, a category and describe the problem", true);
+    if (!cust || !cat || desc.trim().length < 3) return toast(t("needFields"), true);
     setBusy(true);
     const { data, error } = await supabase().rpc("staff_log_call_complaint", {
       p_customer_id: cust.id,
@@ -531,22 +553,22 @@ function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => v
       p_genesys_id: gx.trim() || null,
     });
     setBusy(false);
-    if (error) return toast(friendlyError(error), true);
-    toast(`Case C-${(data as { case_no: number }).case_no} logged`);
+    if (error) return toast(friendlyError(error, f.lang), true);
+    toast(t("logged", { n: (data as { case_no: number }).case_no }));
     await onDone((data as { id: string }).id);
   }
 
   return (
-    <Modal title="Log case from Genesys call" wide onClose={onClose}>
-      <p>Screen pop from the NWS_Tanker queue. Find the caller, link the order they are calling about, and the case starts its SLA clock now.</p>
+    <Modal title={t("logCase")} wide onClose={onClose}>
+      <p>{t("screenPop")}</p>
       <div className="grid2">
         <div>
           <div className="fld">
-            <label htmlFor="gq">Caller (name or mobile)</label>
-            <input id="gq" className="in" value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. Fatma or 9123" autoFocus />
+            <label htmlFor="gq">{t("caller")}</label>
+            <input id="gq" className="in" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("callerPh")} autoFocus />
           </div>
           <div className="picklist">
-            {cust && !found.some((f) => f.id === cust.id) && (
+            {cust && !found.some((x) => x.id === cust.id) && (
               <button className="pickrow on" type="button">
                 <span>{cust.full_name}</span>
                 <small className="mut"><Phone value={cust.phone} maskPhones={privacy.maskPhones} /></small>
@@ -554,19 +576,19 @@ function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => v
             )}
             {found.map((p) => (
               <button key={p.id} type="button" className={`pickrow ${cust?.id === p.id ? "on" : ""}`} onClick={() => choose(p)}>
-                <span>{p.full_name || "Unnamed"}</span>
+                <span>{p.full_name || t("unnamed")}</span>
                 <small className="mut"><Phone value={p.phone} maskPhones={privacy.maskPhones} /></small>
               </button>
             ))}
-            {q.trim().length >= 2 && found.length === 0 && <small className="mut">No customer matches.</small>}
+            {q.trim().length >= 2 && found.length === 0 && <small className="mut">{t("noCustMatch")}</small>}
           </div>
           <div className="fld">
-            <label htmlFor="go">Order (optional)</label>
+            <label htmlFor="go">{t("orderOpt")}</label>
             <select id="go" className="in" value={order} onChange={(e) => setOrder(e.target.value)} disabled={!cust}>
-              <option value="">{cust ? "Not about a specific order" : "Choose the caller first"}</option>
+              <option value="">{cust ? t("notSpecific") : t("callerFirst")}</option>
               {orders.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {orderNo(o.order_no)} · {o.service_type} · {fmtDateTime(o.created_at)}
+                  {orderNo(o.order_no)} · {o.service_type} · {f.dateTime(o.created_at)}
                 </option>
               ))}
             </select>
@@ -574,26 +596,26 @@ function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => v
         </div>
         <div>
           <div className="fld">
-            <label htmlFor="gc">Category</label>
+            <label htmlFor="gc">{t("category")}</label>
             <select id="gc" className="in" value={cat} onChange={(e) => setCat(e.target.value)}>
-              <option value="">Choose…</option>
+              <option value="">{t("choose")}</option>
               {slas.map((s) => (
                 <option key={s.category} value={s.category}>
-                  {s.label} · {s.hours} h SLA · {s.team}
+                  {t("catOption", { label: w.cat(s.category, s.label), h: f.n(s.hours), team: w.team(s.team) })}
                 </option>
               ))}
             </select>
           </div>
           <div className="fld">
-            <label htmlFor="gd">What the caller reported</label>
+            <label htmlFor="gd">{t("reported")}</label>
             <textarea id="gd" className="in" rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
           </div>
           <div className="fld">
-            <label htmlFor="gx">Genesys interaction ID</label>
+            <label htmlFor="gx">{t("gxId")}</label>
             <div style={{ display: "flex", gap: 8 }}>
-              <input id="gx" className="in" value={gx} onChange={(e) => setGx(e.target.value)} placeholder="GX-…" />
+              <input id="gx" className="in" dir="ltr" value={gx} onChange={(e) => setGx(e.target.value)} placeholder="GX-…" />
               <button type="button" className="btn sm" onClick={() => setGx(`GX-${Math.floor(10_000_000 + Math.random() * 89_999_999)}`)}>
-                From call
+                {t("fromCall")}
               </button>
             </div>
           </div>
@@ -601,10 +623,10 @@ function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => v
       </div>
       <div className="btns" style={{ justifyContent: "flex-end" }}>
         <button className="btn" onClick={onClose} disabled={busy}>
-          Cancel
+          {t("cancel")}
         </button>
         <button className="btn pri" onClick={submit} disabled={busy || !cust || !cat || desc.trim().length < 3}>
-          {busy ? "Saving…" : "Log case"}
+          {busy ? t("saving") : t("logBtn")}
         </button>
       </div>
     </Modal>
@@ -613,6 +635,8 @@ function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => v
 
 type Rated = { driver_id: string; rating: number };
 function QualityTab({ cases, slas }: { cases: Case[]; slas: Sla[] }) {
+  const w = useWords();
+  const { t, f } = w;
   const [rated, setRated] = useState<Rated[] | null>(null);
   const [drivers, setDrivers] = useState<Map<string, { name: string; company: string }>>(new Map());
   const [driverCats, setDriverCats] = useState<Map<string, string[]>>(new Map());
@@ -641,7 +665,8 @@ function QualityTab({ cases, slas }: { cases: Case[]; slas: Sla[] }) {
     const cids = [...new Set((ps ?? []).map((p) => p.company_id).filter(Boolean))] as string[];
     const { data: cs } = cids.length ? await db.from("companies").select("id, name").in("id", cids) : { data: [] };
     const cn = new Map((cs ?? []).map((c) => [c.id as string, c.name as string]));
-    setDrivers(new Map((ps ?? []).map((p) => [p.id as string, { name: (p.full_name as string) || "Driver", company: cn.get(p.company_id as string) ?? "—" }])));
+    // An empty name shows as "Driver" in the viewer's language at render.
+    setDrivers(new Map((ps ?? []).map((p) => [p.id as string, { name: (p.full_name as string) || "", company: cn.get(p.company_id as string) ?? "—" }])));
   }, []);
   useEffect(() => {
     const t = setTimeout(load, 0);
@@ -652,8 +677,8 @@ function QualityTab({ cases, slas }: { cases: Case[]; slas: Sla[] }) {
   const resolved = cases.filter((c) => c.resolved_at);
   const avgRes = resolved.length ? resolved.reduce((a, c) => a + (Date.parse(c.resolved_at!) - Date.parse(c.created_at)), 0) / resolved.length / HOUR : null;
   const inSla = resolved.filter((c) => c.resolved_at! <= c.due_at).length;
-  const byCat = slas.map((s): [string, number] => [s.label, cases.filter((c) => c.category === s.category).length]).sort((a, b) => b[1] - a[1]);
-  const catLabel = (k: string) => slas.find((s) => s.category === k)?.label ?? k;
+  const byCat = slas.map((s): [string, number] => [w.cat(s.category, s.label), cases.filter((c) => c.category === s.category).length]).sort((a, b) => b[1] - a[1]);
+  const catLabel = (k: string) => w.cat(k, slas.find((s) => s.category === k)?.label ?? k);
 
   const worst = useMemo(() => {
     const m = new Map<string, { sum: number; n: number }>();
@@ -677,48 +702,48 @@ function QualityTab({ cases, slas }: { cases: Case[]; slas: Sla[] }) {
   return (
     <>
       <div className="okpis">
-        <Kpi label="Average driver rating, 30 days" value={avg == null ? "—" : `${avg.toFixed(1)} ★`} sub={`${rated?.length ?? 0} rated deliveries`} tone={avg != null && avg >= 4.5 ? "ok" : ""} />
-        <Kpi label="Average resolution time" value={avgRes == null ? "—" : `${avgRes.toFixed(1)} h`} sub={`${resolved.length} resolved cases`} />
-        <Kpi label="Resolved within SLA" value={pct(inSla, resolved.length)} sub="target 92%" tone={resolved.length && inSla / resolved.length >= 0.92 ? "ok" : "warn"} />
+        <Kpi label={t("qRating")} value={avg == null ? "—" : `${f.n(avg, 1)} ★`} sub={t("qRatedN", { n: f.n(rated?.length ?? 0) })} tone={avg != null && avg >= 4.5 ? "ok" : ""} />
+        <Kpi label={t("qRes")} value={avgRes == null ? "—" : t("hours1", { n: f.n(avgRes, 1) })} sub={t("qResolvedN", { n: f.n(resolved.length) })} />
+        <Kpi label={t("qInSla")} value={f.ratio(inSla, resolved.length)} sub={t("qTarget")} tone={resolved.length && inSla / resolved.length >= 0.92 ? "ok" : "warn"} />
         <Kpi
-          label="Reopened"
-          value={reopened == null ? "—" : pct(reopened, Math.max(resolved.length, reopened))}
-          sub={`${reopened ?? 0} cases reopened · ${n3(cases.reduce((a, c) => a + Number(c.refund_amount), 0))} OMR refunded`}
+          label={t("qReopened")}
+          value={reopened == null ? "—" : f.ratio(reopened, Math.max(resolved.length, reopened))}
+          sub={t("qReopenedSub", { n: f.n(reopened ?? 0), amt: f.omr3(cases.reduce((a, c) => a + Number(c.refund_amount), 0)) })}
           tone={reopened != null && resolved.length && reopened / resolved.length > 0.1 ? "warn" : ""}
         />
       </div>
       <div className="grid2">
         <div className="panel">
           <h2>
-            Complaints by category <small>all cases</small>
+            {t("byCat")} <small>{t("allCases")}</small>
           </h2>
-          {byCat.length ? <Bars rows={byCat} /> : <p className="note">No categories configured.</p>}
+          {byCat.length ? <Bars rows={byCat} /> : <p className="note">{t("noCatsCfg")}</p>}
         </div>
         <div className="panel">
           <h2>
-            Lowest-rated drivers <small>needs coaching · 30 days</small>
+            {t("lowest")} <small>{t("lowestSub")}</small>
           </h2>
           <div className="tblwrap">
             <table>
               <thead>
                 <tr>
-                  <th>Driver</th>
-                  <th>Tanker company</th>
-                  <th className="num">Rating</th>
-                  <th className="num">Ratings</th>
-                  <th>Top issue</th>
+                  <th>{t("colDriver")}</th>
+                  <th>{t("colCompany")}</th>
+                  <th className="num">{t("colRating")}</th>
+                  <th className="num">{t("colRatings")}</th>
+                  <th>{t("colTopIssue")}</th>
                 </tr>
               </thead>
               <tbody>
-                {!rated && <tr><td colSpan={5} className="empty">Loading…</td></tr>}
-                {rated && worst.length === 0 && <tr><td colSpan={5} className="empty">No rated deliveries in the last 30 days.</td></tr>}
-                {worst.map((w) => (
-                  <tr key={w.id}>
-                    <td>{drivers.get(w.id)?.name ?? "Driver"}</td>
-                    <td>{drivers.get(w.id)?.company ?? "—"}</td>
-                    <td className="num" style={w.avg < 4 ? { color: "var(--bad)", fontWeight: 700 } : undefined}>{w.avg.toFixed(1)}</td>
-                    <td className="num">{w.n}</td>
-                    <td>{topIssue(w.id)}</td>
+                {!rated && <tr><td colSpan={5} className="empty">{t("loading")}</td></tr>}
+                {rated && worst.length === 0 && <tr><td colSpan={5} className="empty">{t("noRated")}</td></tr>}
+                {worst.map((x) => (
+                  <tr key={x.id}>
+                    <td>{drivers.get(x.id)?.name || t("colDriver")}</td>
+                    <td>{drivers.get(x.id)?.company ?? "—"}</td>
+                    <td className="num" style={x.avg < 4 ? { color: "var(--bad)", fontWeight: 700 } : undefined}>{f.n(x.avg, 1)}</td>
+                    <td className="num">{f.n(x.n)}</td>
+                    <td>{topIssue(x.id)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -731,30 +756,32 @@ function QualityTab({ cases, slas }: { cases: Case[]; slas: Sla[] }) {
 }
 
 function SlaTab({ slas }: { slas: Sla[] }) {
+  const w = useWords();
+  const { t, f } = w;
   return (
     <div className="grid2">
       <div className="panel">
         <h2>
-          Resolution SLA by category <small>escalation is manual: the guideline is half the SLA</small>
+          {t("slaTitle")} <small>{t("slaSub")}</small>
         </h2>
         <div className="tblwrap">
           <table>
             <thead>
               <tr>
-                <th>Category</th>
-                <th className="num">Hours</th>
-                <th>Owner team</th>
-                <th>First escalation (guideline)</th>
+                <th>{t("category")}</th>
+                <th className="num">{t("colHours")}</th>
+                <th>{t("ownerTeam")}</th>
+                <th>{t("colFirstEsc")}</th>
               </tr>
             </thead>
             <tbody>
-              {slas.length === 0 && <tr><td colSpan={4} className="empty">Loading…</td></tr>}
+              {slas.length === 0 && <tr><td colSpan={4} className="empty">{t("loading")}</td></tr>}
               {slas.map((s) => (
                 <tr key={s.category}>
-                  <td>{s.label}</td>
-                  <td className="num">{s.hours}</td>
-                  <td>{s.team}</td>
-                  <td>Supervisor after {Math.max(1, Math.round(s.hours / 2))} h</td>
+                  <td>{w.cat(s.category, s.label)}</td>
+                  <td className="num">{f.n(s.hours)}</td>
+                  <td>{w.team(s.team)}</td>
+                  <td>{t("supAfter", { n: f.n(Math.max(1, Math.round(s.hours / 2))) })}</td>
                 </tr>
               ))}
             </tbody>
@@ -763,23 +790,24 @@ function SlaTab({ slas }: { slas: Sla[] }) {
       </div>
       <div className="panel">
         <h2>
-          Call centre alignment <St tone="act">Simulated</St>
+          {t("ccTitle")} <St tone="act">{t("simulated")}</St>
         </h2>
         <dl className="kv">
-          <dt>Genesys queues</dt>
-          <dd>NWS_Tanker_EN, NWS_Tanker_AR</dd>
-          <dt>Screen pop</dt>
-          <dd>Customer, last order and live ETA</dd>
-          <dt>Call-centre orders</dt>
-          <dd>Placed from Orders → New order for a caller</dd>
-          <dt>Case sync</dt>
-          <dd>Two-way, real time</dd>
-          <dt>Calls to drivers</dt>
-          <dd>Masked numbers — real numbers stay hidden on both sides</dd>
-          <dt>Hours</dt>
-          <dd>07:00–23:00, Arabic and English</dd>
+          <dt>{t("ccQueues")}</dt>
+          {/* i18n-ignore: Genesys queue names */}
+          <dd dir="ltr">NWS_Tanker_EN, NWS_Tanker_AR</dd>
+          <dt>{t("ccPop")}</dt>
+          <dd>{t("ccPopV")}</dd>
+          <dt>{t("ccOrders")}</dt>
+          <dd>{t("ccOrdersV")}</dd>
+          <dt>{t("ccSync")}</dt>
+          <dd>{t("ccSyncV")}</dd>
+          <dt>{t("ccDrivers")}</dt>
+          <dd>{t("ccDriversV")}</dd>
+          <dt>{t("ccHours")}</dt>
+          <dd>{t("ccHoursV")}</dd>
         </dl>
-        <p className="note">The Genesys integration is simulated in the pilot: interaction IDs are entered by the agent, and calls are not recorded here.</p>
+        <p className="note">{t("ccNote")}</p>
       </div>
     </div>
   );

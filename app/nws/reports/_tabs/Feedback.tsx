@@ -1,8 +1,10 @@
 "use client";
 
 import { BarList, LineChart } from "@/components/nws/admin/charts";
-import { dayKeys, dayLabel, Empty, int, Kpi, pct } from "@/components/nws/admin/ui";
-import { fmtDateTime } from "@/components/nws/StaffContext";
+import { dayKeys, Empty, Kpi } from "@/components/nws/admin/ui";
+import { REPORTS } from "@/components/nws/i18n/reports";
+import { useFmt } from "@/components/portal/i18n";
+import { useT } from "@/lib/i18n";
 import { ReportState, useReport } from "./report";
 
 export const stars = (n: number) => "★".repeat(Math.round(n)) + "☆".repeat(5 - Math.round(n));
@@ -24,55 +26,57 @@ const tone = (avg: number) => (avg < 3.5 ? "bad" : avg < 4.3 ? "warn" : "ok");
 
 export default function Feedback({ days }: { days: number }) {
   const { data: s, error } = useReport<Fb>("report_feedback", days);
-  if (!s) return <ReportState error={error} what="feedback" />;
+  const t = useT(REPORTS);
+  const f = useFmt();
+  if (!s) return <ReportState error={error} what={t("whatFb")} />;
 
   const keys = dayKeys(days);
   const byDay = new Map(s.per_day.map((d) => [d.day, Number(d.average)]));
   const dist = [
-    { label: "5 stars", value: s.distribution["5"] },
-    { label: "4 stars", value: s.distribution["4"] },
-    { label: "3 stars", value: s.distribution["3"] },
-    { label: "1–2 stars", value: s.distribution["1-2"] },
+    { label: t("stars5"), key: "5", value: s.distribution["5"] },
+    { label: t("stars4"), key: "4", value: s.distribution["4"] },
+    { label: t("stars3"), key: "3", value: s.distribution["3"] },
+    { label: t("stars12"), key: "1-2", value: s.distribution["1-2"] },
   ];
   const five = s.ratings ? s.distribution["5"] / s.ratings : null;
 
   return (
     <>
       <div className="okpis">
-        <Kpi label="Average rating" value={s.average == null ? "—" : `${Number(s.average).toFixed(2)} ★`} sub={`${int(s.ratings)} ratings · ${five == null ? "—" : pct(five, 0)} five-star`} tone={s.average == null ? undefined : s.average >= 4.5 ? "ok" : s.average < 4 ? "bad" : "warn"} />
-        <Kpi label="Rated deliveries" value={s.delivered ? pct(s.ratings / s.delivered, 0) : "—"} sub="of delivered orders" />
-        <Kpi label="Complaints" value={int(s.complaints)} sub={`${int(s.by_category.reduce((a, c) => a + c.open, 0))} still open`} tone={s.complaints ? "warn" : undefined} />
-        <Kpi label="Reopen rate" value={s.reopen_rate == null ? "—" : pct(Number(s.reopen_rate))} sub={`${s.reopened} of ${s.resolved} resolved cases reopened`} tone={s.reopen_rate != null && s.reopen_rate > 0.1 ? "warn" : undefined} />
+        <Kpi label={t("avgRating")} value={s.average == null ? "—" : `${f.n(Number(s.average), 2)} ★`} sub={t("ratingsSub", { n: f.n(s.ratings), p: five == null ? "—" : f.pct(five, 0) })} tone={s.average == null ? undefined : s.average >= 4.5 ? "ok" : s.average < 4 ? "bad" : "warn"} />
+        <Kpi label={t("ratedDeliveries")} value={s.delivered ? f.pct(s.ratings / s.delivered, 0) : "—"} sub={t("ofDelivered")} />
+        <Kpi label={t("complaints")} value={f.n(s.complaints)} sub={t("stillOpen", { n: f.n(s.by_category.reduce((a, c) => a + c.open, 0)) })} tone={s.complaints ? "warn" : undefined} />
+        <Kpi label={t("reopenRate")} value={s.reopen_rate == null ? "—" : f.pct(Number(s.reopen_rate))} sub={t("reopenSub", { a: f.n(s.reopened), b: f.n(s.resolved) })} tone={s.reopen_rate != null && s.reopen_rate > 0.1 ? "warn" : undefined} />
       </div>
 
       <div className="half">
         <div className="panel">
-          <h2>Average rating over time <small>per day</small></h2>
-          <LineChart labels={keys.map(dayLabel)} series={[{ name: "Average rating", color: "var(--warn)", values: keys.map((k) => byDay.get(k) ?? null) }]} yMax={5} fmt={(v) => v.toFixed(1)} height={170} />
+          <h2>{t("ratingOverTime")} <small>{t("perDay")}</small></h2>
+          <LineChart labels={keys.map((k) => f.day(k))} series={[{ name: t("avgRating"), color: "var(--warn)", values: keys.map((k) => byDay.get(k) ?? null) }]} yMax={5} fmt={(v) => f.n(v, 1)} height={170} />
           {s.per_week.length > 1 && (
-            <p className="note">By week: {s.per_week.map((w) => `${dayLabel(w.week)} ${Number(w.average).toFixed(2)} (${w.n})`).join(" · ")}</p>
+            <p className="note">{t("byWeek", { list: s.per_week.map((w) => `${f.day(w.week)} ${f.n(Number(w.average), 2)} (${f.n(w.n)})`).join(" · ") })}</p>
           )}
         </div>
         <div className="panel">
-          <h2>Driver ratings <small>distribution</small></h2>
-          <BarList rows={dist.map((d, i) => ({ ...d, color: i === 3 ? "var(--bad)" : i === 2 ? "var(--warn)" : "var(--accent)" }))} fmt={(v) => (s.ratings ? pct(v / s.ratings, 0) : "0%")} empty="No ratings in this range." />
+          <h2>{t("driverRatings")} <small>{t("distribution")}</small></h2>
+          <BarList rows={dist.map((d, i) => ({ ...d, color: i === 3 ? "var(--bad)" : i === 2 ? "var(--warn)" : "var(--accent)" }))} fmt={(v) => (s.ratings ? f.pct(v / s.ratings, 0) : f.pct(0, 0))} empty={t("noRatings")} />
         </div>
       </div>
 
       <div className="half">
         <div className="panel">
-          <h2>Ratings by company</h2>
+          <h2>{t("byCompany")}</h2>
           <div className="tblwrap">
             <table>
-              <thead><tr><th>Company</th><th className="num">Ratings</th><th className="num">Average</th><th className="num">1–2 stars</th></tr></thead>
+              <thead><tr><th>{t("thCompany")}</th><th className="num">{t("thRatings")}</th><th className="num">{t("thAverage")}</th><th className="num">{t("stars12")}</th></tr></thead>
               <tbody>
-                {s.by_company.length === 0 && <Empty cols={4}>No ratings in this range.</Empty>}
+                {s.by_company.length === 0 && <Empty cols={4}>{t("noRatings")}</Empty>}
                 {s.by_company.map((c) => (
                   <tr key={c.company}>
                     <td>{c.company}</td>
-                    <td className="num">{c.n}</td>
-                    <td className="num"><span className={`st ${tone(Number(c.average))}`}>{Number(c.average).toFixed(2)}</span></td>
-                    <td className="num">{c.low}</td>
+                    <td className="num">{f.n(c.n)}</td>
+                    <td className="num"><span className={`st ${tone(Number(c.average))}`}>{f.n(Number(c.average), 2)}</span></td>
+                    <td className="num">{f.n(c.low)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -80,19 +84,19 @@ export default function Feedback({ days }: { days: number }) {
           </div>
         </div>
         <div className="panel">
-          <h2>Worst-rated drivers <small>lowest average first</small></h2>
+          <h2>{t("worstDrivers")} <small>{t("lowestFirst")}</small></h2>
           <div className="tblwrap">
             <table>
-              <thead><tr><th>Driver</th><th>Company</th><th className="num">Ratings</th><th className="num">Average</th><th className="num">1–2 stars</th></tr></thead>
+              <thead><tr><th>{t("thDriver")}</th><th>{t("thCompany")}</th><th className="num">{t("thRatings")}</th><th className="num">{t("thAverage")}</th><th className="num">{t("stars12")}</th></tr></thead>
               <tbody>
-                {s.worst_drivers.length === 0 && <Empty cols={5}>No ratings in this range.</Empty>}
+                {s.worst_drivers.length === 0 && <Empty cols={5}>{t("noRatings")}</Empty>}
                 {s.worst_drivers.map((d) => (
                   <tr key={d.driver_id}>
-                    <td>{d.name || "Driver"}</td>
+                    <td>{d.name || t("driverFallback")}</td>
                     <td>{d.company}</td>
-                    <td className="num">{d.n}</td>
-                    <td className="num"><span className={`st ${tone(Number(d.average))}`}>{Number(d.average).toFixed(2)}</span></td>
-                    <td className="num">{d.low}</td>
+                    <td className="num">{f.n(d.n)}</td>
+                    <td className="num"><span className={`st ${tone(Number(d.average))}`}>{f.n(Number(d.average), 2)}</span></td>
+                    <td className="num">{f.n(d.low)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -103,16 +107,18 @@ export default function Feedback({ days }: { days: number }) {
 
       <div className="half">
         <div className="panel">
-          <h2>Complaints by category</h2>
-          <BarList rows={s.by_category.map((c) => ({ label: c.label, value: c.n, color: "var(--warn)" }))} empty="No complaints in this range." />
+          <h2>{t("byCategory")}</h2>
+          <BarList rows={s.by_category.map((c) => ({ label: c.label, key: c.category, value: c.n, color: "var(--warn)" }))} empty={t("noComplaints")} />
         </div>
         <div className="panel">
-          <h2>What customers mention <small>latest rating comments</small></h2>
-          {s.comments.length === 0 && <div className="empty">No comments in this range.</div>}
+          <h2>{t("mention")} <small>{t("latestComments")}</small></h2>
+          {s.comments.length === 0 && <div className="empty">{t("noComments")}</div>}
           {s.comments.map((o) => (
             <div className="quote" key={o.id}>
               <span className="stars">{stars(o.rating)}</span> “{o.comment}”
-              <small>TO-{o.order_no} · {o.driver ?? "Driver"} · {o.area} · {fmtDateTime(o.rated_at)}</small>
+              <small>
+                <bdi dir="ltr">TO-{o.order_no}</bdi> · {o.driver ?? t("driverFallback")} · {o.area} · {f.dateTime(o.rated_at)}
+              </small>
             </div>
           ))}
         </div>

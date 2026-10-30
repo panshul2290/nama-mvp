@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Empty, PageHead, ReadOnlyNote, useAudited, useRun } from "@/components/nws/admin/ui";
-import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
+import { SETTINGS_OPS } from "@/components/nws/i18n/settingsOps";
+import { useStaff } from "@/components/nws/StaffContext";
+import { useFmt } from "@/components/portal/i18n";
+import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 
 type Emergency = { on: boolean; zone: string | null; reason: string | null; since: string | null };
@@ -12,6 +15,8 @@ export default function EmergencyPage() {
   const { can } = useStaff();
   const { ask, dialog } = useAudited();
   const run = useRun();
+  const t = useT(SETTINGS_OPS);
+  const f = useFmt();
   const [em, setEm] = useState<Emergency | null>(null);
   const [zones, setZones] = useState<string[]>([]);
   const [zone, setZone] = useState("");
@@ -37,17 +42,17 @@ export default function EmergencyPage() {
   useEffect(load, [load]);
 
   async function activate() {
-    if (await run(supabase().rpc("staff_set_emergency", { p_on: true, p_zone: zone, p_reason: reason.trim() }), `Emergency mode active in ${zone}`)) {
+    if (await run(supabase().rpc("staff_set_emergency", { p_on: true, p_zone: zone, p_reason: reason.trim() }), t("emActiveOk", { zone }))) {
       setReason("");
       load();
     }
   }
   function deactivate() {
     ask({
-      title: "End emergency mode",
-      body: `Dispatch returns to normal in ${em?.zone ?? "the zone"} and the banners are removed from every app.`,
-      confirm: "End emergency mode",
-      ok: "Emergency mode ended",
+      title: t("emEnd"),
+      body: t("emEndB", { zone: em?.zone ?? t("emTheZone") }),
+      confirm: t("emEnd"),
+      ok: t("emEndedOk"),
       run: (r) => supabase().rpc("staff_set_emergency", { p_on: false, p_zone: null, p_reason: r }),
       done: load,
     });
@@ -55,69 +60,65 @@ export default function EmergencyPage() {
 
   return (
     <>
-      <PageHead title="Emergency mode" sub="For supply outages, health or weather events: priority dispatch for one zone, with banners in every app." />
-      {!editor && <ReadOnlyNote who="Super admins and control room operators" />}
+      <PageHead title={t("emTitle")} sub={t("emSub")} />
+      {!editor && <ReadOnlyNote who={t("whoAdminOps")} />}
       {em?.on && (
         <div className="banner badb">
-          <b>Emergency mode is active in {em.zone}</b> since {fmtDateTime(em.since)} — “{em.reason}”
+          <b>{t("emActiveIn", { zone: em.zone ?? "" })}</b> {t("emSince", { at: f.dateTime(em.since) })} — «{em.reason}»
         </div>
       )}
       <div className="half">
         <div className="panel">
           <h2>
-            <span>Emergency mode {em == null ? null : em.on ? <span className="st bad">Active</span> : <span className="st">Off</span>}</span>
+            <span>{t("emTitle")} {em == null ? null : em.on ? <span className="st bad">{t("active")}</span> : <span className="st">{t("off")}</span>}</span>
           </h2>
           <div className="pad">
             {em?.on ? (
               <>
                 <dl className="kv" style={{ padding: "4px 0 14px" }}>
-                  <dt>Affected zone</dt><dd>{em.zone}</dd>
-                  <dt>Since</dt><dd>{fmtDateTime(em.since)}</dd>
-                  <dt>Reason</dt><dd>{em.reason}</dd>
+                  <dt>{t("emZone")}</dt><dd>{em.zone}</dd>
+                  <dt>{t("emSinceL")}</dt><dd>{f.dateTime(em.since)}</dd>
+                  <dt>{t("reason")}</dt><dd>{em.reason}</dd>
                 </dl>
-                <button className="btn" disabled={!editor} onClick={deactivate}>End emergency mode</button>
+                <button className="btn" disabled={!editor} onClick={deactivate}>{t("emEnd")}</button>
               </>
             ) : (
               <>
                 <div className="fld">
-                  <label htmlFor="em-zone">Affected zone</label>
+                  <label htmlFor="em-zone">{t("emZone")}</label>
                   <select id="em-zone" className="in" value={zone} disabled={!editor} onChange={(e) => setZone(e.target.value)}>
                     {zones.map((z) => <option key={z}>{z}</option>)}
                   </select>
                 </div>
                 <div className="fld">
-                  <label htmlFor="em-reason">Reason shown to drivers and customers (kept in the audit log)</label>
-                  <input id="em-reason" className="in" value={reason} disabled={!editor} maxLength={200} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Water supply interruption after main burst" />
+                  <label htmlFor="em-reason">{t("emReasonL")}</label>
+                  <input id="em-reason" className="in" value={reason} disabled={!editor} maxLength={200} onChange={(e) => setReason(e.target.value)} placeholder={t("emReasonHint")} />
                 </div>
-                <button className="btn pri" disabled={!editor || !zone || reason.trim().length < 3} onClick={activate}>Activate emergency mode</button>
+                <button className="btn pri" disabled={!editor || !zone || reason.trim().length < 3} onClick={activate}>{t("emActivate")}</button>
               </>
             )}
           </div>
         </div>
         <div className="panel">
-          <h2>What changes when active</h2>
+          <h2>{t("emWhat")}</h2>
           <ul className="plain">
-            <li>Emergency requests from the zone jump the dispatch queue (priority dispatch).</li>
-            <li>Driver shift settings are overridden; tanker companies are asked to put drivers in and near the zone on duty.</li>
-            <li>Customers and drivers in the zone see a banner with the reason in the customer and driver apps.</li>
-            <li>The control room’s Live operations view shows the emergency banner and highlights the zone.</li>
-            <li>Every activation and deactivation is recorded in the audit log.</li>
+            {["emW1", "emW2", "emW3", "emW4", "emW5"].map((k) => <li key={k}>{t(k)}</li>)}
           </ul>
         </div>
       </div>
       <div className="panel">
-        <h2>History</h2>
+        <h2>{t("emHistory")}</h2>
         <div className="tblwrap">
           <table>
-            <thead><tr><th>When</th><th>Action</th><th>Zone</th><th>By</th><th>Reason</th></tr></thead>
+            <thead><tr><th>{t("emWhen")}</th><th>{t("emAction")}</th><th>{t("zone")}</th><th>{t("payBy")}</th><th>{t("reason")}</th></tr></thead>
             <tbody>
-              {hist?.length === 0 && <Empty cols={5}>Emergency mode has not been used yet.</Empty>}
+              {hist?.length === 0 && <Empty cols={5}>{t("emNone")}</Empty>}
               {hist?.map((h) => (
                 <tr key={h.id}>
-                  <td><small>{fmtDateTime(h.at)}</small></td>
-                  <td>{h.action === "emergency.activate" ? <span className="st bad">Activated</span> : <span className="st">Ended</span>}</td>
+                  <td><small>{f.dateTime(h.at)}</small></td>
+                  <td>{h.action === "emergency.activate" ? <span className="st bad">{t("emActivated")}</span> : <span className="st">{t("emEnded")}</span>}</td>
                   <td>{(h.action === "emergency.activate" ? h.after?.zone : h.before?.zone) ?? "—"}</td>
-                  <td>{h.actor_email ?? "—"}</td>
+                  <td><bdi dir="ltr">{h.actor_email ?? "—"}</bdi></td>
                   <td>{h.reason}</td>
                 </tr>
               ))}

@@ -2,8 +2,11 @@
 
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { downloadCsv } from "@/components/nws/admin/ui";
-import { fmtDateTime } from "@/components/nws/StaffContext";
+import { SETTINGS } from "@/components/nws/i18n/settings";
+import { useFmt } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
+import { useLang, useT } from "@/lib/i18n";
+import { label } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import { omanDayEndIso, omanDayStartIso } from "@/lib/time";
 
@@ -14,7 +17,19 @@ type Row = {
   target_type: string; target_id: string; before: unknown; after: unknown; reason: string | null;
 };
 
+// Action filter: value prefix → SETTINGS key.
+const ACTIONS: [string, string][] = [
+  ["tanker.", "aTanker"], ["alert.", "aAlert"], ["company.", "aCompany"], ["document.", "aDocument"], ["inspection.", "aInspection"],
+  ["org.", "aOrg"], ["report.", "aReport"], ["permit.", "aPermit"], ["staff.", "aStaff"], ["order.", "aOrder"], ["customer.", "aCustomer"],
+  ["complaint", "aComplaint"], ["penalty", "aPenalty"], ["pricing.", "aPricing"], ["promotion.", "aPromotion"], ["setting.", "aSetting"],
+  ["emergency.", "aEmergency"], ["zone.", "aZone"], ["site.", "aSite"], ["template.", "aTemplate"], ["payout.", "aPayout"], ["fraud.", "aFraud"],
+  ["data_request.", "aDataRequest"], ["incident.", "aIncident"],
+];
+
 export default function AuditLogPage() {
+  const t = useT(SETTINGS);
+  const f = useFmt();
+  const { lang } = useLang();
   const [q, setQ] = useState("");
   const [action, setAction] = useState("");
   const [from, setFrom] = useState("");
@@ -32,9 +47,9 @@ export default function AuditLogPage() {
     if (from) query = query.gte("at", omanDayStartIso(from));
     if (to) query = query.lte("at", omanDayEndIso(to));
     const { data, error } = await query;
-    setErr(error ? friendlyError(error) : null);
+    setErr(error ? friendlyError(error, lang) : null);
     setRows((data ?? []) as Row[]);
-  }, [q, action, from, to, limit]);
+  }, [q, action, from, to, limit, lang]);
 
   function exportCsv() {
     if (!rows?.length) return;
@@ -46,95 +61,74 @@ export default function AuditLogPage() {
   }
 
   useEffect(() => {
-    const t = setTimeout(load, 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(load, 250);
+    return () => clearTimeout(timer);
   }, [load]);
 
   return (
     <>
       <div className="vhead">
         <div>
-          <h1>Audit log</h1>
-          <p>Every staff action, with who did it, the target, the reason and the values before and after. Append-only: rows can’t be edited or deleted by anyone.</p>
+          <h1>{t("navAudit")}</h1>
+          <p>{t("auditSub")}</p>
         </div>
       </div>
       <div className="panel">
         <div className="toolbar">
           <div className="filters">
-            <input className="in" placeholder="Search actor, target, reason…" value={q} onChange={(e) => { setLimit(PAGE); setQ(e.target.value); }} aria-label="Search" style={{ width: 260 }} />
-            <select className="in" value={action} onChange={(e) => { setLimit(PAGE); setAction(e.target.value); }} aria-label="Action">
-              <option value="">All actions</option>
-              <option value="tanker.">Tanker (block, assign…)</option>
-              <option value="alert.">Alerts</option>
-              <option value="company.">Companies</option>
-              <option value="document.">Documents</option>
-              <option value="inspection.">Inspections</option>
-              <option value="org.">Business accounts</option>
-              <option value="report.">Reports and exports</option>
-              <option value="permit.">Permit</option>
-              <option value="staff.">Staff roles</option>
-              <option value="order.">Orders</option>
-              <option value="customer.">Customers</option>
-              <option value="complaint">Complaints</option>
-              <option value="penalty">Penalties</option>
-              <option value="pricing.">Pricing</option>
-              <option value="promotion.">Promotions</option>
-              <option value="setting.">Settings (privacy, loyalty)</option>
-              <option value="emergency.">Emergency mode</option>
-              <option value="zone.">Zones</option>
-              <option value="site.">Geofences</option>
-              <option value="template.">Notification templates</option>
-              <option value="payout.">Payouts</option>
-              <option value="fraud.">Fraud</option>
-              <option value="data_request.">Data requests</option>
-              <option value="incident.">Incidents</option>
+            <input className="in" placeholder={t("auditSearch")} value={q} onChange={(e) => { setLimit(PAGE); setQ(e.target.value); }} aria-label={t("search")} style={{ width: 260 }} />
+            <select className="in" value={action} onChange={(e) => { setLimit(PAGE); setAction(e.target.value); }} aria-label={t("action")}>
+              <option value="">{t("allActions")}</option>
+              {ACTIONS.map(([v, k]) => <option key={v} value={v}>{t(k)}</option>)}
             </select>
             <label className="mut" style={{ fontSize: 12.5 }}>
-              From <input className="in" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+              {t("from")} <input className="in" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
             </label>
             <label className="mut" style={{ fontSize: 12.5 }}>
-              To <input className="in" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+              {t("to")} <input className="in" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
             </label>
           </div>
           <span className="btns" style={{ alignItems: "center" }}>
-            <span className="mut" style={{ fontSize: 12.5 }}>{rows ? `${rows.length} entr${rows.length === 1 ? "y" : "ies"}${rows.length === limit ? ` (latest ${limit})` : ""}` : "Loading…"}</span>
-            <button className="btn sm" disabled={!rows?.length} onClick={exportCsv}>Export CSV</button>
+            <span className="mut" style={{ fontSize: 12.5 }}>
+              {rows ? `${t(rows.length === 1 ? "entries1" : "entriesN", { n: f.n(rows.length) })}${rows.length === limit ? t("latestN", { n: f.n(limit) }) : ""}` : t("loading")}
+            </span>
+            <button className="btn sm" disabled={!rows?.length} onClick={exportCsv}>{t("exportCsv")}</button>
           </span>
         </div>
-        {err && <div className="banner badb" role="alert">Couldn’t load the audit log: {err}</div>}
+        {err && <div className="banner badb" role="alert">{t("auditErr", { err })}</div>}
         <div className="tblwrap">
           <table>
             <thead>
               <tr>
-                <th>When</th>
-                <th>Actor</th>
-                <th>Action</th>
-                <th>Target</th>
-                <th>Reason</th>
+                <th>{t("when")}</th>
+                <th>{t("actor")}</th>
+                <th>{t("action")}</th>
+                <th>{t("target")}</th>
+                <th>{t("reason")}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {rows?.length === 0 && !err && (
-                <tr><td colSpan={6} className="empty">No audit entries match.</td></tr>
+                <tr><td colSpan={6} className="empty">{t("noAudit")}</td></tr>
               )}
               {rows?.map((r) => (
                 <Fragment key={r.id}>
                   <tr className="click" onClick={() => setOpen(open === r.id ? null : r.id)}>
-                    <td><small>{fmtDateTime(r.at)}</small></td>
+                    <td><small>{f.dateTime(r.at)}</small></td>
                     <td>
-                      {r.actor_email ?? "—"}
-                      {r.actor_role ? <small style={{ display: "block" }}>{r.actor_role}</small> : null}
+                      {r.actor_email ? <bdi dir="ltr">{r.actor_email}</bdi> : "—"}
+                      {r.actor_role ? <small style={{ display: "block" }}>{label("staff", r.actor_role, lang)}</small> : null}
                     </td>
-                    <td><code>{r.action}</code></td>
+                    <td><code dir="ltr">{r.action}</code></td>
                     <td>
-                      {r.target_type}
-                      <small style={{ display: "block" }}>{r.target_id}</small>
+                      <bdi dir="ltr">{r.target_type}</bdi>
+                      <small style={{ display: "block" }} dir="ltr">{r.target_id}</small>
                     </td>
                     <td>{r.reason ?? <span className="mut">—</span>}</td>
                     <td>
                       <button type="button" className="lk" aria-expanded={open === r.id} onClick={(e) => { e.stopPropagation(); setOpen(open === r.id ? null : r.id); }}>
-                        {open === r.id ? "Hide" : "Before / after"}
+                        {open === r.id ? t("hide") : t("beforeAfter")}
                       </button>
                     </td>
                   </tr>
@@ -143,12 +137,12 @@ export default function AuditLogPage() {
                       <td colSpan={6}>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                           <div>
-                            <small>Before</small>
-                            <pre className="json">{JSON.stringify(r.before, null, 2) ?? "null"}</pre>
+                            <small>{t("before")}</small>
+                            <pre className="json" dir="ltr">{JSON.stringify(r.before, null, 2) ?? "null"}</pre>
                           </div>
                           <div>
-                            <small>After</small>
-                            <pre className="json">{JSON.stringify(r.after, null, 2) ?? "null"}</pre>
+                            <small>{t("after")}</small>
+                            <pre className="json" dir="ltr">{JSON.stringify(r.after, null, 2) ?? "null"}</pre>
                           </div>
                         </div>
                       </td>
@@ -161,7 +155,7 @@ export default function AuditLogPage() {
         </div>
         {rows && rows.length === limit && (
           <div className="pad" style={{ textAlign: "center" }}>
-            <button className="btn sm" onClick={() => setLimit((l) => l + PAGE)}>Load {PAGE} more</button>
+            <button className="btn sm" onClick={() => setLimit((l) => l + PAGE)}>{t("loadMoreN", { n: f.n(PAGE) })}</button>
           </div>
         )}
       </div>

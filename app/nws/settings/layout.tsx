@@ -4,42 +4,45 @@ import "../admin.css";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { canSee } from "@/components/nws/access";
+import { SETTINGS } from "@/components/nws/i18n/settings";
 import { useStaff } from "@/components/nws/StaffContext";
+import { useT } from "@/lib/i18n";
 
-// Settings sub-navigation, grouped as in the prototype.
+// Settings sub-navigation, grouped as in the prototype. Group and item labels are keys of
+// SETTINGS (components/nws/i18n/settings.ts).
 export const SETTINGS_NAV: { group: string; items: { href: string; label: string }[] }[] = [
-  { group: "Access", items: [{ href: "/nws/settings/users", label: "Users and roles" }] },
+  { group: "gAccess", items: [{ href: "/nws/settings/users", label: "navUsers" }] },
   {
-    group: "Commercial",
+    group: "gCommercial",
     items: [
-      { href: "/nws/settings/pricing", label: "Pricing" },
-      { href: "/nws/settings/penalties", label: "Penalties" },
-      { href: "/nws/settings/promotions", label: "Promotions and loyalty" },
+      { href: "/nws/settings/pricing", label: "navPricing" },
+      { href: "/nws/settings/penalties", label: "navPenalties" },
+      { href: "/nws/settings/promotions", label: "navPromotions" },
     ],
   },
   {
-    group: "Operations",
+    group: "gOperations",
     items: [
-      { href: "/nws/settings/zones", label: "Zones and geofences" },
-      { href: "/nws/settings/clusters", label: "Clusters" },
-      { href: "/nws/settings/emergency", label: "Emergency mode" },
-      { href: "/nws/settings/notifications", label: "Notifications" },
+      { href: "/nws/settings/zones", label: "navZones" },
+      { href: "/nws/settings/clusters", label: "navClusters" },
+      { href: "/nws/settings/emergency", label: "navEmergency" },
+      { href: "/nws/settings/notifications", label: "navNotifications" },
     ],
   },
-  { group: "Finance", items: [{ href: "/nws/settings/payments", label: "Payments and settlements" }] },
+  { group: "gFinance", items: [{ href: "/nws/settings/payments", label: "navPayments" }] },
   {
-    group: "Risk and compliance",
+    group: "gRisk",
     items: [
-      { href: "/nws/settings/fraud", label: "Fraud detection" },
-      { href: "/nws/settings/privacy", label: "Data privacy" },
-      { href: "/nws/settings/audit", label: "Audit log" },
+      { href: "/nws/settings/fraud", label: "navFraud" },
+      { href: "/nws/settings/privacy", label: "navPrivacy" },
+      { href: "/nws/settings/audit", label: "navAudit" },
     ],
   },
   {
-    group: "System",
+    group: "gSystem",
     items: [
-      { href: "/nws/settings/health", label: "System health" },
-      { href: "/nws/settings/integrations", label: "Integrations" },
+      { href: "/nws/settings/health", label: "navHealth" },
+      { href: "/nws/settings/integrations", label: "navIntegrations" },
     ],
   },
 ];
@@ -47,16 +50,17 @@ export const SETTINGS_NAV: { group: string; items: { href: string; label: string
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { staff } = useStaff();
+  const t = useT(SETTINGS);
   const groups = SETTINGS_NAV.map((g) => ({ ...g, items: g.items.filter((i) => canSee(staff.staff_role, i.href)) })).filter((g) => g.items.length > 0);
   return (
     <div className="settings">
-      <nav className="subnav" aria-label="Settings">
+      <nav className="subnav" aria-label={t("settings")}>
         {groups.map((g) => (
           <div key={g.group}>
-            <small>{g.group}</small>
+            <small>{t(g.group)}</small>
             {g.items.map((i) => (
               <Link key={i.href} href={i.href} className={path.startsWith(i.href) ? "on" : ""} aria-current={path.startsWith(i.href) ? "page" : undefined}>
-                {i.label}
+                {t(i.label)}
               </Link>
             ))}
           </div>

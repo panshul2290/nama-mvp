@@ -8,11 +8,15 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { FleetMap } from "@/components/nws/FleetMap";
 import type { LatLng, MapSite, MapTanker } from "@/components/nws/FleetMapView";
 import { permitSummary, type FleetTanker } from "@/components/nws/fleetData";
-import { ago, downloadTable, ExportButtons, Kpi, one, pct, St, Tabs, useNow, useRealtime, useRpc, SERVICE_NAME, HOUR } from "@/components/nws/ops";
+import { downloadTable, ExportButtons, Kpi, one, St, Tabs, useNow, useRealtime, useRpc, SERVICE_NAME, HOUR } from "@/components/nws/ops";
 import type { TableFormat } from "@/lib/csv";
-import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { FLEET } from "@/components/nws/i18n/fleet";
+import { useFmt, type Fmt } from "@/components/portal/i18n";
+import { useLang, useT } from "@/lib/i18n";
+import { label } from "@/lib/labels";
 import { GeoFilter, useGeo } from "@/components/nws/register/geo";
-import { STATUS_TEXT } from "@/components/OrderBits";
+import { STATUS_TEXT, statusText } from "@/components/OrderBits";
 import { Loading } from "@/components/Shell";
 import { orderNo } from "@/lib/format";
 import { STALE_AFTER_S } from "@/lib/gps";
@@ -64,8 +68,25 @@ function verification(t: Trip, kind: "fill" | "discharge"): { text: string; tone
   return { text: flag ? "Verified" : "Mismatch", tone: flag ? "ok" : "bad", note: "" };
 }
 
+type Tr = (key: string, vars?: Record<string, string | number>) => string;
+const PERMIT_KEY: Record<string, string> = { "Pending review": "pPending", Expired: "pExpired", Rejected: "pRejected", "Wrong service type": "pWrongType", "No permit": "pNone" };
+
+/** permitSummary() text (English, also used by exports) in the portal language. */
+function permitText(t: FleetTanker, p: ReturnType<typeof permitSummary>, tr: Tr, f: Fmt) {
+  const m = /^Expires in (\d+) day/.exec(p.text);
+  if (m) return Number(m[1]) === 1 ? tr("pExpiresIn1") : tr("pExpiresIn", { n: f.n(Number(m[1])) });
+  if (p.text.startsWith("Valid to ")) {
+    const v = [...t.permits].filter((x) => x.status === "approved" && x.type === t.service_type && Date.parse(x.expires_at) > Date.now()).sort((a, b) => b.expires_at.localeCompare(a.expires_at))[0];
+    return tr("pValidTo", { date: f.date(v?.expires_at) });
+  }
+  return PERMIT_KEY[p.text] ? tr(PERMIT_KEY[p.text]) : p.text;
+}
+
 function Fleet() {
   const { can, toast } = useStaff();
+  const t = useT(FLEET);
+  const f = useFmt();
+  const { lang } = useLang();
   const params = useSearchParams();
   const now = useNow(5_000);
   const [tab, setTab] = useState<Tab>("tankers");
@@ -147,15 +168,15 @@ function Fleet() {
         db.from("orders").select(TRIP_SELECT).eq("tanker_id", sel).order("created_at", { ascending: false }).limit(8),
       ]);
       let fixes = (recent.data ?? []) as LatLng[];
-      let note = "last 2 hours";
+      let note = "trail2h";
       if (fixes.length < 2) {
         const older = await db.from("gps_fixes").select("lat, lng, recorded_at").eq("tanker_id", sel).order("recorded_at", { ascending: false }).limit(200);
         fixes = ((older.data ?? []) as LatLng[]).reverse();
-        note = "latest fixes (none in the last 2 hours)";
+        note = "trailOlder";
       }
       if (!live) return;
       setTrail(fixes.length ? fixes : null);
-      setTrailNote(`${fixes.length} GPS fixes · ${note}`);
+      setTrailNote(JSON.stringify([fixes.length, note]));
       setTankerTrips((tr.data ?? []) as unknown as Trip[]);
     };
     const t = setTimeout(go, 0);
@@ -184,7 +205,12 @@ function Fleet() {
     return !s || t.plate.toLowerCase().includes(s) || (one(t.company)?.name ?? "").toLowerCase().includes(s) || (active(t)?.driver?.full_name ?? "").toLowerCase().includes(s);
   });
   const selected = all.find((t) => t.id === sel) ?? null;
-  const opTitle = isOperator ? undefined : "Control room operators only";
+  const opTitle = isOperator ? undefined : t("opOnly");
+  const trailText = (() => {
+    if (!trailNote) return "";
+    const [n, note] = JSON.parse(trailNote) as [number, string];
+    return t("trailN", { n: f.n(n), note: t(note) });
+  })();
   const fixAge = (t: Row) => (t.last_fix_at ? (now - Date.parse(t.last_fix_at)) / 1000 : null);
 
   const mapTankers: MapTanker[] = useMemo(
@@ -240,136 +266,136 @@ function Fleet() {
     <>
       <div className="vhead">
         <div>
-          <h1>Fleet</h1>
-          <p>Every tanker registered on the platform with its permit, water-quality and IVMS status, plus trip logs and route history. Operators can suspend a tanker and override driver assignment. Tankers in the NWS register that aren’t on the platform yet are under Permits → Register.</p>
+          <h1>{t("title")}</h1>
+          <p>{t("intro")}</p>
         </div>
       </div>
       <Tabs<Tab>
         value={tab}
         onChange={setTab}
         tabs={[
-          ["tankers", "Tankers", all.length],
-          ["trips", "Trip logs"],
-          ["ivms", "IVMS devices", devices.length],
+          ["tankers", t("tabTankers"), all.length],
+          ["trips", t("tabTrips")],
+          ["ivms", t("tabIvms"), devices.length],
         ]}
       />
 
       {tab === "tankers" && (
         <>
           <div className="okpis">
-            <Kpi label="Registered on platform" value={all.length} sub={`${all.filter((t) => t.is_online).length} online now`} tone="ok" />
-            <Kpi label="In NWS register" value={registerCount == null ? "…" : registerCount.toLocaleString()} sub={<Link className="lk" href="/nws/permits?tab=reg">{all.filter((t) => t.in_register).length} of them on the platform · open the register</Link>} />
-            <Kpi label="Suspended" value={all.filter((t) => t.blocked).length} sub="blocked by an operator" tone={all.some((t) => t.blocked) ? "bad" : ""} />
-            <Kpi label="No valid permit" value={counts.expired} sub="can’t go online or take jobs" tone={counts.expired ? "warn" : ""} />
-            <Kpi label="Unassigned" value={all.filter((t) => !active(t)).length} sub="no driver on the tanker" />
+            <Kpi label={t("kRegistered")} value={f.n(all.length)} sub={t("kOnlineNow", { n: f.n(all.filter((x) => x.is_online).length) })} tone="ok" />
+            <Kpi label={t("kInRegister")} value={registerCount == null ? "…" : f.n(registerCount)} sub={<Link className="lk" href="/nws/permits?tab=reg">{t("kInRegisterSub", { n: f.n(all.filter((x) => x.in_register).length) })}</Link>} />
+            <Kpi label={t("kSuspended")} value={f.n(all.filter((x) => x.blocked).length)} sub={t("kSuspendedSub")} tone={all.some((x) => x.blocked) ? "bad" : ""} />
+            <Kpi label={t("kNoPermit")} value={f.n(counts.expired)} sub={t("kNoPermitSub")} tone={counts.expired ? "warn" : ""} />
+            <Kpi label={t("kUnassigned")} value={f.n(all.filter((x) => !active(x)).length)} sub={t("kUnassignedSub")} />
           </div>
           <div className="panel">
             <div className="toolbar">
               <div className="chips">
                 {(
                   [
-                    ["all", "All"],
-                    ["DW", "Drinking water"],
-                    ["WW", "Wastewater"],
-                    ["TE", "Treated effluent"],
-                    ["expired", "No valid permit"],
+                    ["all", t("fAll")],
+                    ["DW", label("svc", "DW", lang)],
+                    ["WW", label("svc", "WW", lang)],
+                    ["TE", label("svc", "TE", lang)],
+                    ["expired", t("fNoPermit")],
                   ] as const
                 ).map(([k, l]) => (
                   <button key={k} className={`chip ${filter === k ? "on" : ""}`} onClick={() => setFilter(k)}>
                     {l}
-                    <span className="tc">{counts[k]}</span>
+                    <span className="tc">{f.n(counts[k])}</span>
                   </button>
                 ))}
               </div>
               <div className="filters">
                 <GeoFilter geo={geo} cluster={geoF.cluster} governorate={geoF.governorate} onChange={setGeoF} />
-                <input className="in" placeholder="Plate, owner or driver" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search tankers" style={{ width: 200 }} />
+                <input className="in" placeholder={t("searchPh")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("searchAria")} style={{ width: 200 }} />
                 <ExportButtons onExport={exportTankers} disabled={!list.length} />
               </div>
             </div>
-            {!isOperator && <p className="note" style={{ paddingTop: 0 }}>Read-only: suspend and assignment actions are for control room operators.</p>}
+            {!isOperator && <p className="note" style={{ paddingTop: 0 }}>{t("readOnly")}</p>}
             <div className="tblwrap" style={{ maxHeight: 460, overflowY: "auto" }}>
               <table>
                 <thead>
                   <tr>
-                    <th>Plate</th>
-                    <th>Owner</th>
-                    <th>Governorate</th>
-                    <th>Driver</th>
-                    <th>Service</th>
-                    <th>Permit</th>
-                    <th>Water test</th>
-                    <th className="num">Last fix (source, accuracy)</th>
-                    <th>Last fix</th>
-                    <th>Status</th>
+                    <th>{t("cPlate")}</th>
+                    <th>{t("cOwner")}</th>
+                    <th>{t("cGov")}</th>
+                    <th>{t("cDriver")}</th>
+                    <th>{t("cService")}</th>
+                    <th>{t("cPermit")}</th>
+                    <th>{t("cWater")}</th>
+                    <th className="num">{t("cFixQ")}</th>
+                    <th>{t("cFix")}</th>
+                    <th>{t("cStatus")}</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {!rows && (
-                    <tr><td colSpan={11} className="empty">Loading…</td></tr>
+                    <tr><td colSpan={11} className="empty">{t("loading")}</td></tr>
                   )}
                   {rows && list.length === 0 && (
-                    <tr><td colSpan={11} className="empty">No tankers match.</td></tr>
+                    <tr><td colSpan={11} className="empty">{t("noMatch")}</td></tr>
                   )}
-                  {list.map((t) => {
-                    const a = active(t);
-                    const p = permitSummary(t);
-                    const w = latestTest(t);
-                    const age = fixAge(t);
-                    const stale = t.is_online && (age == null || age > STALE_AFTER_S);
+                  {list.map((tk) => {
+                    const a = active(tk);
+                    const p = permitSummary(tk);
+                    const w = latestTest(tk);
+                    const age = fixAge(tk);
+                    const stale = tk.is_online && (age == null || age > STALE_AFTER_S);
                     return (
-                      <tr key={t.id} className={`click ${sel === t.id ? "sel" : ""}`} onClick={() => setSel(sel === t.id ? null : t.id)}>
-                        <td className={`stripe ${t.service_type}`}>
-                          <b>{t.plate}</b>
-                          <small style={{ display: "block" }}>{t.capacity_known ? `${t.capacity_gal.toLocaleString()} gal` : "capacity unknown"}</small>
+                      <tr key={tk.id} className={`click ${sel === tk.id ? "sel" : ""}`} onClick={() => setSel(sel === tk.id ? null : tk.id)}>
+                        <td className={`stripe ${tk.service_type}`}>
+                          <b dir="ltr">{tk.plate}</b>
+                          <small style={{ display: "block" }}>{tk.capacity_known ? f.gal(tk.capacity_gal) : t("capUnknown")}</small>
                         </td>
-                        <td>{one(t.company)?.name ?? <span className="mut">Independent</span>}</td>
+                        <td>{one(tk.company)?.name ?? <span className="mut">{t("independent")}</span>}</td>
                         <td>
-                          {t.governorate_code ? geo.govName(t.governorate_code) : <span className="mut">Not set</span>}
-                          {t.governorate_code && <small style={{ display: "block" }}>{geo.clusterName(geo.clusterOf(t.governorate_code))}</small>}
+                          {tk.governorate_code ? geo.govName(tk.governorate_code) : <span className="mut">{t("notSet")}</span>}
+                          {tk.governorate_code && <small style={{ display: "block" }}>{geo.clusterName(geo.clusterOf(tk.governorate_code))}</small>}
                         </td>
-                        <td>{a?.driver?.full_name ?? <span className="mut">Unassigned</span>}</td>
-                        <td><span className={`tag ${t.service_type}`}>{SERVICE_NAME[t.service_type]}</span></td>
-                        <td><St tone={p.tone}>{p.text}</St></td>
+                        <td>{a?.driver?.full_name ?? <span className="mut">{t("unassigned")}</span>}</td>
+                        <td><span className={`tag ${tk.service_type}`}>{label("svc", tk.service_type, lang, SERVICE_NAME[tk.service_type])}</span></td>
+                        <td><St tone={p.tone}>{permitText(tk, p, t, f)}</St></td>
                         <td>
-                          {t.service_type !== "DW" ? (
+                          {tk.service_type !== "DW" ? (
                             <span className="mut">—</span>
                           ) : w ? (
                             <>
-                              <St tone={w.passed ? "ok" : "bad"}>{w.passed ? "Passed" : "Failed"}</St>
-                              <small style={{ display: "block" }}>{w.cert_no} · {fmtDate(w.tested_at)}</small>
+                              <St tone={w.passed ? "ok" : "bad"}>{w.passed ? t("passed") : t("failed")}</St>
+                              <small style={{ display: "block" }}><bdi dir="ltr">{w.cert_no}</bdi> · {f.date(w.tested_at)}</small>
                             </>
                           ) : (
-                            <St tone="warn">No test</St>
+                            <St tone="warn">{t("noTest")}</St>
                           )}
                         </td>
-                        <td className="num"><FixQuality source={t.last_fix_source} accuracy={t.last_accuracy_m} /></td>
+                        <td className="num"><FixQuality source={tk.last_fix_source} accuracy={tk.last_accuracy_m} /></td>
                         <td>
-                          {t.last_fix_at ? ago(t.last_fix_at, now) : <span className="mut">No fix</span>}
-                          {stale ? <small style={{ display: "block", color: "var(--bad)" }}>stale while online</small> : <small style={{ display: "block" }}>{t.is_online ? "online" : "offline"}</small>}
+                          {tk.last_fix_at ? f.ago(tk.last_fix_at, now) : <span className="mut">{t("noFix")}</span>}
+                          {stale ? <small style={{ display: "block", color: "var(--bad)" }}>{t("staleOnline")}</small> : <small style={{ display: "block" }}>{tk.is_online ? t("onlineL") : t("offlineL")}</small>}
                         </td>
                         <td>
-                          {t.blocked ? (
+                          {tk.blocked ? (
                             <>
-                              <St tone="bad">Suspended</St>
-                              <small style={{ display: "block" }} title={t.blocked_reason ?? ""}>{t.blocked_reason}</small>
+                              <St tone="bad">{t("suspended")}</St>
+                              <small style={{ display: "block" }} title={tk.blocked_reason ?? ""}>{tk.blocked_reason}</small>
                             </>
                           ) : (
-                            <St tone="ok">Active</St>
+                            <St tone="ok">{t("activeL")}</St>
                           )}
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
                           <div className="btns" style={{ flexWrap: "nowrap" }}>
-                            {t.blocked ? (
-                              <button className="btn sm" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "unblock", tanker: t })}>Reinstate</button>
+                            {tk.blocked ? (
+                              <button className="btn sm" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "unblock", tanker: tk })}>{t("reinstate")}</button>
                             ) : (
-                              <button className="btn sm bad" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "block", tanker: t })}>Suspend</button>
+                              <button className="btn sm bad" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "block", tanker: tk })}>{t("suspend")}</button>
                             )}
                             {a ? (
-                              <button className="btn sm" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "unassign", tanker: t })}>Unassign</button>
+                              <button className="btn sm" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "unassign", tanker: tk })}>{t("unassign")}</button>
                             ) : (
-                              <button className="btn sm" disabled={!isOperator} title={opTitle} onClick={() => { setDriverPick(""); setDlg({ kind: "assign", tanker: t }); }}>Assign</button>
+                              <button className="btn sm" disabled={!isOperator} title={opTitle} onClick={() => { setDriverPick(""); setDlg({ kind: "assign", tanker: tk }); }}>{t("assign")}</button>
                             )}
                           </div>
                         </td>
@@ -379,52 +405,52 @@ function Fleet() {
                 </tbody>
               </table>
             </div>
-            {rows && !selected && <p className="note">Select a tanker to see its route history and trip log.</p>}
+            {rows && !selected && <p className="note">{t("selectHint")}</p>}
           </div>
 
           {selected && (
             <div className="grid2">
               <div className="panel">
                 <h2>
-                  Route history — {selected.plate} <small>{trailNote}</small>
+                  {t("routeHistory", { plate: selected.plate })} <small>{trailText}</small>
                 </h2>
                 <div className="pad">
                   <div className="minimap" style={{ height: 340 }}>
                     <FleetMap tankers={mapTankers} orders={[]} sites={mapSites} trail={trail} selectedId={selected.id} />
                   </div>
-                  {!trail && <p className="mut" style={{ margin: "0 0 8px", fontSize: 13 }}>No GPS history recorded for this tanker yet.</p>}
+                  {!trail && <p className="mut" style={{ margin: "0 0 8px", fontSize: 13 }}>{t("noGps")}</p>}
                   <div className="legend2">
-                    <span><i style={{ background: "#17b3c6" }} />Route</span>
-                    <span><i style={{ background: "#3B82F6" }} />Filling station geofence</span>
-                    <span><i style={{ background: "#C08E35" }} />Approved discharge geofence</span>
+                    <span><i style={{ background: "#17b3c6" }} />{t("lgRoute")}</span>
+                    <span><i style={{ background: "#3B82F6" }} />{t("lgFill")}</span>
+                    <span><i style={{ background: "#C08E35" }} />{t("lgDischarge")}</span>
                   </div>
                 </div>
               </div>
               <div className="panel">
                 <h2>
-                  Trip log <small>{selected.plate} · latest {tankerTrips.length}</small>
+                  {t("tripLog")} <small>{t("tripLogSub", { plate: selected.plate, n: f.n(tankerTrips.length) })}</small>
                 </h2>
                 <div className="tblwrap">
                   <table>
                     <thead>
-                      <tr><th>Order</th><th>Fill</th><th>Discharge / delivery</th><th>Status</th></tr>
+                      <tr><th>{t("cOrder")}</th><th>{t("cFill")}</th><th>{t("cDischarge")}</th><th>{t("cStatus")}</th></tr>
                     </thead>
                     <tbody>
-                      {tankerTrips.length === 0 && <tr><td colSpan={4} className="empty">No trips yet.</td></tr>}
-                      {tankerTrips.map((t) => (
-                        <TripCells key={t.id} t={t} compact />
+                      {tankerTrips.length === 0 && <tr><td colSpan={4} className="empty">{t("noTrips")}</td></tr>}
+                      {tankerTrips.map((tr) => (
+                        <TripCells key={tr.id} t={tr} compact />
                       ))}
                     </tbody>
                   </table>
                 </div>
                 <div className="pad btns" style={{ paddingTop: 12 }}>
                   {selected.blocked ? (
-                    <button className="btn" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "unblock", tanker: selected })}>Reinstate tanker</button>
+                    <button className="btn" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "unblock", tanker: selected })}>{t("reinstateTanker")}</button>
                   ) : (
-                    <button className="btn bad" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "block", tanker: selected })}>Suspend tanker</button>
+                    <button className="btn bad" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "block", tanker: selected })}>{t("suspendTanker")}</button>
                   )}
-                  <button className="btn" disabled={!tankerTrips.length} onClick={() => exportTrips(tankerTrips, `trips-${selected.plate}`)}>Export trips</button>
-                  <Link className="btn" href={`/nws/permits?tab=apps&tanker=${selected.id}`}>Permits</Link>
+                  <button className="btn" disabled={!tankerTrips.length} onClick={() => exportTrips(tankerTrips, `trips-${selected.plate}`)}>{t("exportTrips")}</button>
+                  <Link className="btn" href={`/nws/permits?tab=apps&tanker=${selected.id}`}>{t("permits")}</Link>
                 </div>
               </div>
             </div>
@@ -435,19 +461,19 @@ function Fleet() {
       {tab === "trips" && (
         <div className="panel">
           <div className="toolbar">
-            <span className="mut" style={{ fontSize: 13 }}>Latest {trips?.length ?? 0} trips across the fleet, with station (TFS) and IVMS fill / discharge verification</span>
-            <ExportButtons disabled={!trips?.length} onExport={(f) => trips && exportTrips(trips, "trip-logs", f)} />
+            <span className="mut" style={{ fontSize: 13 }}>{t("tripsIntro", { n: f.n(trips?.length ?? 0) })}</span>
+            <ExportButtons disabled={!trips?.length} onExport={(fmt) => trips && exportTrips(trips, "trip-logs", fmt)} />
           </div>
           <div className="tblwrap">
             <table>
               <thead>
-                <tr><th>Order</th><th>Tanker</th><th>Service</th><th className="num">Gallons</th><th>Fill</th><th>Discharge / delivery</th><th>Status</th></tr>
+                <tr><th>{t("cOrder")}</th><th>{t("cTanker")}</th><th>{t("cService")}</th><th className="num">{t("cGallons")}</th><th>{t("cFill")}</th><th>{t("cDischarge")}</th><th>{t("cStatus")}</th></tr>
               </thead>
               <tbody>
-                {!trips && <tr><td colSpan={7} className="empty">Loading…</td></tr>}
-                {trips?.length === 0 && <tr><td colSpan={7} className="empty">No trips yet.</td></tr>}
-                {trips?.map((t) => (
-                  <TripCells key={t.id} t={t} />
+                {!trips && <tr><td colSpan={7} className="empty">{t("loading")}</td></tr>}
+                {trips?.length === 0 && <tr><td colSpan={7} className="empty">{t("noTrips")}</td></tr>}
+                {trips?.map((tr) => (
+                  <TripCells key={tr.id} t={tr} />
                 ))}
               </tbody>
             </table>
@@ -458,33 +484,33 @@ function Fleet() {
       {tab === "ivms" && (
         <>
           <div className="okpis">
-            <Kpi label="IVMS devices" value={devices.length} sub={`${all.length - devices.length} tankers without a device`} tone={all.length - devices.length ? "warn" : ""} />
-            <Kpi label="Reporting now" value={reporting.length} sub="fix in the last 5 minutes" tone="ok" />
-            <Kpi label="Average accuracy" value={accs.length ? `±${(accs.reduce((a, b) => a + b, 0) / accs.length).toFixed(1)} m` : "—"} sub="last fix of each tanker" />
-            <Kpi label="Fixes within ±10 m" value={pct(fixAcc.filter((x) => x <= 10).length, fixAcc.length)} sub={`of the latest ${fixAcc.length.toLocaleString()} fixes`} />
+            <Kpi label={t("kDevices")} value={f.n(devices.length)} sub={t("kDevicesSub", { n: f.n(all.length - devices.length) })} tone={all.length - devices.length ? "warn" : ""} />
+            <Kpi label={t("kReporting")} value={f.n(reporting.length)} sub={t("kReportingSub")} tone="ok" />
+            <Kpi label={t("kAccuracy")} value={accs.length ? t("accM", { n: f.n(accs.reduce((a, b) => a + b, 0) / accs.length, 1) }) : "—"} sub={t("kAccuracySub")} />
+            <Kpi label={t("kWithin10")} value={f.ratio(fixAcc.filter((x) => x <= 10).length, fixAcc.length)} sub={t("kWithin10Sub", { n: f.n(fixAcc.length) })} />
           </div>
           <div className="panel">
-            <h2>IVMS devices</h2>
+            <h2>{t("kDevices")}</h2>
             <div className="tblwrap">
               <table>
                 <thead>
-                  <tr><th>Device</th><th>Tanker</th><th>Firmware</th><th>Installed</th><th>Last fix</th><th className="num">Accuracy</th><th>Signal</th><th>Sensors</th></tr>
+                  <tr><th>{t("cDevice")}</th><th>{t("cTanker")}</th><th>{t("cFirmware")}</th><th>{t("cInstalled")}</th><th>{t("cFix")}</th><th className="num">{t("cAccuracy")}</th><th>{t("cSignal")}</th><th>{t("cSensors")}</th></tr>
                 </thead>
                 <tbody>
-                  {devices.length === 0 && <tr><td colSpan={8} className="empty">No devices registered.</td></tr>}
-                  {devices.map((t) => {
-                    const d = one(t.device)!;
-                    const a = fixAge(t);
-                    const sig = a == null ? ["No fix", "bad"] : a < 60 ? ["Good", "ok"] : a < 300 ? ["Weak", "warn"] : ["Lost", "bad"];
+                  {devices.length === 0 && <tr><td colSpan={8} className="empty">{t("noDevices")}</td></tr>}
+                  {devices.map((tk) => {
+                    const d = one(tk.device)!;
+                    const a = fixAge(tk);
+                    const sig = a == null ? [t("sigNoFix"), "bad"] : a < 60 ? [t("sigGood"), "ok"] : a < 300 ? [t("sigWeak"), "warn"] : [t("sigLost"), "bad"];
                     const sensors = Object.entries(d.sensors ?? {}).filter(([, v]) => v).map(([k]) => k.replace("_", " "));
                     return (
                       <tr key={d.id}>
-                        <td><b>{d.id}</b></td>
-                        <td>{t.plate} <span className={`tag ${t.service_type}`}>{t.service_type}</span></td>
-                        <td>{d.firmware}</td>
-                        <td>{fmtDate(d.installed_at)}</td>
-                        <td>{t.last_fix_at ? ago(t.last_fix_at, now) : "—"}</td>
-                        <td className="num"><FixQuality source={t.last_fix_source} accuracy={t.last_accuracy_m} /></td>
+                        <td><b dir="ltr">{d.id}</b></td>
+                        <td><bdi dir="ltr">{tk.plate}</bdi> <span className={`tag ${tk.service_type}`}>{tk.service_type}</span></td>
+                        <td dir="ltr">{d.firmware}</td>
+                        <td>{f.date(d.installed_at)}</td>
+                        <td>{tk.last_fix_at ? f.ago(tk.last_fix_at, now) : "—"}</td>
+                        <td className="num"><FixQuality source={tk.last_fix_source} accuracy={tk.last_accuracy_m} /></td>
                         <td><St tone={sig[1]}>{sig[0]}</St></td>
                         <td><small>{sensors.join(", ") || "—"}</small></td>
                       </tr>
@@ -493,49 +519,49 @@ function Fleet() {
                 </tbody>
               </table>
             </div>
-            <p className="note">Devices buffer fixes during network dropouts and upload on reconnect. Signal is derived from the age of the last fix (Good under 60 s, Weak under 5 min). IVMS integration is simulated until the interface spec is confirmed.</p>
+            <p className="note">{t("ivmsNote")}</p>
           </div>
         </>
       )}
 
       {dlg?.kind === "block" && (
         <ReasonDialog
-          title={`Suspend ${dlg.tanker.plate}`}
-          body="The tanker goes offline immediately and can’t go online or accept jobs until it is reinstated."
-          confirm="Suspend tanker"
+          title={t("dlgSuspend", { plate: dlg.tanker.plate })}
+          body={t("dlgSuspendBody")}
+          confirm={t("suspendTanker")}
           danger
           onCancel={() => setDlg(null)}
-          onConfirm={(reason) => act("staff_block_tanker", { p_tanker_id: dlg.tanker.id, p_reason: reason }, `${dlg.tanker.plate} suspended`)}
+          onConfirm={(reason) => act("staff_block_tanker", { p_tanker_id: dlg.tanker.id, p_reason: reason }, t("okSuspended", { plate: dlg.tanker.plate }))}
         />
       )}
       {dlg?.kind === "unblock" && (
         <ReasonDialog
-          title={`Reinstate ${dlg.tanker.plate}`}
-          body="The driver can go online again (if the tanker has a valid permit)."
-          confirm="Reinstate"
+          title={t("dlgReinstate", { plate: dlg.tanker.plate })}
+          body={t("dlgReinstateBody")}
+          confirm={t("reinstate")}
           onCancel={() => setDlg(null)}
-          onConfirm={(reason) => act("staff_unblock_tanker", { p_tanker_id: dlg.tanker.id, p_reason: reason }, `${dlg.tanker.plate} reinstated`)}
+          onConfirm={(reason) => act("staff_unblock_tanker", { p_tanker_id: dlg.tanker.id, p_reason: reason }, t("okReinstated", { plate: dlg.tanker.plate }))}
         />
       )}
       {dlg?.kind === "unassign" && (
         <ReasonDialog
-          title={`Unassign ${dlg.tanker.plate}`}
-          body={`Removes ${active(dlg.tanker)?.driver?.full_name ?? "the driver"} from this tanker and takes it offline. Refused while the tanker is on a job.`}
-          confirm="Unassign"
+          title={t("dlgUnassign", { plate: dlg.tanker.plate })}
+          body={t("dlgUnassignBody", { driver: active(dlg.tanker)?.driver?.full_name ?? t("theDriver") })}
+          confirm={t("unassign")}
           onCancel={() => setDlg(null)}
-          onConfirm={(reason) => act("staff_unassign_tanker", { p_tanker_id: dlg.tanker.id, p_reason: reason }, `${dlg.tanker.plate} unassigned`)}
+          onConfirm={(reason) => act("staff_unassign_tanker", { p_tanker_id: dlg.tanker.id, p_reason: reason }, t("okUnassigned", { plate: dlg.tanker.plate }))}
         />
       )}
       {dlg?.kind === "assign" && (
         <ReasonDialog
-          title={`Assign a driver to ${dlg.tanker.plate}`}
-          body="NWS override. Only drivers of this tanker's company without a tanker are listed."
-          confirm="Assign"
+          title={t("dlgAssign", { plate: dlg.tanker.plate })}
+          body={t("dlgAssignBody")}
+          confirm={t("assign")}
           extra={
             <div className="fld">
-              <label htmlFor="drv">Driver</label>
+              <label htmlFor="drv">{t("cDriver")}</label>
               <select id="drv" className="in" value={driverPick} onChange={(e) => setDriverPick(e.target.value)}>
-                <option value="">Choose a driver…</option>
+                <option value="">{t("chooseDriver")}</option>
                 {freeDrivers.filter((d) => d.company_id === dlg.tanker.company_id).map((d) => (
                   <option key={d.id} value={d.id}>{d.full_name || d.id}</option>
                 ))}
@@ -545,8 +571,8 @@ function Fleet() {
           onCancel={() => setDlg(null)}
           onConfirm={(reason) =>
             driverPick
-              ? act("staff_assign_tanker", { p_driver_id: driverPick, p_tanker_id: dlg.tanker.id, p_reason: reason }, `Driver assigned to ${dlg.tanker.plate}`)
-              : toast("Choose a driver first", true)
+              ? act("staff_assign_tanker", { p_driver_id: driverPick, p_tanker_id: dlg.tanker.id, p_reason: reason }, t("okAssigned", { plate: dlg.tanker.plate }))
+              : toast(t("chooseDriverFirst"), true)
           }
         />
       )}
@@ -555,48 +581,53 @@ function Fleet() {
 }
 
 function Check({ v, site }: { v: ReturnType<typeof verification>; site: string | null }) {
+  const t = useT(FLEET);
   if (!v) return <span className="mut">{site ?? "—"}</span>;
   return (
     <>
-      <St tone={v.tone}>{v.text}</St>
+      <St tone={v.tone}>{v.text === "Verified" ? t("verified") : t("mismatch")}</St>
       <small style={{ display: "block" }}>{[site, v.note].filter(Boolean).join(" · ")}</small>
     </>
   );
 }
 
 function TripCells({ t, compact }: { t: Trip; compact?: boolean }) {
+  const tr = useT(FLEET);
+  const f = useFmt();
+  const { lang } = useLang();
+  const [stText, stTone] = statusText(t.status, undefined, lang);
   const end = t.delivered_at ?? t.cancelled_at;
   return (
     <tr>
       <td className={`stripe ${t.service_type}`}>
-        <Link className="lk" href={`/nws/orders/${t.id}`}>{orderNo(t.order_no)}</Link>
-        {t.is_test && <span className="st warn ptag" title="Test zone trip">TEST</span>}
-        <small style={{ display: "block" }}>{fmtDateTime(t.created_at)}</small>
+        <Link className="lk" href={`/nws/orders/${t.id}`} dir="ltr">{orderNo(t.order_no)}</Link>
+        {t.is_test && <span className="st warn ptag" title={tr("testTrip")}>{tr("testTag")}</span>}
+        <small style={{ display: "block" }}>{f.dateTime(t.created_at)}</small>
       </td>
       {!compact && (
         <>
           <td>
-            {t.tanker_plate ?? "—"}
+            <bdi dir="ltr">{t.tanker_plate ?? "—"}</bdi>
             <small style={{ display: "block" }}>{t.driver_name ?? ""}</small>
           </td>
           <td><span className={`tag ${t.service_type}`}>{t.service_type}</span></td>
-          <td className="num">{t.gallons.toLocaleString()}</td>
+          <td className="num">{f.n(t.gallons)}</td>
         </>
       )}
-      <td>{t.service_type === "WW" ? <span className="mut">n/a</span> : <Check v={verification(t, "fill")} site={one(t.fill_site)?.name ?? null} />}</td>
+      <td>{t.service_type === "WW" ? <span className="mut">{tr("na")}</span> : <Check v={verification(t, "fill")} site={one(t.fill_site)?.name ?? null} />}</td>
       <td>
         {t.service_type === "WW" ? (
           <Check v={verification(t, "discharge")} site={one(t.discharge_site)?.name ?? null} />
         ) : (
           <span>
             {t.area}
-            <small style={{ display: "block" }}>{t.gallons.toLocaleString()} gal</small>
+            <small style={{ display: "block" }}>{f.gal(t.gallons)}</small>
           </span>
         )}
       </td>
       <td>
-        <St tone={STATUS_TEXT[t.status][1]}>{STATUS_TEXT[t.status][0]}</St>
-        {end && <small style={{ display: "block" }}>{fmtDateTime(end)}</small>}
+        <St tone={stTone}>{stText}</St>
+        {end && <small style={{ display: "block" }}>{f.dateTime(end)}</small>}
       </td>
     </tr>
   );

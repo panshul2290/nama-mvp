@@ -1,9 +1,12 @@
 "use client";
 
 import { BarList, Donut, PALETTE, SERVICE_COLOR, Sparkline } from "@/components/nws/admin/charts";
-import { Empty, int, Kpi, omr } from "@/components/nws/admin/ui";
-import { fmtDate } from "@/components/nws/StaffContext";
-import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
+import { Empty, Kpi } from "@/components/nws/admin/ui";
+import { REPORT_VALUES, REPORTS } from "@/components/nws/i18n/reports";
+import { useFmt, type Fmt } from "@/components/portal/i18n";
+import { useLang, useT } from "@/lib/i18n";
+import { serviceLabel } from "@/lib/labels";
+import type { ServiceType } from "@/lib/pricing";
 import { ReportState, useReport } from "./report";
 
 const SEGMENT_LABEL: Record<string, string> = { household: "Residential", commercial: "Commercial", farm: "Farms", government: "Government" };
@@ -20,57 +23,63 @@ type Cons = {
   top_properties: (Pred & { tank_gal: number | null; per_week: number; weeks: number[]; deliveries: number })[];
 };
 
-const due = (d: number | null) =>
-  d == null ? <span className="mut">—</span> : d < 0 ? <span className="st bad">Overdue {Math.ceil(-d)} d</span> : d <= 3 ? <span className="st warn">Due in {Math.max(0, Math.round(d))} d</span> : <span className="st ok">In {Math.round(d)} d</span>;
-const place = (p: Pred) => (p.property_id ? (p.label ?? "Property") : "No saved property");
+type T = (key: string, vars?: Record<string, string | number>) => string;
+const due = (d: number | null, t: T, f: Fmt) =>
+  d == null ? <span className="mut">—</span> : d < 0 ? <span className="st bad">{t("overdue", { n: f.n(Math.ceil(-d)) })}</span> : d <= 3 ? <span className="st warn">{t("dueIn", { n: f.n(Math.max(0, Math.round(d))) })}</span> : <span className="st ok">{t("inN", { n: f.n(Math.round(d)) })}</span>;
+const place = (p: Pred, t: T) => (p.property_id ? (p.label ?? t("propertyFallback")) : t("noProperty"));
 
 export default function Consumption({ days }: { days: number }) {
   const { data: s, error } = useReport<Cons>("report_consumption", days);
-  if (!s) return <ReportState error={error} what="consumption" />;
+  const t = useT(REPORTS);
+  const tv = useT(REPORT_VALUES);
+  const f = useFmt();
+  const { lang } = useLang();
+  if (!s) return <ReportState error={error} what={t("whatCons")} />;
   const total = s.gallons;
+  const seg = (k: string | null | undefined) => (k && SEGMENT_LABEL[k] ? tv(SEGMENT_LABEL[k]) : "");
 
   return (
     <>
       <div className="okpis">
-        <Kpi label="Water delivered" value={`${int(total)} gal`} sub={`${int(s.trips)} trips in range`} />
-        <Kpi label="Average per trip" value={s.trips ? `${int(total / s.trips)} gal` : "—"} />
-        <Kpi label="Refill alerts due" value={int(s.alerts_count)} sub="refill expected within 3 days" tone={s.alerts_count ? "warn" : undefined} />
-        <Kpi label="Properties tracked" value={int(s.tracked)} sub="2 or more drinking-water deliveries in 180 days" />
+        <Kpi label={t("waterDelivered")} value={f.gal(total)} sub={t("tripsInRange", { n: f.n(s.trips) })} />
+        <Kpi label={t("avgPerTrip")} value={s.trips ? f.gal(Math.round(total / s.trips)) : "—"} />
+        <Kpi label={t("refillDue")} value={f.n(s.alerts_count)} sub={t("within3")} tone={s.alerts_count ? "warn" : undefined} />
+        <Kpi label={t("tracked")} value={f.n(s.tracked)} sub={t("trackedSub")} />
       </div>
 
       <div className="grid3">
         <div className="panel">
-          <h2>Water delivered by area <small>gallons</small></h2>
+          <h2>{t("byArea")} <small>{t("gallonsSmall")}</small></h2>
           <BarList rows={s.by_area.map((a) => ({ label: a.area, value: a.gallons }))} />
         </div>
         <div className="panel">
-          <h2>By service <small>gallons</small></h2>
+          <h2>{t("byService")} <small>{t("gallonsSmall")}</small></h2>
           <Donut
-            slices={(["DW", "WW", "TE"] as ServiceType[]).map((sv) => ({ label: SERVICE_LABEL[sv], value: s.by_service[sv] ?? 0, color: SERVICE_COLOR[sv] }))}
-            center={total >= 1e6 ? `${(total / 1e6).toFixed(1)} M` : `${Math.round(total / 1e3)} k`}
-            sub="gallons"
+            slices={(["DW", "WW", "TE"] as ServiceType[]).map((sv) => ({ label: serviceLabel(sv, lang), value: s.by_service[sv] ?? 0, color: SERVICE_COLOR[sv] }))}
+            center={total >= 1e6 ? t("millionsN", { n: f.n(total / 1e6, 1) }) : t("thousandsN", { n: f.n(total / 1e3) })}
+            sub={t("gallonsSmall")}
           />
         </div>
         <div className="panel">
-          <h2>Customer segments <small>accounts</small></h2>
-          <Donut slices={Object.entries(s.segments).map(([k, v], i) => ({ label: SEGMENT_LABEL[k] ?? k, value: v, color: PALETTE[i % PALETTE.length] }))} sub="customers" />
+          <h2>{t("segments")} <small>{t("accounts")}</small></h2>
+          <Donut slices={Object.entries(s.segments).map(([k, v], i) => ({ label: seg(k) || k, value: v, color: PALETTE[i % PALETTE.length] }))} sub={t("customersSmall")} />
         </div>
       </div>
 
       <div className="half">
         <div className="panel">
-          <h2>Top consumers <small>delivered in range</small></h2>
+          <h2>{t("topConsumers")} <small>{t("deliveredInRange")}</small></h2>
           <div className="tblwrap">
             <table>
-              <thead><tr><th>Customer</th><th className="num">Trips</th><th className="num">Gallons</th><th className="num">OMR</th></tr></thead>
+              <thead><tr><th>{t("thCustomer")}</th><th className="num">{t("thTrips")}</th><th className="num">{t("thGallons")}</th><th className="num">{t("thOmr")}</th></tr></thead>
               <tbody>
-                {s.top_consumers.length === 0 && <Empty cols={4}>No deliveries in this range.</Empty>}
+                {s.top_consumers.length === 0 && <Empty cols={4}>{t("noDeliveries")}</Empty>}
                 {s.top_consumers.map((c) => (
                   <tr key={c.customer_id}>
-                    <td>{c.name || "Customer"}<small style={{ display: "block" }}>{SEGMENT_LABEL[c.segment ?? ""] ?? ""}</small></td>
-                    <td className="num">{c.trips}</td>
-                    <td className="num">{int(c.gallons)}</td>
-                    <td className="num">{omr(c.omr)}</td>
+                    <td>{c.name || t("customerFallback")}<small style={{ display: "block" }}>{seg(c.segment)}</small></td>
+                    <td className="num">{f.n(c.trips)}</td>
+                    <td className="num">{f.n(c.gallons)}</td>
+                    <td className="num">{f.n3(c.omr)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -78,46 +87,46 @@ export default function Consumption({ days }: { days: number }) {
           </div>
         </div>
         <div className="panel">
-          <h2>Predictive refill alerts <small>refill expected within 3 days</small></h2>
+          <h2>{t("predictive")} <small>{t("within3")}</small></h2>
           <div className="tblwrap scroll">
             <table>
-              <thead><tr><th>Customer · property</th><th className="num">Every</th><th>Last delivery</th><th>Expected</th><th>Alert</th></tr></thead>
+              <thead><tr><th>{t("thCustProp")}</th><th className="num">{t("thEvery")}</th><th>{t("thLastDelivery")}</th><th>{t("thExpected")}</th><th>{t("thAlert")}</th></tr></thead>
               <tbody>
-                {s.alerts.length === 0 && <Empty cols={5}>No refills due in the next 3 days.</Empty>}
+                {s.alerts.length === 0 && <Empty cols={5}>{t("noRefills")}</Empty>}
                 {s.alerts.map((p) => (
                   <tr key={p.key}>
-                    <td>{p.name || "Customer"}<small style={{ display: "block" }}>{place(p)} · {p.area}</small></td>
-                    <td className="num">{Number(p.avg_days).toFixed(1)} d</td>
-                    <td>{fmtDate(p.last_at)}</td>
-                    <td>{p.next_at ? fmtDate(p.next_at) : "—"}</td>
-                    <td>{due(p.due_in)}</td>
+                    <td>{p.name || t("customerFallback")}<small style={{ display: "block" }}>{place(p, t)} · {p.area}</small></td>
+                    <td className="num">{t("daysN", { n: f.n(Number(p.avg_days), 1) })}</td>
+                    <td>{f.date(p.last_at)}</td>
+                    <td>{p.next_at ? f.date(p.next_at) : "—"}</td>
+                    <td>{due(p.due_in, t, f)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="note">Average interval between a property&apos;s drinking-water deliveries over the last 180 days. Refill reminders go out automatically every morning (09:00) to customers who allow reminders, once per predicted refill, unless an order or contract is already open — see Settings → Notifications → Outbox (event refill_reminder).</p>
+          <p className="note">{t("refillNote")}</p>
         </div>
       </div>
 
       <div className="panel">
-        <h2>Consumption by property <small>usage trends, drinking water</small></h2>
+        <h2>{t("byProperty")} <small>{t("byPropertySub")}</small></h2>
         <div className="tblwrap">
           <table>
             <thead>
-              <tr><th>Property</th><th>Customer</th><th className="num">Gallons / week</th><th>Trend (8 weeks)</th><th className="num">Deliveries</th><th>Next predicted refill</th><th>Alert</th></tr>
+              <tr><th>{t("thProperty")}</th><th>{t("thCustomer")}</th><th className="num">{t("thGalWeek")}</th><th>{t("thTrend")}</th><th className="num">{t("thDeliveries")}</th><th>{t("thNextRefill")}</th><th>{t("thAlert")}</th></tr>
             </thead>
             <tbody>
-              {s.top_properties.length === 0 && <Empty cols={7}>Not enough delivery history yet.</Empty>}
+              {s.top_properties.length === 0 && <Empty cols={7}>{t("noHistory")}</Empty>}
               {s.top_properties.map((p) => (
                 <tr key={p.key}>
-                  <td>{place(p)}<small style={{ display: "block" }}>{p.area}{p.tank_gal ? ` · tank ${int(p.tank_gal)} gal` : ""}</small></td>
-                  <td>{p.name || "Customer"}</td>
-                  <td className="num">{int(p.per_week)}</td>
+                  <td>{place(p, t)}<small style={{ display: "block" }}>{p.area}{p.tank_gal ? t("tankN", { n: f.gal(p.tank_gal) }) : ""}</small></td>
+                  <td>{p.name || t("customerFallback")}</td>
+                  <td className="num">{f.n(p.per_week)}</td>
                   <td><Sparkline values={p.weeks.map(Number)} /></td>
-                  <td className="num">{p.deliveries}</td>
-                  <td>{p.next_at ? fmtDate(p.next_at) : "—"}</td>
-                  <td>{due(p.due_in)}</td>
+                  <td className="num">{f.n(p.deliveries)}</td>
+                  <td>{p.next_at ? f.date(p.next_at) : "—"}</td>
+                  <td>{due(p.due_in, t, f)}</td>
                 </tr>
               ))}
             </tbody>

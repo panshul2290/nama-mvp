@@ -4,10 +4,14 @@
 // places the order on their behalf through staff_place_order (cash on delivery).
 import { useEffect, useMemo, useState } from "react";
 import { Map } from "@/components/Map";
+import { OPS } from "@/components/nws/i18n/ops";
 import { maskPhone, Modal } from "@/components/nws/ops";
 import { useStaff } from "@/components/nws/StaffContext";
+import { useFmt } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
-import { SERVICE_LABEL, VOLUME_PRESETS, type ServiceType } from "@/lib/pricing";
+import { localDigits, useLang, useT, type Lang } from "@/lib/i18n";
+import { serviceLabel } from "@/lib/labels";
+import { VOLUME_PRESETS, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import type { LngLat } from "@/lib/types";
 
@@ -19,7 +23,8 @@ type Placed = { id: string; order_no: number };
 const MUSCAT: LngLat = { lat: 23.588, lng: 58.3829 };
 
 // Two-hour delivery windows, 8 am – 8 pm Muscat time (UTC+4), today and tomorrow; past ones left out.
-type Win = { label: string; start: string; end: string };
+// `label` is the English slot label stored on the order; `day`/`hour` word it on screen.
+type Win = { label: string; start: string; end: string; day: 0 | 1; hour: number };
 function windows(now: number): Win[] {
   const MCT = 4 * 3_600_000;
   const local = new Date(now + MCT);
@@ -30,9 +35,16 @@ function windows(now: number): Win[] {
     for (let h = 8; h < 20; h += 2) {
       const start = day0 + d * 86_400_000 + h * 3_600_000;
       if (start + 2 * 3_600_000 <= now + 30 * 60_000) continue;
-      out.push({ label: `${name} ${fmt(h)}–${fmt(h + 2)}`, start: new Date(start).toISOString(), end: new Date(start + 2 * 3_600_000).toISOString() });
+      out.push({ label: `${name} ${fmt(h)}–${fmt(h + 2)}`, start: new Date(start).toISOString(), end: new Date(start + 2 * 3_600_000).toISOString(), day: d, hour: h });
     }
   return out;
+}
+
+/** "8 ص–10 ص" in Arabic (the English label otherwise). */
+function winText(w: Win, lang: Lang, t: (k: string) => string) {
+  if (lang !== "ar") return w.label;
+  const h12 = (h: number) => `${localDigits(h > 12 ? h - 12 : h, lang)} ${h >= 12 ? "م" : "ص"}`;
+  return `${t(w.day === 0 ? "coToday" : "coTomorrow")} ${h12(w.hour)}–${h12(w.hour + 2)}`;
 }
 
 function km(a: LngLat, b: LngLat) {
@@ -43,6 +55,9 @@ function km(a: LngLat, b: LngLat) {
 
 export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: string; onClose: () => void; onPlaced: (o: Placed) => void }) {
   const { toast } = useStaff();
+  const t = useT(OPS);
+  const f = useFmt();
+  const { lang } = useLang();
   const [q, setQ] = useState("");
   const [callers, setCallers] = useState<Caller[]>([]);
   const [caller, setCaller] = useState<Caller | null>(null);
@@ -125,33 +140,33 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
       p_slot_label: chosen?.label ?? null,
     });
     setBusy(false);
-    if (error) return toast(friendlyError(error), true);
+    if (error) return toast(friendlyError(error, lang), true);
     onPlaced(data as Placed);
   }
 
   return (
-    <Modal title="New order for a caller" wide onClose={onClose}>
-      <p>Genesys call centre: the order is placed for the caller’s account, priced from the tariff and paid in cash on delivery. (The Genesys link is simulated: the interaction ID is entered by hand.)</p>
+    <Modal title={t("coTitle")} wide onClose={onClose}>
+      <p>{t("coIntro")}</p>
       <div className="grid2">
         <div>
           <div className="fld">
-            <label htmlFor="cq">Caller (name or mobile)</label>
-            <input id="cq" className="in" value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. Fatma or 9123" autoFocus />
+            <label htmlFor="cq">{t("coCaller")}</label>
+            <input id="cq" className="in" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("coCallerPh")} autoFocus />
           </div>
-          <div className="picklist" role="listbox" aria-label="Customers">
-            {callers.length === 0 && <span className="mut" style={{ fontSize: 13 }}>No customers match.</span>}
+          <div className="picklist" role="listbox" aria-label={t("coCustomers")}>
+            {callers.length === 0 && <span className="mut" style={{ fontSize: 13 }}>{t("coNoCustomers")}</span>}
             {callers.map((c) => (
-              <button key={c.id} type="button" className={`pickrow ${caller?.id === c.id ? "on" : ""}`} disabled={c.account_blocked} title={c.account_blocked ? "Account blocked — unblock it in Customers first" : undefined} onClick={() => choose(c)}>
+              <button key={c.id} type="button" className={`pickrow ${caller?.id === c.id ? "on" : ""}`} disabled={c.account_blocked} title={c.account_blocked ? t("coBlockedTip") : undefined} onClick={() => choose(c)}>
                 <span>
-                  <b>{c.full_name || "Customer"}</b> {c.account_blocked && <span className="st bad ptag">Blocked</span>}
+                  <b>{c.full_name || t("customer")}</b> {c.account_blocked && <span className="st bad ptag">{t("coBlocked")}</span>}
                 </span>
-                <small className="mut">{maskPhone(c.phone)}</small>
+                <small className="mut" dir="ltr">{maskPhone(c.phone)}</small>
               </button>
             ))}
           </div>
           {props.length > 0 && (
             <div className="fld">
-              <label>Saved properties</label>
+              <label>{t("coProps")}</label>
               <div className="chips">
                 {props.map((p) => (
                   <button key={p.id} type="button" className="chip" onClick={() => applyProperty(p)}>
@@ -162,22 +177,25 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
             </div>
           )}
           <div className="fld">
-            <label htmlFor="gx">Genesys interaction ID</label>
-            <input id="gx" className="in" value={gx} onChange={(e) => setGx(e.target.value)} />
+            <label htmlFor="gx">{t("coGx")}</label>
+            <input id="gx" className="in" dir="ltr" value={gx} onChange={(e) => setGx(e.target.value)} />
           </div>
         </div>
         <div>
           <div className="minimap">
-            <Map center={center} pick={pick} hint="Click the map or drag the pin to the delivery point" theme="dark" />
+            <Map center={center} pick={pick} hint={t("coMapHint")} theme="dark" />
           </div>
           <p className="mut" style={{ fontSize: 12.5, margin: "-4px 0 12px" }}>
-            {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)} · {zone ? `Zone: ${zone.name}` : <span style={{ color: "var(--bad)" }}>Outside active service zones</span>}
+            <span dir="ltr">
+              {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}
+            </span>{" "}
+            · {zone ? t("coZone", { zone: zone.name }) : <span style={{ color: "var(--bad)" }}>{t("coOutside")}</span>}
           </p>
         </div>
       </div>
       <div className="grid2">
         <div className="fld">
-          <label htmlFor="sv">Service</label>
+          <label htmlFor="sv">{t("service")}</label>
           <select
             id="sv"
             className="in"
@@ -188,53 +206,53 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
               setGallons(VOLUME_PRESETS[t][1] ?? VOLUME_PRESETS[t][0]);
             }}
           >
-            {(["DW", "WW", "TE"] as ServiceType[]).map((t) => (
-              <option key={t} value={t}>
-                {SERVICE_LABEL[t]}
+            {(["DW", "WW", "TE"] as ServiceType[]).map((s) => (
+              <option key={s} value={s}>
+                {serviceLabel(s, lang)}
               </option>
             ))}
           </select>
         </div>
         <div className="fld">
-          <label htmlFor="gl">Gallons</label>
+          <label htmlFor="gl">{t("gallons")}</label>
           <input id="gl" className="in" type="number" min={1} max={20000} value={gallons} onChange={(e) => setGallons(Number(e.target.value))} />
           <div className="chips" style={{ marginTop: 6 }}>
             {VOLUME_PRESETS[type].map((v) => (
               <button key={v} type="button" className={`chip ${gallons === v ? "on" : ""}`} onClick={() => setGallons(v)}>
-                {v.toLocaleString()}
+                {f.n(v)}
               </button>
             ))}
           </div>
         </div>
         <div className="fld">
-          <label htmlFor="ar">Area</label>
-          <input id="ar" className="in" value={area} onChange={(e) => setArea(e.target.value)} placeholder={zone?.name ?? "Neighbourhood"} />
+          <label htmlFor="ar">{t("coArea")}</label>
+          <input id="ar" className="in" value={area} onChange={(e) => setArea(e.target.value)} placeholder={zone?.name ?? t("coAreaPh")} />
         </div>
         <div className="fld">
-          <label htmlFor="ad">Address / directions</label>
-          <input id="ad" className="in" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Building, way number, landmark" />
+          <label htmlFor="ad">{t("coAddress")}</label>
+          <input id="ad" className="in" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("coAddressPh")} />
         </div>
         <div className="fld">
-          <label htmlFor="wn">Window</label>
+          <label htmlFor="wn">{t("coWindow")}</label>
           <select id="wn" className="in" value={win} onChange={(e) => setWin(e.target.value)}>
-            <option value="">As soon as possible</option>
+            <option value="">{t("coAsap")}</option>
             {wins.map((x) => (
               <option key={x.start} value={x.start}>
-                {x.label}
+                {winText(x, lang, t)}
               </option>
             ))}
           </select>
         </div>
       </div>
       <label className="mut" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, marginBottom: 14 }}>
-        <input type="checkbox" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} /> Emergency / priority request (priority multiplier on the delivery fee)
+        <input type="checkbox" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} /> {t("coEmergency")}
       </label>
       <div className="btns" style={{ justifyContent: "flex-end" }}>
         <button className="btn" onClick={onClose} disabled={busy}>
-          Cancel
+          {t("cancel")}
         </button>
         <button className="btn pri" disabled={busy || !caller || caller.account_blocked || !zone || gallons < 1} onClick={submit}>
-          {busy ? "Placing…" : "Place order"}
+          {busy ? t("coPlacing") : t("coPlace")}
         </button>
       </div>
     </Modal>

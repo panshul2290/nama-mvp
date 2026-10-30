@@ -4,8 +4,11 @@
 // with its governorate, cluster, owner and current permit. Filtered and paged in the database
 // (staff_register_tankers); owner numbers are masked unless the viewer is privileged (0027).
 import { useCallback, useEffect, useState } from "react";
+import { REG } from "@/components/nws/i18n/register";
 import { DAY, downloadCsv, Kpi, St, SERVICE_NAME, useNow } from "@/components/nws/ops";
-import { fmtDate, fmtDateTime } from "@/components/nws/StaffContext";
+import { useFmt } from "@/components/portal/i18n";
+import { useLang, useT } from "@/lib/i18n";
+import { label } from "@/lib/labels";
 import { issuesTable, type Issue } from "@/lib/importRegister";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
@@ -16,42 +19,19 @@ import { ImportRegister } from "./ImportRegister";
 
 const PAGE = 100;
 
-const T = {
-  kValid: "Valid permits", kValidSub: "can take jobs and fill",
-  kExp: "Expiring in 30 days", kExpSub: "owners get reminders",
-  kBlocked: "No valid permit", kBlockedSub: "blocked from jobs and filling",
-  kPending: "Applications in review", kPendingSub: "new permits and renewals",
-  kPlatform: "Registered on platform", kPlatformSub: (n: number) => `${n.toLocaleString()} in the NWS register only`,
-  sources: [["all", "All tankers"], ["platform", "On the platform"], ["register", "In NWS register"], ["register_only", "Register only (not on platform)"]] as const,
-  permits: [["", "Any permit state"], ["valid", "Valid"], ["expiring", "Expiring in 30 days"], ["blocked", "No valid permit"], ["expired", "Expired"], ["pending", "Application in review"], ["none", "No permit on file"]] as const,
-  services: [["", "All types"], ["DW", "Drinking water"], ["WW", "Wastewater"], ["TE", "Treated effluent"]] as const,
-  search: "Plate or owner",
-  import: "Import register",
-  importTitle: "Permit officers and admins",
-  export: "Export CSV",
-  exporting: (n: number, t: number) => `Exporting ${n.toLocaleString()} / ${t.toLocaleString()}…`,
-  none: "No tankers match.",
-  loading: "Loading…",
-  pager: (a: number, b: number, n: number) => `${a.toLocaleString()}–${b.toLocaleString()} of ${n.toLocaleString()}`,
-  prev: "Previous", next: "Next",
-  cols: ["Tanker", "Type", "Governorate", "Owner", "On platform", "Permit no.", "Valid until", "Status", "Effect on this platform", ""],
-  onPlatform: "On platform", registerOnly: "Register only", capUnknown: "capacity unknown",
-  independent: "Independent", noOwner: "No owner on file", claimed: "claimed",
-  noPermit: "No permit", wrongType: "Expired", expiring: "Expiring", valid: "Valid", expired: "Expired",
-  inReview: (no: string) => `${no} in review`,
-  canWork: "Can take jobs and fill", blocked: "Blocked from jobs and filling", noDriver: "Not on the platform — no driver",
-  review: "Review application", view: "View permit",
-  note: "The platform enforces the register: a tanker without a valid permit for its service type can’t accept jobs or go online, and NWS stations refuse to fill it. Register-only tankers stay offline until their owner signs up with the same mobile number.",
-  imports: "Imports", importsSub: "the latest register imports and their error reports",
-  noImports: "No imports yet.",
-  report: "Error report",
-  status: { running: "Running", completed: "Completed", failed: "Failed", cancelled: "Stopped" } as Record<string, string>,
-};
+// Filter options: values with their dictionary keys (REG, components/nws/i18n/register).
+const SOURCES = ["all", "platform", "register", "register_only"] as const;
+const PERMITS = [["", "perm.any"], ["valid", "perm.valid"], ["expiring", "perm.expiring"], ["blocked", "perm.blocked"], ["expired", "perm.expired"], ["pending", "perm.pending"], ["none", "perm.none"]] as const;
+const SERVICES = ["", "DW", "WW", "TE"] as const;
+const COLS = ["colTanker", "colType", "governorate", "colOwner", "colOnPlatform", "colPermitNo", "colValidUntil", "status", "colEffect", ""];
 
 type Batch = { id: string; file_name: string; source: string; status: string; total_rows: number; counts: Record<string, number>; chunks: number; created_at: string; finished_at: string | null };
 
 export function RegisterPanel({ geo, canImport, onOpen, onTotal }: { geo: Geo; canImport: boolean; onOpen: (permitId: string) => void; onTotal?: (n: number) => void }) {
   const now = useNow(60_000);
+  const t = useT(REG);
+  const f = useFmt();
+  const { lang } = useLang();
   const [filter, setFilter] = useState<RegFilter>({ source: "all", cluster: "", governorate: "", service: "", permit: "", q: "" });
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
@@ -73,7 +53,7 @@ export function RegisterPanel({ geo, canImport, onOpen, onTotal }: { geo: Geo; c
   const key = `${JSON.stringify(cleanFilter(filter))}:${page}:${tick}`;
   useEffect(() => {
     let live = true;
-    fetchRegister(filter, PAGE, page * PAGE).then(({ data: p, error }) => {
+    fetchRegister(filter, PAGE, page * PAGE, lang).then(({ data: p, error }) => {
       if (!live) return;
       setData({ key, page: p, error });
       if (p && onTotal && !cleanFilter(filter).q && Object.keys(cleanFilter(filter)).length === 0) onTotal(p.total);
@@ -81,7 +61,7 @@ export function RegisterPanel({ geo, canImport, onOpen, onTotal }: { geo: Geo; c
     return () => {
       live = false;
     };
-  }, [filter, page, key, onTotal]);
+  }, [filter, page, key, onTotal, lang]);
 
   const loadBatches = useCallback(() => {
     supabase().from("import_batches").select("id, file_name, source, status, total_rows, counts, chunks, created_at, finished_at").order("created_at", { ascending: false }).limit(10)
@@ -100,8 +80,8 @@ export function RegisterPanel({ geo, canImport, onOpen, onTotal }: { geo: Geo; c
   };
 
   async function exportCsv() {
-    setExporting(T.exporting(0, p?.total ?? 0));
-    const all = await fetchAllRegister(filter, 20000, (n, t) => setExporting(T.exporting(n, t)));
+    setExporting(t("exporting", { n: f.n(0), total: f.n(p?.total ?? 0) }));
+    const all = await fetchAllRegister(filter, 20000, (n, tot) => setExporting(t("exporting", { n: f.n(n), total: f.n(tot) })), lang);
     setExporting(null);
     downloadCsv(`tanker-register-${omanDateKey(new Date())}`, [
       ["Plate", "Service", "Governorate", "Cluster", "Owner", "Owner mobile", "Company", "On platform", "In NWS register", "Capacity (gal)", "Register permit status",
@@ -120,9 +100,9 @@ export function RegisterPanel({ geo, canImport, onOpen, onTotal }: { geo: Geo; c
   }
 
   const state = (r: RegRow): [string, string] => {
-    if (r.permit_valid) return r.permit_expires && Date.parse(r.permit_expires) - now < 30 * DAY ? [T.expiring, "warn"] : [T.valid, "ok"];
-    if (r.permit_id) return [T.expired, "bad"];
-    return [T.noPermit, "bad"];
+    if (r.permit_valid) return r.permit_expires && Date.parse(r.permit_expires) - now < 30 * DAY ? [t("expiring"), "warn"] : [t("validL"), "ok"];
+    if (r.permit_id) return [t("expiredL"), "bad"];
+    return [t("noPermit"), "bad"];
   };
 
   const k = p?.kpis;
@@ -131,69 +111,69 @@ export function RegisterPanel({ geo, canImport, onOpen, onTotal }: { geo: Geo; c
   return (
     <>
       <div className="okpis">
-        <Kpi label={T.kValid} value={k ? k.valid.toLocaleString() : "…"} sub={T.kValidSub} tone="ok" />
-        <Kpi label={T.kExp} value={k ? k.expiring_30.toLocaleString() : "…"} sub={T.kExpSub} tone={k?.expiring_30 ? "warn" : ""} />
-        <Kpi label={T.kBlocked} value={k ? k.blocked.toLocaleString() : "…"} sub={T.kBlockedSub} tone="bad" />
-        <Kpi label={T.kPending} value={k ? k.pending.toLocaleString() : "…"} sub={T.kPendingSub} />
-        <Kpi label={T.kPlatform} value={k ? k.on_platform.toLocaleString() : "…"} sub={k ? T.kPlatformSub(k.register_only) : ""} />
+        <Kpi label={t("kValid")} value={k ? f.n(k.valid) : "…"} sub={t("kValidSub")} tone="ok" />
+        <Kpi label={t("kExp")} value={k ? f.n(k.expiring_30) : "…"} sub={t("kExpSub")} tone={k?.expiring_30 ? "warn" : ""} />
+        <Kpi label={t("kBlocked")} value={k ? f.n(k.blocked) : "…"} sub={t("kBlockedSub")} tone="bad" />
+        <Kpi label={t("kPending")} value={k ? f.n(k.pending) : "…"} sub={t("kPendingSub")} />
+        <Kpi label={t("kPlatform")} value={k ? f.n(k.on_platform) : "…"} sub={k ? t("kPlatformSub", { n: f.n(k.register_only) }) : ""} />
       </div>
       <div className="panel">
         <div className="toolbar">
           <div className="filters" style={{ flexWrap: "wrap" }}>
-            <select className="in" aria-label="Source" value={filter.source} onChange={(e) => set({ source: e.target.value as RegFilter["source"] })} style={{ width: 230 }}>
-              {T.sources.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            <select className="in" aria-label={t("source")} value={filter.source} onChange={(e) => set({ source: e.target.value as RegFilter["source"] })} style={{ width: 230 }}>
+              {SOURCES.map((v) => <option key={v} value={v}>{t(`src.${v}`)}</option>)}
             </select>
             <GeoFilter geo={geo} cluster={filter.cluster ?? ""} governorate={filter.governorate ?? ""} onChange={(g) => set(g)} />
-            <select className="in" aria-label="Service type" value={filter.service} onChange={(e) => set({ service: e.target.value as RegFilter["service"] })} style={{ width: 150 }}>
-              {T.services.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            <select className="in" aria-label={t("serviceType")} value={filter.service} onChange={(e) => set({ service: e.target.value as RegFilter["service"] })} style={{ width: 150 }}>
+              {SERVICES.map((v) => <option key={v} value={v}>{v ? label("svc", v, lang) : t("allTypes")}</option>)}
             </select>
-            <select className="in" aria-label="Permit state" value={filter.permit} onChange={(e) => set({ permit: e.target.value as RegFilter["permit"] })} style={{ width: 190 }}>
-              {T.permits.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            <select className="in" aria-label={t("permitState")} value={filter.permit} onChange={(e) => set({ permit: e.target.value as RegFilter["permit"] })} style={{ width: 190 }}>
+              {PERMITS.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
             </select>
-            <input className="in" placeholder={T.search} aria-label={T.search} value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 170 }} />
+            <input className="in" placeholder={t("searchPh")} aria-label={t("searchPh")} value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 170 }} />
           </div>
           <div className="btns">
-            <button className="btn sm" disabled={!p?.total || !!exporting} onClick={exportCsv}>{exporting ?? T.export}</button>
-            <button className="btn pri sm" disabled={!canImport} title={canImport ? undefined : T.importTitle} onClick={() => setImporting(true)}>{T.import}</button>
+            <button className="btn sm" disabled={!p?.total || !!exporting} onClick={exportCsv}>{exporting ?? t("exportCsv")}</button>
+            <button className="btn pri sm" disabled={!canImport} title={canImport ? undefined : t("importTitle")} onClick={() => setImporting(true)}>{t("importBtn")}</button>
           </div>
         </div>
         {cur?.error && <div className="banner badb" role="alert">{cur.error}</div>}
         <div className="tblwrap" style={{ maxHeight: 560, overflowY: "auto" }}>
           <table>
-            <thead><tr>{T.cols.map((c, i) => <th key={i}>{c}</th>)}</tr></thead>
+            <thead><tr>{COLS.map((c, i) => <th key={i}>{c ? t(c) : ""}</th>)}</tr></thead>
             <tbody>
-              {!cur && <tr><td colSpan={10} className="empty">{T.loading}</td></tr>}
-              {p && p.rows.length === 0 && <tr><td colSpan={10} className="empty">{T.none}</td></tr>}
+              {!cur && <tr><td colSpan={10} className="empty">{t("loading")}</td></tr>}
+              {p && p.rows.length === 0 && <tr><td colSpan={10} className="empty">{t("noMatch")}</td></tr>}
               {p?.rows.map((r) => {
                 const [s, tone] = state(r);
                 return (
                   <tr key={r.tanker_id}>
                     <td className={`stripe ${r.service_type}`} style={{ whiteSpace: "nowrap" }}>
-                      <b>{r.plate}</b>
-                      <small style={{ display: "block" }}>{r.capacity_known ? `${r.capacity_gal.toLocaleString()} gal` : T.capUnknown}</small>
+                      <b dir="ltr">{r.plate}</b>
+                      <small style={{ display: "block" }}>{r.capacity_known ? f.gal(r.capacity_gal) : t("capUnknown")}</small>
                     </td>
-                    <td><span className={`tag ${r.service_type}`}>{SERVICE_NAME[r.service_type as ServiceType]}</span></td>
+                    <td><span className={`tag ${r.service_type}`}>{label("svc", r.service_type, lang, SERVICE_NAME[r.service_type as ServiceType])}</span></td>
                     <td>
                       {geo.govName(r.governorate)}
                       <small style={{ display: "block" }}>{r.governorate ? geo.clusterName(r.cluster) : ""}</small>
                     </td>
                     <td>
-                      {r.company ?? r.owner_name ?? <span className="mut">{r.on_platform ? T.independent : T.noOwner}</span>}
+                      {r.company ?? r.owner_name ?? <span className="mut">{r.on_platform ? t("independent") : t("noOwner")}</span>}
                       {r.owner_name && (
-                        <small style={{ display: "block" }} dir="ltr">{[r.company ? r.owner_name : null, r.phone, r.claimed ? T.claimed : null].filter(Boolean).join(" · ")}</small>
+                        <small style={{ display: "block" }} dir="ltr">{[r.company ? r.owner_name : null, r.phone, r.claimed ? t("claimed") : null].filter(Boolean).join(" · ")}</small>
                       )}
                     </td>
-                    <td>{r.on_platform ? <St tone="ok">{T.onPlatform}</St> : <St>{T.registerOnly}</St>}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{r.permit_no ?? "—"}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{r.permit_expires ? fmtDate(r.permit_expires) : "—"}</td>
+                    <td>{r.on_platform ? <St tone="ok">{t("onPlatform")}</St> : <St>{t("registerOnly")}</St>}</td>
+                    <td style={{ whiteSpace: "nowrap" }} dir="ltr">{r.permit_no ?? "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{r.permit_expires ? f.date(r.permit_expires) : "—"}</td>
                     <td>
                       <St tone={tone}>{s}</St>
-                      {r.pending_no && <small style={{ display: "block" }}>{T.inReview(r.pending_no)}</small>}
+                      {r.pending_no && <small style={{ display: "block" }}>{t("inReview", { no: r.pending_no })}</small>}
                     </td>
-                    <td>{!r.on_platform ? <span className="mut">{T.noDriver}</span> : r.permit_valid ? T.canWork : <span style={{ color: "var(--bad)" }}>{T.blocked}</span>}</td>
+                    <td>{!r.on_platform ? <span className="mut">{t("noDriver")}</span> : r.permit_valid ? t("canWork") : <span style={{ color: "var(--bad)" }}>{t("blockedWork")}</span>}</td>
                     <td>
                       {(r.pending_id || r.permit_id) && (
-                        <button className="btn sm" onClick={() => onOpen((r.pending_id ?? r.permit_id)!)}>{r.pending_id ? T.review : T.view}</button>
+                        <button className="btn sm" onClick={() => onOpen((r.pending_id ?? r.permit_id)!)}>{r.pending_id ? t("reviewApp") : t("viewPermit")}</button>
                       )}
                     </td>
                   </tr>
@@ -204,31 +184,31 @@ export function RegisterPanel({ geo, canImport, onOpen, onTotal }: { geo: Geo; c
         </div>
         {p && p.total > 0 && (
           <div className="regpager">
-            <span>{T.pager(from, to, p.total)}</span>
-            <button className="btn sm" disabled={page === 0} onClick={() => setPage((x) => x - 1)}>{T.prev}</button>
-            <button className="btn sm" disabled={to >= p.total} onClick={() => setPage((x) => x + 1)}>{T.next}</button>
+            <span>{t("pager", { a: f.n(from), b: f.n(to), n: f.n(p.total) })}</span>
+            <button className="btn sm" disabled={page === 0} onClick={() => setPage((x) => x - 1)}>{t("prev")}</button>
+            <button className="btn sm" disabled={to >= p.total} onClick={() => setPage((x) => x + 1)}>{t("next")}</button>
           </div>
         )}
-        <p className="note">{T.note}</p>
+        <p className="note">{t("regNote")}</p>
       </div>
 
       <div className="panel">
-        <h2>{T.imports} <small>{T.importsSub}</small></h2>
+        <h2>{t("imports")} <small>{t("importsSub")}</small></h2>
         <div className="tblwrap">
           <table>
-            <thead><tr><th>File</th><th>Started</th><th>Status</th><th className="num">Rows</th><th className="num">Created</th><th className="num">Updated</th><th className="num">Issues</th><th></th></tr></thead>
+            <thead><tr><th>{t("colFile")}</th><th>{t("colStarted")}</th><th>{t("status")}</th><th className="num">{t("colRows")}</th><th className="num">{t("colCreated")}</th><th className="num">{t("colUpdated")}</th><th className="num">{t("colIssues")}</th><th></th></tr></thead>
             <tbody>
-              {batches.length === 0 && <tr><td colSpan={8} className="empty">{T.noImports}</td></tr>}
+              {batches.length === 0 && <tr><td colSpan={8} className="empty">{t("noImports")}</td></tr>}
               {batches.map((b) => (
                 <tr key={b.id}>
-                  <td>{b.file_name}<small style={{ display: "block" }}>{b.source === "script" ? "import script" : "upload"}</small></td>
-                  <td>{fmtDateTime(b.created_at)}</td>
-                  <td><St tone={b.status === "completed" ? "ok" : b.status === "running" ? "act" : "bad"}>{T.status[b.status] ?? b.status}</St></td>
-                  <td className="num">{b.total_rows.toLocaleString()}</td>
-                  <td className="num">{(b.counts.tankers_created ?? 0).toLocaleString()}</td>
-                  <td className="num">{(b.counts.tankers_updated ?? 0).toLocaleString()}</td>
-                  <td className="num">{((b.counts.warnings ?? 0) + (b.counts.errors ?? 0)).toLocaleString()}</td>
-                  <td><button className="btn sm" onClick={() => report(b)}>{T.report}</button></td>
+                  <td><bdi dir="ltr">{b.file_name}</bdi><small style={{ display: "block" }}>{b.source === "script" ? t("importScript") : t("uploadL")}</small></td>
+                  <td>{f.dateTime(b.created_at)}</td>
+                  <td><St tone={b.status === "completed" ? "ok" : b.status === "running" ? "act" : "bad"}>{REG[`batch.${b.status}`] ? t(`batch.${b.status}`) : b.status}</St></td>
+                  <td className="num">{f.n(b.total_rows)}</td>
+                  <td className="num">{f.n(b.counts.tankers_created ?? 0)}</td>
+                  <td className="num">{f.n(b.counts.tankers_updated ?? 0)}</td>
+                  <td className="num">{f.n((b.counts.warnings ?? 0) + (b.counts.errors ?? 0))}</td>
+                  <td><button className="btn sm" onClick={() => report(b)}>{t("errReport")}</button></td>
                 </tr>
               ))}
             </tbody>

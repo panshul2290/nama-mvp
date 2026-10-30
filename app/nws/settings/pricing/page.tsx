@@ -1,50 +1,56 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { omr, PageHead, ReadOnlyNote } from "@/components/nws/admin/ui";
-import { fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { PageHead, ReadOnlyNote } from "@/components/nws/admin/ui";
+import { SETTINGS_OPS } from "@/components/nws/i18n/settingsOps";
+import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { fmtNumber, useFmt } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
+import { useLang, useT } from "@/lib/i18n";
+import { serviceLabel } from "@/lib/labels";
 import { SERVICE_LABEL, type RuleStatus, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 
 type Rule = { rule_key: string; value: string; status: RuleStatus; source: string; notes: string; updated_at: string };
+// Status → [dictionary key, tone].
 const BADGE: Record<RuleStatus, [string, string]> = {
-  confirmed: ["Confirmed", "ok"],
-  pending_clarification: ["Pending NWS clarification", "warn"],
-  assumption: ["Assumption", "warn"],
+  confirmed: ["stConfirmed", "ok"],
+  pending_clarification: ["stPending", "warn"],
+  assumption: ["stAssumption", "warn"],
 };
 
-// Display order and labels, as in the prototype's pricing screen.
+// Display order and labels (dictionary keys), as in the prototype's pricing screen.
 const FEE_ENGINE: [string, string][] = [
-  ["fee_dw_omr", "Base fee — drinking water (OMR)"],
-  ["fee_ww_omr", "Base fee — wastewater (OMR)"],
-  ["fee_te_omr", "Base fee — treated effluent (OMR)"],
-  ["peak_multiplier", "Evening peak multiplier (6–8 pm)"],
-  ["priority_multiplier", "Priority / emergency multiplier"],
-  ["discount_monthly", "Monthly plan discount on fee"],
-  ["discount_yearly", "Yearly plan discount on fee"],
-  ["driver_share", "Driver share of fee"],
-  ["vat_rate", "VAT"],
-  ["cancel_fee_omr", "Cancellation fee after assignment (OMR)"],
+  ["fee_dw_omr", "prFeeDw"],
+  ["fee_ww_omr", "prFeeWw"],
+  ["fee_te_omr", "prFeeTe"],
+  ["peak_multiplier", "prPeak"],
+  ["priority_multiplier", "prPriority"],
+  ["discount_monthly", "prDiscMonthly"],
+  ["discount_yearly", "prDiscYearly"],
+  ["driver_share", "prDriverShare"],
+  ["vat_rate", "prVat"],
+  ["cancel_fee_omr", "prCancelFee"],
 ];
 // Dynamic factors (0026): distance and demand multiply the delivery fee next to peak and priority.
 const DYNAMIC: [string, string, string][] = [
-  ["distance_free_km", "Distance included in the base fee", "km"],
-  ["distance_per_km", "Added per km beyond it", "× per km"],
-  ["distance_cap", "Distance multiplier cap", "×"],
-  ["demand_min_open", "Demand pricing needs at least", "open requests"],
-  ["demand_ratio_threshold", "Starts above", "requests per online tanker"],
-  ["demand_step", "Added per extra request per tanker", "×"],
-  ["demand_cap", "Demand multiplier cap", "×"],
-  ["dynamic_cap", "Cap on the combined multiplier", "×"],
+  ["distance_free_km", "prDistFree", "uKm"],
+  ["distance_per_km", "prDistPerKm", "uPerKm"],
+  ["distance_cap", "prDistCap", "uX"],
+  ["demand_min_open", "prDemandMin", "uOpenReq"],
+  ["demand_ratio_threshold", "prDemandStart", "uReqPerTanker"],
+  ["demand_step", "prDemandStep", "uX"],
+  ["demand_cap", "prDemandCap", "uX"],
+  ["dynamic_cap", "prDynCap", "uX"],
 ];
-const TARIFF: [string, React.ReactNode, string][] = [
-  ["dw_tier_threshold_gal", <><span className="tag DW">DW</span> first tier ends at</>, "gal"],
-  ["dw_rate_upto_650", <><span className="tag DW">DW</span> up to 650 gal</>, "baisa / gal"],
-  ["dw_rate_above_650", <><span className="tag DW">DW</span> above 650 gal</>, "baisa / gal"],
-  ["dw_above_650_basis", <><span className="tag DW">DW</span> how the upper tier applies</>, ""],
-  ["ww_rate", <><span className="tag WW">WW</span> all</>, "baisa / gal"],
-  ["te_rate", <><span className="tag TE">TE</span> all</>, "baisa / gal"],
+// Tariff rows: [rule key, service tag, label key, unit key].
+const TARIFF: [string, ServiceType, string, string][] = [
+  ["dw_tier_threshold_gal", "DW", "prTierEnds", "uGal"],
+  ["dw_rate_upto_650", "DW", "prUpTo650", "uBaisa"],
+  ["dw_rate_above_650", "DW", "prAbove650", "uBaisa"],
+  ["dw_above_650_basis", "DW", "prUpperTier", ""],
+  ["ww_rate", "WW", "prAll", "uBaisa"],
+  ["te_rate", "TE", "prAll", "uBaisa"],
 ];
 
 type Factors = { base_fee: number; multiplier: number; peak_mult: number; priority_mult: number; distance_km: number | null; distance_mult: number; demand_ratio: number; demand_mult: number; located: boolean };
@@ -52,6 +58,8 @@ type QuoteRes = { water_charge: number; delivery_fee: number; discount: number; 
 
 export default function PricingPage() {
   const { can } = useStaff();
+  const t = useT(SETTINGS_OPS);
+  const f = useFmt();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [mode, setMode] = useState<string | null>(null);
   const [edit, setEdit] = useState<Rule | null>(null);
@@ -74,67 +82,69 @@ export default function PricingPage() {
   const row = (key: string, label: React.ReactNode, unit = "") => {
     const r = byKey.get(key);
     if (!r) return null;
+    const named = r.value === "slab" || r.value === "whole_volume";
     return (
       <tr key={key}>
         <td>
           {label}
-          <small style={{ display: "block" }} title={r.notes}>{r.source} · updated {fmtDateTime(r.updated_at)}</small>
+          <small style={{ display: "block" }} title={r.notes}>{t("prSourceUpdated", { source: r.source, at: f.dateTime(r.updated_at) })}</small>
         </td>
-        <td><span className={`st ${BADGE[r.status][1]}`}>{BADGE[r.status][0]}</span></td>
-        <td className="num"><b>{r.value === "slab" ? "Slab (only gallons above)" : r.value === "whole_volume" ? "Whole volume" : r.value}</b>{unit && <small> {unit}</small>}</td>
-        <td className="num">{editor && <button className="btn sm" onClick={() => setEdit(r)}>Edit</button>}</td>
+        <td><span className={`st ${BADGE[r.status][1]}`}>{t(BADGE[r.status][0])}</span></td>
+        <td className="num">
+          <b dir={named ? undefined : "ltr"}>{r.value === "slab" ? t("prSlab") : r.value === "whole_volume" ? t("prWhole") : r.value}</b>
+          {unit && <small> {t(unit)}</small>}
+        </td>
+        <td className="num">{editor && <button className="btn sm" onClick={() => setEdit(r)}>{t("edit")}</button>}</td>
       </tr>
     );
   };
 
   return (
     <>
-      <PageHead title="Pricing" sub="Every price is computed by the database from these rules. Lines priced from a rule that isn’t confirmed are tagged on quotes and orders." />
-      {!editor && <ReadOnlyNote who="Super admins and Finance" />}
+      <PageHead title={t("prTitle")} sub={t("prSub")} />
+      {!editor && <ReadOnlyNote who={t("whoAdminFinance")} />}
       <div className="okpis">
         <div className="okpi">
+          {/* i18n-ignore: setting name */}
           <span>BILLING_MODE</span>
-          <b>{mode ?? "—"}</b>
-          <small className={mode === "production" ? "ok" : "warn"}>{mode === "production" ? "orders using unconfirmed rules are refused" : "unconfirmed rules are allowed and flagged"}</small>
+          <b dir="ltr">{mode ?? "—"}</b>
+          <small className={mode === "production" ? "ok" : "warn"}>{mode === "production" ? t("prModeProd") : t("prModeOther")}</small>
         </div>
-        <div className="okpi"><span>Confirmed</span><b>{count("confirmed")}</b><small className="ok">from the tender tariff table</small></div>
-        <div className="okpi"><span>Pending clarification</span><b>{count("pending_clarification")}</b><small className="warn">awaiting NWS answers</small></div>
-        <div className="okpi"><span>Assumptions</span><b>{count("assumption")}</b><small className="warn">no tender basis yet</small></div>
+        <div className="okpi"><span>{t("stConfirmed")}</span><b>{f.n(count("confirmed"))}</b><small className="ok">{t("prFromTender")}</small></div>
+        <div className="okpi"><span>{t("prPendingKpi")}</span><b>{f.n(count("pending_clarification"))}</b><small className="warn">{t("prAwaitingNws")}</small></div>
+        <div className="okpi"><span>{t("prAssumptionsKpi")}</span><b>{f.n(count("assumption"))}</b><small className="warn">{t("prNoBasis")}</small></div>
       </div>
 
       <div className="two">
         <div className="panel">
-          <h2>Delivery fee engine <small>changes apply to new orders immediately</small></h2>
+          <h2>{t("prEngine")} <small>{t("prEngineSub")}</small></h2>
           <div className="tblwrap">
             <table>
               <tbody>
-                {!rules && <tr><td className="empty">Loading…</td></tr>}
-                {FEE_ENGINE.map(([k, l]) => row(k, l))}
+                {!rules && <tr><td className="empty">{t("loading")}</td></tr>}
+                {FEE_ENGINE.map(([k, l]) => row(k, t(l)))}
               </tbody>
             </table>
           </div>
         </div>
         <div className="stack">
           <div className="panel">
-            <h2>Water tariff <small>regulated, from tender</small></h2>
+            <h2>{t("prTariff")} <small>{t("prTariffSub")}</small></h2>
             <div className="tblwrap">
               <table>
-                <tbody>{TARIFF.map(([k, l, u]) => row(k, l, u))}</tbody>
+                <tbody>{TARIFF.map(([k, s, l, u]) => row(k, <><span className={`tag ${s}`}>{s}</span> {t(l)}</>, u))}</tbody>
               </table>
             </div>
-            <p className="note">Open question for NWS (Q05): whether 3 baisa applies to the whole volume above 650 gal or only to the part above it. BILLING_MODE is changed by the database owner (see README → Pricing).</p>
+            <p className="note">{t("prTariffNote")}</p>
           </div>
           <div className="panel">
-            <h2>Dynamic pricing <small>distance and demand, capped</small></h2>
+            <h2>{t("prDynamic")} <small>{t("prDynamicSub")}</small></h2>
             <div className="tblwrap">
               <table>
-                <tbody>{DYNAMIC.map(([k, l, u]) => row(k, l, u))}</tbody>
+                <tbody>{DYNAMIC.map(([k, l, u]) => row(k, t(l), u))}</tbody>
               </table>
             </div>
-            <p className="note">
-              Distance: from the nearest active filling station (wastewater: treatment plant) to the customer&apos;s pin. Demand: open requests for the service in the zone against online tankers with a fresh fix there.
-              Both are 1× inside the free distance and below the threshold, so existing prices hold; test-zone orders use no distance factor. The order keeps the breakdown, and the driver&apos;s earnings are their share of the multiplied fee.
-            </p>
+            <p className="note">{t("prDynamicNote")}</p>
           </div>
           <PriceCheck />
         </div>
@@ -146,46 +156,48 @@ export default function PricingPage() {
 
 function EditRule({ rule, onClose, onDone }: { rule: Rule; onClose: () => void; onDone: () => void }) {
   const { toast } = useStaff();
+  const { lang } = useLang();
+  const t = useT(SETTINGS_OPS);
   const [value, setValue] = useState(rule.value);
   const [status, setStatus] = useState<RuleStatus>(rule.status);
   const [source, setSource] = useState(rule.source);
   return (
     <ReasonDialog
-      title={`Edit ${rule.rule_key}`}
+      title={t("prEditTitle", { key: rule.rule_key })}
       body={rule.notes}
-      confirm="Save rule"
+      confirm={t("prSaveRule")}
       extra={
         <>
           <div className="row2">
             <div className="fld">
-              <label htmlFor="pr-v">Value</label>
+              <label htmlFor="pr-v">{t("prValue")}</label>
               {rule.rule_key === "dw_above_650_basis" ? (
                 <select id="pr-v" className="in" value={value} onChange={(e) => setValue(e.target.value)}>
-                  <option value="slab">slab</option>
-                  <option value="whole_volume">whole_volume</option>
+                  <option value="slab">{t("prSlab")}</option>
+                  <option value="whole_volume">{t("prWhole")}</option>
                 </select>
               ) : (
-                <input id="pr-v" className="in" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
+                <input id="pr-v" className="in" inputMode="decimal" dir="ltr" value={value} onChange={(e) => setValue(e.target.value)} />
               )}
             </div>
             <div className="fld">
-              <label htmlFor="pr-s">Status</label>
+              <label htmlFor="pr-s">{t("status")}</label>
               <select id="pr-s" className="in" value={status} onChange={(e) => setStatus(e.target.value as RuleStatus)}>
-                {(Object.keys(BADGE) as RuleStatus[]).map((s) => <option key={s} value={s}>{BADGE[s][0]}</option>)}
+                {(Object.keys(BADGE) as RuleStatus[]).map((s) => <option key={s} value={s}>{t(BADGE[s][0])}</option>)}
               </select>
             </div>
           </div>
           <div className="fld">
-            <label htmlFor="pr-src">Source</label>
-            <input id="pr-src" className="in" value={source} onChange={(e) => setSource(e.target.value)} placeholder="e.g. Tender tariff table, Q05 answer" />
+            <label htmlFor="pr-src">{t("prSource")}</label>
+            <input id="pr-src" className="in" value={source} onChange={(e) => setSource(e.target.value)} placeholder={t("prSourceHint")} />
           </div>
         </>
       }
       onCancel={onClose}
       onConfirm={async (reason) => {
         const { error } = await supabase().rpc("staff_update_pricing_rule", { p_rule_key: rule.rule_key, p_value: value.trim(), p_status: status, p_source: source, p_reason: reason });
-        if (error) return toast(friendlyError(error), true);
-        toast("Pricing rule updated — applies to new orders");
+        if (error) return toast(friendlyError(error, lang), true);
+        toast(t("prUpdated"));
         onDone();
       }}
     />
@@ -193,6 +205,9 @@ function EditRule({ rule, onClose, onDone }: { rule: Rule; onClose: () => void; 
 }
 
 function PriceCheck() {
+  const { lang } = useLang();
+  const t = useT(SETTINGS_OPS);
+  const f = useFmt();
   const [service, setService] = useState<ServiceType>("DW");
   const [gallons, setGallons] = useState("3000");
   const [peak, setPeak] = useState(false);
@@ -207,59 +222,69 @@ function PriceCheck() {
     const d = new Date();
     d.setUTCHours(peak ? 14 : 6, peak ? 30 : 0, 0, 0);
     const m = pin.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
-    if (pin.trim() && !m) return setErr("Delivery pin: latitude, longitude — e.g. 23.59, 58.41");
+    if (pin.trim() && !m) return setErr(t("pcPinBad"));
     const { data, error } = await supabase().rpc("quote_order", {
       p_service_type: service, p_gallons: Number(gallons), p_slot_start: d.toISOString(), p_emergency: emergency, p_promo_code: promo.trim() || null,
       p_lat: m ? Number(m[1]) : null, p_lng: m ? Number(m[2]) : null,
     });
-    setErr(error ? friendlyError(error) : null);
+    setErr(error ? friendlyError(error, lang) : null);
     setQ(error ? null : (data as QuoteRes));
   }
 
+  // A multiplier as it comes from the database ("1.25×"), in the portal's digits.
+  const x = (v: number) => `${fmtNumber(v, lang, { maximumFractionDigits: 3 })}×`;
   return (
     <div className="panel pcheck">
-      <h2>Price check <small>live from the rules</small></h2>
+      <h2>{t("pcTitle")} <small>{t("pcSub")}</small></h2>
       <div className="pad">
         <div className="form">
           <div className="fld">
-            <label htmlFor="pc-s">Service</label>
+            <label htmlFor="pc-s">{t("service")}</label>
             <select id="pc-s" className="in" value={service} onChange={(e) => setService(e.target.value as ServiceType)}>
-              {(Object.keys(SERVICE_LABEL) as ServiceType[]).map((s) => <option key={s} value={s}>{SERVICE_LABEL[s]}</option>)}
+              {(Object.keys(SERVICE_LABEL) as ServiceType[]).map((s) => <option key={s} value={s}>{serviceLabel(s, lang)}</option>)}
             </select>
           </div>
           <div className="fld">
-            <label htmlFor="pc-g">Gallons</label>
-            <input id="pc-g" className="in" type="number" min={1} max={20000} value={gallons} onChange={(e) => setGallons(e.target.value)} />
+            <label htmlFor="pc-g">{t("gallons")}</label>
+            <input id="pc-g" className="in" type="number" dir="ltr" min={1} max={20000} value={gallons} onChange={(e) => setGallons(e.target.value)} />
           </div>
           <div className="fld">
-            <label htmlFor="pc-p">Promo code</label>
-            <input id="pc-p" className="in" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} placeholder="Optional" />
+            <label htmlFor="pc-p">{t("pmCode")}</label>
+            <input id="pc-p" className="in" dir="ltr" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} placeholder={t("optionalCap")} />
           </div>
           <div className="fld">
-            <label htmlFor="pc-pin">Delivery pin (lat, lng)</label>
-            <input id="pc-pin" className="in" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="Optional, e.g. 23.59, 58.41" dir="ltr" />
+            <label htmlFor="pc-pin">{t("pcPin")}</label>
+            <input id="pc-pin" className="in" value={pin} onChange={(e) => setPin(e.target.value)} placeholder={t("pcPinHint")} dir="ltr" />
           </div>
         </div>
         <div className="checks" style={{ display: "flex", gap: 16, margin: "10px 0", fontSize: 13.5 }}>
-          <label><input type="checkbox" checked={peak} onChange={(e) => setPeak(e.target.checked)} /> Evening peak slot</label>
-          <label><input type="checkbox" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} /> Emergency</label>
+          <label><input type="checkbox" checked={peak} onChange={(e) => setPeak(e.target.checked)} /> {t("pcPeak")}</label>
+          <label><input type="checkbox" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} /> {t("pcEmergency")}</label>
         </div>
-        <button className="btn pri" onClick={check}>Calculate</button>
+        <button className="btn pri" onClick={check}>{t("pcCalc")}</button>
         {err && <div className="banner badb" style={{ marginTop: 12 }}>{err}</div>}
       </div>
       {q && (
         <div className="bill">
-          <div><span>Water charge</span><span>{omr(q.water_charge)}</span></div>
-          <div><span>Delivery fee{q.peak ? " · peak" : ""}{q.priority ? " · emergency" : ""}</span><span>{omr(q.delivery_fee)}</span></div>
-          {Number(q.discount) > 0 && <div><span>Discount {Math.round(q.discount_pct * 100)}%{q.promo_label ? ` · ${q.promo_label}` : ""}</span><span>−{omr(q.discount)}</span></div>}
-          <div><span>VAT</span><span>{omr(q.vat)}</span></div>
-          <div className="tot"><span>Total (OMR) {q.total_status !== "confirmed" && <span className={`st ptag ${BADGE[q.total_status][1]}`}>{BADGE[q.total_status][0]}</span>}</span><span>{omr(q.total)}</span></div>
-          <div className="mut"><span>Driver earnings</span><span>{omr(q.driver_earnings)}</span></div>
+          <div><span>{t("pcWater")}</span><span>{f.n3(q.water_charge)}</span></div>
+          <div><span>{t("pcFee")}{q.peak ? ` · ${t("pcPeakTag")}` : ""}{q.priority ? ` · ${t("pcEmergencyTag")}` : ""}</span><span>{f.n3(q.delivery_fee)}</span></div>
+          {Number(q.discount) > 0 && <div><span>{t("pcDiscount", { pct: f.pct(q.discount_pct, 0) })}{q.promo_label ? ` · ${q.promo_label}` : ""}</span><span>−{f.n3(q.discount)}</span></div>}
+          <div><span>{t("prVat")}</span><span>{f.n3(q.vat)}</span></div>
+          <div className="tot"><span>{t("pcTotal")} {q.total_status !== "confirmed" && <span className={`st ptag ${BADGE[q.total_status][1]}`}>{t(BADGE[q.total_status][0])}</span>}</span><span>{f.n3(q.total)}</span></div>
+          <div className="mut"><span>{t("pcDriver")}</span><span>{f.n3(q.driver_earnings)}</span></div>
           {q.factors && (
             <div className="mut" style={{ display: "block", fontSize: 12.5 }}>
-              Fee {omr(q.factors.base_fee)} × {Number(q.factors.multiplier).toFixed(3)}: peak {q.factors.peak_mult}× · priority {q.factors.priority_mult}× · distance {q.factors.distance_mult}×
-              {q.factors.distance_km != null ? ` (${q.factors.distance_km} km)` : ""} · demand {q.factors.demand_mult}× ({q.factors.demand_ratio} requests per tanker)
-              {!q.factors.located && " — add a pin for distance and demand"}
+              {t("pcFactors", {
+                fee: f.n3(q.factors.base_fee),
+                mult: f.n(q.factors.multiplier, 3),
+                peak: x(q.factors.peak_mult),
+                priority: x(q.factors.priority_mult),
+                distance: x(q.factors.distance_mult),
+              })}
+              {q.factors.distance_km != null ? ` (${fmtNumber(q.factors.distance_km, lang, { maximumFractionDigits: 2 })} ${t("uKm")})` : ""}
+              {" · "}
+              {t("pcDemand", { demand: x(q.factors.demand_mult), ratio: fmtNumber(q.factors.demand_ratio, lang, { maximumFractionDigits: 2 }) })}
+              {!q.factors.located && ` — ${t("pcAddPin")}`}
             </div>
           )}
         </div>

@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { BarList } from "@/components/nws/admin/charts";
-import { downloadCsv, int, Kpi, pct } from "@/components/nws/admin/ui";
+import { downloadCsv, Kpi } from "@/components/nws/admin/ui";
+import { REPORTS } from "@/components/nws/i18n/reports";
 import { GeoFilter, useGeo } from "@/components/nws/register/geo";
+import { useFmt } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
+import { useLang, useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { ReportState } from "./report";
 
@@ -23,32 +26,24 @@ type Rep = {
   orders_unmapped: number;
 };
 
-const T = {
-  inRegister: "In NWS register", inRegisterSub: (n: number) => `${int(n)} of them registered on the platform`,
-  onPlatform: "Registered on platform", onPlatformSub: (n: number) => `${int(n)} online now`,
-  permitted: "Valid permits", permittedSub: (n: number) => `${int(n)} applications in review`,
-  delivered: "Trips completed", deliveredSub: (n: number) => `of ${int(n)} orders placed`,
-  onTime: "On-time delivery",
-  byCluster: "By cluster",
-  byGov: "By governorate",
-  cols: ["Governorate", "Cluster", "In register", "On platform", "Online", "Valid permits", "In review", "Orders", "Delivered", "On time", "Gallons delivered"],
-  unassigned: (t: number, o: number) => `${int(t)} platform tankers have no governorate yet (registered in an app, not matched to the register)${o ? ` — ${int(o)} online now` : ""}.`,
-  unmapped: (n: number) => `${int(n)} orders in this period were outside a governorate's zones.`,
-  export: "Export CSV",
-  barsTitle: "Register tankers registered on the platform",
-};
+// CSV export header (exports keep English); the table shows COL_KEYS in the portal language.
+const CSV_COLS = ["Governorate", "Cluster", "In register", "On platform", "Online", "Valid permits", "In review", "Orders", "Delivered", "On time", "Gallons delivered"];
+const COL_KEYS = ["thGovernorate", "thCluster", "thInRegister", "thOnPlatform", "thOnline", "thValidPermits", "thInReview", "thOrders", "thDelivered", "thOnTime", "thGalDelivered"];
 
 export default function Clusters({ days }: { days: number }) {
   const geo = useGeo();
+  const t = useT(REPORTS);
+  const fm = useFmt();
+  const { lang } = useLang();
   const [f, setF] = useState({ cluster: "", governorate: "" });
-  const [state, setState] = useState<{ key: string; data: Rep | null; error: string | null } | null>(null);
+  const [state, setState] = useState<{ key: string; data: Rep | null; error: { message?: string } | null } | null>(null);
   const key = `${days}:${f.cluster}:${f.governorate}`;
   useEffect(() => {
     let live = true;
     supabase()
       .rpc("report_clusters", { p_days: days, p_cluster: f.cluster || null, p_governorate: f.governorate || null })
       .then(({ data, error }) => {
-        if (live) setState({ key, data: (data as Rep | null) ?? null, error: error ? friendlyError(error) : null });
+        if (live) setState({ key, data: (data as Rep | null) ?? null, error: error ?? null });
       });
     return () => {
       live = false;
@@ -63,14 +58,14 @@ export default function Clusters({ days }: { days: number }) {
       </div>
     </div>
   );
-  if (!cur?.data) return <>{filters}<ReportState error={cur?.error ?? null} what="clusters" /></>;
+  if (!cur?.data) return <>{filters}<ReportState error={cur?.error ? friendlyError(cur.error, lang) : null} what={t("whatClu")} /></>;
   const r = cur.data;
   const sum = (k: keyof Line) => r.by_cluster.reduce((a, x) => a + Number(x[k] ?? 0), 0);
   const onPct = sum("timed") ? sum("on_time") / sum("timed") : null;
 
   function exportCsv() {
     downloadCsv("clusters", [
-      T.cols,
+      CSV_COLS,
       ...r.by_governorate.map((g) => [g.name, geo.clusterName(g.cluster_code), g.in_register, g.on_platform, g.online, g.permitted, g.pending, g.placed, g.delivered,
         g.timed ? Math.round((g.on_time / g.timed) * 1000) / 10 : "", g.gallons]),
     ]);
@@ -80,29 +75,29 @@ export default function Clusters({ days }: { days: number }) {
     <>
       {filters}
       <div className="okpis">
-        <Kpi label={T.inRegister} value={int(sum("in_register"))} sub={T.inRegisterSub(sum("register_on_platform"))} />
-        <Kpi label={T.onPlatform} value={int(sum("on_platform"))} sub={T.onPlatformSub(sum("online"))} />
-        <Kpi label={T.permitted} value={int(sum("permitted"))} sub={T.permittedSub(sum("pending"))} />
-        <Kpi label={T.delivered} value={int(sum("delivered"))} sub={T.deliveredSub(sum("placed"))} />
-        <Kpi label={T.onTime} value={onPct == null ? "—" : pct(onPct)} sub="delivered by the slot end, or within 2 h" tone={onPct == null ? undefined : onPct >= 0.9 ? "ok" : "warn"} />
+        <Kpi label={t("inRegister")} value={fm.n(sum("in_register"))} sub={t("inRegisterSub", { n: fm.n(sum("register_on_platform")) })} />
+        <Kpi label={t("onPlatform")} value={fm.n(sum("on_platform"))} sub={t("onlineNow", { n: fm.n(sum("online")) })} />
+        <Kpi label={t("permitted")} value={fm.n(sum("permitted"))} sub={t("permittedSub", { n: fm.n(sum("pending")) })} />
+        <Kpi label={t("tripsCompleted")} value={fm.n(sum("delivered"))} sub={t("ofPlaced", { n: fm.n(sum("placed")) })} />
+        <Kpi label={t("onTimeDelivery")} value={onPct == null ? "—" : fm.pct(onPct)} sub={t("slotOrTwoH")} tone={onPct == null ? undefined : onPct >= 0.9 ? "ok" : "warn"} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, alignItems: "start" }}>
         <div className="panel">
-          <h2>{T.byCluster}</h2>
+          <h2>{t("byCluster")}</h2>
           <div className="tblwrap">
             <table>
-              <thead><tr><th>Cluster</th><th className="num">Governorates</th><th className="num">In register</th><th className="num">On platform</th><th className="num">Valid permits</th><th className="num">Delivered</th><th className="num">On time</th></tr></thead>
+              <thead><tr><th>{t("thCluster")}</th><th className="num">{t("thGovernorates")}</th><th className="num">{t("thInRegister")}</th><th className="num">{t("thOnPlatform")}</th><th className="num">{t("thValidPermits")}</th><th className="num">{t("thDelivered")}</th><th className="num">{t("thOnTime")}</th></tr></thead>
               <tbody>
                 {r.by_cluster.map((c) => (
                   <tr key={c.cluster_code ?? "none"} className="click" onClick={() => setF({ cluster: c.cluster_code ?? "none", governorate: "" })}>
                     <td><b>{c.name}</b></td>
-                    <td className="num">{c.governorates}</td>
-                    <td className="num">{int(c.in_register)}</td>
-                    <td className="num">{int(c.on_platform)}</td>
-                    <td className="num">{int(c.permitted)}</td>
-                    <td className="num">{int(c.delivered)}</td>
-                    <td className="num">{c.timed ? pct(c.on_time / c.timed) : "—"}</td>
+                    <td className="num">{fm.n(c.governorates)}</td>
+                    <td className="num">{fm.n(c.in_register)}</td>
+                    <td className="num">{fm.n(c.on_platform)}</td>
+                    <td className="num">{fm.n(c.permitted)}</td>
+                    <td className="num">{fm.n(c.delivered)}</td>
+                    <td className="num">{c.timed ? fm.pct(c.on_time / c.timed) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -110,33 +105,33 @@ export default function Clusters({ days }: { days: number }) {
           </div>
         </div>
         <div className="panel">
-          <h2>{T.barsTitle}</h2>
-          <BarList rows={r.by_cluster.map((c) => ({ label: c.name, value: c.in_register ? Math.round((c.register_on_platform / c.in_register) * 1000) / 10 : 0, key: c.cluster_code ?? "none" }))} max={100} fmt={(v) => `${v}%`} />
+          <h2>{t("barsTitle")}</h2>
+          <BarList rows={r.by_cluster.map((c) => ({ label: c.name, value: c.in_register ? Math.round((c.register_on_platform / c.in_register) * 1000) / 10 : 0, key: c.cluster_code ?? "none" }))} max={100} fmt={(v) => fm.pct(v / 100)} />
         </div>
       </div>
 
       <div className="panel">
         <div className="toolbar">
-          <h2 style={{ margin: 0, padding: 0, border: 0 }}>{T.byGov}</h2>
-          <button className="btn sm" onClick={exportCsv}>{T.export}</button>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>{t("byGov")}</h2>
+          <button className="btn sm" onClick={exportCsv}>{t("exportCsv")}</button>
         </div>
         <div className="tblwrap">
           <table>
-            <thead><tr>{T.cols.map((c, i) => <th key={c} className={i > 1 ? "num" : undefined}>{c}</th>)}</tr></thead>
+            <thead><tr>{COL_KEYS.map((c, i) => <th key={c} className={i > 1 ? "num" : undefined}>{t(c)}</th>)}</tr></thead>
             <tbody>
               {r.by_governorate.map((g) => (
                 <tr key={g.code} className="click" onClick={() => setF({ cluster: f.cluster, governorate: g.code })}>
                   <td><b>{g.name}</b></td>
                   <td>{geo.clusterName(g.cluster_code)}</td>
-                  <td className="num">{int(g.in_register)}</td>
-                  <td className="num">{int(g.on_platform)}</td>
-                  <td className="num">{int(g.online)}</td>
-                  <td className="num">{int(g.permitted)}</td>
-                  <td className="num">{int(g.pending)}</td>
-                  <td className="num">{int(g.placed)}</td>
-                  <td className="num">{int(g.delivered)}</td>
-                  <td className="num">{g.timed ? pct(g.on_time / g.timed) : "—"}</td>
-                  <td className="num">{int(g.gallons)}</td>
+                  <td className="num">{fm.n(g.in_register)}</td>
+                  <td className="num">{fm.n(g.on_platform)}</td>
+                  <td className="num">{fm.n(g.online)}</td>
+                  <td className="num">{fm.n(g.permitted)}</td>
+                  <td className="num">{fm.n(g.pending)}</td>
+                  <td className="num">{fm.n(g.placed)}</td>
+                  <td className="num">{fm.n(g.delivered)}</td>
+                  <td className="num">{g.timed ? fm.pct(g.on_time / g.timed) : "—"}</td>
+                  <td className="num">{fm.n(g.gallons)}</td>
                 </tr>
               ))}
             </tbody>
@@ -144,7 +139,8 @@ export default function Clusters({ days }: { days: number }) {
         </div>
         {(r.unassigned.on_platform > 0 || r.orders_unmapped > 0) && (
           <p className="note">
-            {r.unassigned.on_platform > 0 && T.unassigned(r.unassigned.on_platform, r.unassigned.online)} {r.orders_unmapped > 0 && T.unmapped(r.orders_unmapped)}
+            {r.unassigned.on_platform > 0 && `${t("unassigned", { n: fm.n(r.unassigned.on_platform) })}${r.unassigned.online ? t("unassignedOnline", { n: fm.n(r.unassigned.online) }) : ""}.`}{" "}
+            {r.orders_unmapped > 0 && t("unmapped", { n: fm.n(r.orders_unmapped) })}
           </p>
         )}
       </div>

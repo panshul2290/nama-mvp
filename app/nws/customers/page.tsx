@@ -4,14 +4,18 @@ import "../ops.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { downloadCsv, Kpi, maskPhone, n3, omr3, one, pct, St, Tabs, useNow, useRealtime, useRpc } from "@/components/nws/ops";
+import { COMPLAINTS } from "@/components/nws/i18n/complaints";
+import { CUSTOMERS } from "@/components/nws/i18n/customers";
+import { downloadCsv, Kpi, maskPhone, n3, one, St, Tabs, useNow, useRealtime, useRpc } from "@/components/nws/ops";
 import { Phone, RevealButton, usePrivacy } from "@/components/nws/Privacy";
 import { PropertyTrend } from "@/components/nws/PropertyTrend";
-import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { statusText } from "@/components/OrderBits";
+import { useFmt } from "@/components/portal/i18n";
 import { Loading } from "@/components/Shell";
 import { orderNo } from "@/lib/format";
-import { contractStatus } from "@/lib/labels";
+import { useLang, useT } from "@/lib/i18n";
+import { contractStatus, freqLabel } from "@/lib/labels";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/lib/types";
@@ -44,14 +48,26 @@ type Contract = {
 type Notif = { id: number; event: string; channels: string[]; title: string; created_at: string; read_at: string | null; user: { full_name: string } | { full_name: string }[] | null };
 
 const SEGMENTS: Segment[] = ["household", "commercial", "government", "farm"];
+// English segment and ID names for the CSV export (exports keep English); the screen uses CUSTOMERS seg_* / id_*.
 const SEG_LABEL: Record<string, string> = { household: "Residential", commercial: "Commercial", government: "Government", farm: "Farm", industrial: "Industrial" };
 /** Short customer reference for calls and exports (the prototype's C-1001 style). */
 const custRef = (id: string) => `C-${id.slice(0, 6).toUpperCase()}`;
-const ID_LABEL: Record<string, string> = { civil_id: "Civil ID", resident_card: "Resident card", passport: "Passport" };
 
 const ORG_TONE = { pending: "warn", active: "ok", suspended: "bad" } as const;
 
 type Tab = "cust" | "b2b" | "contracts" | "notif";
+
+/** Translated segment / ID type names, falling back to the stored code. */
+function useNames() {
+  const t = useT(CUSTOMERS);
+  return useMemo(
+    () => ({
+      seg: (s: string) => (CUSTOMERS[`seg_${s}`] ? t(`seg_${s}`) : s),
+      idType: (s: string) => (CUSTOMERS[`id_${s}`] ? t(`id_${s}`) : s),
+    }),
+    [t],
+  );
+}
 
 export default function CustomersPage() {
   return (
@@ -62,6 +78,7 @@ export default function CustomersPage() {
 }
 
 function Customers() {
+  const t = useT(CUSTOMERS);
   const linked = useSearchParams().get("id");
   const [tab, setTab] = useState<Tab>("cust");
   const [customers, setCustomers] = useState<Customer[] | null>(null);
@@ -132,16 +149,16 @@ function Customers() {
     <>
       <div className="vhead">
         <div>
-          <h1>Customers</h1>
-          <p>Look up any customer, their properties, contracts, wallet, orders and complaints. Manage corporate and government accounts on credit terms.</p>
+          <h1>{t("title")}</h1>
+          <p>{t("lead")}</p>
         </div>
       </div>
       <Tabs<Tab>
         tabs={[
-          ["cust", "Customers"],
-          ["b2b", "Corporate accounts", orgs?.length],
-          ["contracts", "Contracts", contracts?.length],
-          ["notif", "Notifications log"],
+          ["cust", t("tabCust")],
+          ["b2b", t("tabB2b"), orgs?.length],
+          ["contracts", t("tabContracts"), contracts?.length],
+          ["notif", t("tabNotif")],
         ]}
         value={tab}
         onChange={setTab}
@@ -170,6 +187,9 @@ function CustomersTab({
   contracts: Contract[];
   onOpen: (id: string) => void;
 }) {
+  const t = useT(CUSTOMERS);
+  const f = useFmt();
+  const names = useNames();
   // ID numbers are masked for everyone (encrypted at rest); phones for roles outside the privacy reveal list.
   const privacy = usePrivacy();
   const [seg, setSeg] = useState<Segment | "all">("all");
@@ -186,23 +206,23 @@ function CustomersTab({
   return (
     <>
       <div className="okpis">
-        <Kpi label="Registered customers" value={customers ? all.length.toLocaleString() : "—"} sub={`${all.filter((c) => c.account_blocked).length} blocked`} />
-        <Kpi label="ID-verified" value={pct(verified, all.length)} sub={`${verified} of ${all.length}`} tone="ok" />
-        <Kpi label="Active contracts" value={contracts.filter((k) => k.status === "active").length} sub={`${contracts.filter((k) => k.status === "pending_owner").length} awaiting a tanker company`} />
-        <Kpi label="Wallets with balance" value={withBalance} sub={`${n3([...wallet.values()].reduce((a, b) => a + Math.max(0, b), 0))} OMR held`} />
+        <Kpi label={t("kRegistered")} value={customers ? f.n(all.length) : "—"} sub={t("kBlockedN", { n: f.n(all.filter((c) => c.account_blocked).length) })} />
+        <Kpi label={t("kVerified")} value={f.ratio(verified, all.length)} sub={t("kOfN", { n: f.n(verified), total: f.n(all.length) })} tone="ok" />
+        <Kpi label={t("kContracts")} value={f.n(contracts.filter((k) => k.status === "active").length)} sub={t("kAwaitingCo", { n: f.n(contracts.filter((k) => k.status === "pending_owner").length) })} />
+        <Kpi label={t("kWallets")} value={f.n(withBalance)} sub={t("kHeld", { amt: f.omr3([...wallet.values()].reduce((a, b) => a + Math.max(0, b), 0)) })} />
       </div>
       <div className="panel">
         <div className="toolbar">
-          <div className="chips" role="group" aria-label="Segment">
+          <div className="chips" role="group" aria-label={t("segment")}>
             {(["all", ...SEGMENTS] as const).map((k) => (
               <button key={k} className={`chip ${seg === k ? "on" : ""}`} onClick={() => setSeg(k)}>
-                {k === "all" ? "All segments" : SEG_LABEL[k]}
-                <span className="tc">{k === "all" ? all.length : all.filter((c) => c.segment === k).length}</span>
+                {k === "all" ? t("allSegments") : names.seg(k)}
+                <span className="tc">{f.n(k === "all" ? all.length : all.filter((c) => c.segment === k).length)}</span>
               </button>
             ))}
           </div>
           <div className="filters">
-            <input className="in" placeholder="Search name, reference or mobile" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search customers" style={{ width: 210 }} />
+            <input className="in" placeholder={t("searchPh")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("searchAria")} style={{ width: 210 }} />
             <button
               className="btn sm"
               onClick={() =>
@@ -212,7 +232,7 @@ function CustomersTab({
                 ])
               }
             >
-              Export CSV
+              {t("exportCsv")}
             </button>
           </div>
         </div>
@@ -220,40 +240,40 @@ function CustomersTab({
           <table>
             <thead>
               <tr>
-                <th>Customer</th>
-                <th>Segment</th>
-                <th>ID</th>
-                <th>Mobile</th>
-                <th className="num">Wallet</th>
-                <th className="num">Orders</th>
-                <th>Status</th>
+                <th>{t("colCustomer")}</th>
+                <th>{t("segment")}</th>
+                <th>{t("colId")}</th>
+                <th>{t("colMobile")}</th>
+                <th className="num">{t("colWallet")}</th>
+                <th className="num">{t("colOrders")}</th>
+                <th>{t("status")}</th>
               </tr>
             </thead>
             <tbody>
               {!customers && (
-                <tr><td colSpan={7} className="empty">Loading…</td></tr>
+                <tr><td colSpan={7} className="empty">{t("loading")}</td></tr>
               )}
               {customers && list.length === 0 && (
-                <tr><td colSpan={7} className="empty">No customers match.</td></tr>
+                <tr><td colSpan={7} className="empty">{t("noMatch")}</td></tr>
               )}
               {list.map((c) => (
                 <tr key={c.id} className="click" onClick={() => onOpen(c.id)}>
                   <td>
-                    <b>{c.full_name || "Unnamed customer"}</b>
+                    <b>{c.full_name || t("unnamed")}</b>
                     <small style={{ display: "block" }}>
-                      {custRef(c.id)} · joined {fmtDate(c.created_at)}
-                      {c.role === "business" && ` · B2B${c.org_id && orgName.get(c.org_id) ? ` · ${orgName.get(c.org_id)}` : ""}`}
+                      <bdi dir="ltr">{custRef(c.id)}</bdi> · {t("joined", { date: f.date(c.created_at) })}
+                      {c.role === "business" && ` · ${t("b2b")}${c.org_id && orgName.get(c.org_id) ? ` · ${orgName.get(c.org_id)}` : ""}`}
                     </small>
                   </td>
-                  <td>{SEG_LABEL[c.segment] ?? c.segment}</td>
+                  <td>{names.seg(c.segment)}</td>
                   <td>
-                    {c.id_type ? `${ID_LABEL[c.id_type] ?? c.id_type} ${c.id_no ?? ""}` : <span className="mut">Not provided</span>}{" "}
-                    <St tone={c.id_verified ? "ok" : "warn"}>{c.id_verified ? "Verified" : "Unverified"}</St>
+                    {c.id_type ? <>{names.idType(c.id_type)} <bdi dir="ltr">{c.id_no ?? ""}</bdi></> : <span className="mut">{t("notProvided")}</span>}{" "}
+                    <St tone={c.id_verified ? "ok" : "warn"}>{c.id_verified ? t("verified") : t("unverified")}</St>
                   </td>
                   <td><Phone value={c.phone} maskPhones={privacy.maskPhones} /></td>
-                  <td className="num">{n3(wallet.get(c.id))}</td>
-                  <td className="num">{orderCount.get(c.id) ?? 0}</td>
-                  <td><St tone={c.account_blocked ? "bad" : "ok"}>{c.account_blocked ? "Blocked" : "Active"}</St></td>
+                  <td className="num">{f.n3(wallet.get(c.id))}</td>
+                  <td className="num">{f.n(orderCount.get(c.id) ?? 0)}</td>
+                  <td><St tone={c.account_blocked ? "bad" : "ok"}>{c.account_blocked ? t("blocked") : t("active")}</St></td>
                 </tr>
               ))}
             </tbody>
@@ -274,6 +294,11 @@ type Detail = {
 
 function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: number; onClose: () => void; reload: () => Promise<void> }) {
   const { can } = useStaff();
+  const t = useT(CUSTOMERS);
+  const tc = useT(COMPLAINTS);
+  const f = useFmt();
+  const { lang } = useLang();
+  const names = useNames();
   const privacy = usePrivacy();
   const [trend, setTrend] = useState<string | null>(null);
   const run = useRpc();
@@ -328,54 +353,55 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
   const canGood = can("complaints_agent", "finance", "admin");
   const canBlock = can("operator", "admin");
   const canVerify = can("operator", "admin", "complaints_agent");
+  const caseState = (s: string) => (CUSTOMERS[`cstate_${s}`] ? t(`cstate_${s}`) : s);
 
   return (
     <>
       <div className="drawer-scrim" onClick={onClose} />
-      <aside className="drawer" aria-label="Customer detail">
+      <aside className="drawer" aria-label={t("drawerAria")}>
         {!c ? (
-          <div className="empty">Loading…</div>
+          <div className="empty">{t("loading")}</div>
         ) : (
           <>
             <div className="vhead">
               <div>
-                <h1>{c.full_name || "Unnamed customer"}</h1>
+                <h1>{c.full_name || t("unnamed")}</h1>
                 <p>
-                  {custRef(c.id)} · {SEG_LABEL[c.segment]} · joined {fmtDate(c.created_at)} · <St tone={c.account_blocked ? "bad" : "ok"}>{c.account_blocked ? "Blocked" : "Active"}</St>
+                  <bdi dir="ltr">{custRef(c.id)}</bdi> · {names.seg(c.segment)} · {t("joined", { date: f.date(c.created_at) })} · <St tone={c.account_blocked ? "bad" : "ok"}>{c.account_blocked ? t("blocked") : t("active")}</St>
                 </p>
               </div>
-              <button className="btn" onClick={onClose}>Close</button>
+              <button className="btn" onClick={onClose}>{t("close")}</button>
             </div>
             <div className="panel">
               <dl className="kv" style={{ paddingTop: 14 }}>
-                <dt>Mobile</dt>
-                <dd><Phone value={c.phone} maskPhones={privacy.maskPhones} /> {c.phone && <St tone="ok">OTP verified</St>} {c.phone && <RevealButton profileId={c.id} kind="contact" privileged={privacy.privileged} />}</dd>
-                <dt>ID</dt>
+                <dt>{t("colMobile")}</dt>
+                <dd><Phone value={c.phone} maskPhones={privacy.maskPhones} /> {c.phone && <St tone="ok">{t("otpVerified")}</St>} {c.phone && <RevealButton profileId={c.id} kind="contact" privileged={privacy.privileged} />}</dd>
+                <dt>{t("colId")}</dt>
                 <dd>
-                  {c.id_type ? `${ID_LABEL[c.id_type] ?? c.id_type} ${c.id_no ?? ""}` : "Not provided"} <St tone={c.id_verified ? "ok" : "warn"}>{c.id_verified ? "Verified" : "Unverified"}</St>
+                  {c.id_type ? <>{names.idType(c.id_type)} <bdi dir="ltr">{c.id_no ?? ""}</bdi></> : t("notProvided")} <St tone={c.id_verified ? "ok" : "warn"}>{c.id_verified ? t("verified") : t("unverified")}</St>
                   {c.id_no && <RevealButton profileId={c.id} kind="identity" privileged={privacy.privileged} />}
                 </dd>
-                <dt>Segment</dt>
-                <dd>{SEG_LABEL[c.segment]}</dd>
-                <dt>Language</dt>
-                <dd>{c.lang === "ar" ? "Arabic" : "English"}</dd>
-                <dt>Wallet</dt>
-                <dd>{omr3(wallet)} · {c.loyalty_points.toLocaleString()} loyalty points</dd>
-                <dt>Consents</dt>
-                <dd>Usage data sharing {c.share_usage ? "on" : "off"}</dd>
-                <dt>Account</dt>
-                <dd>{c.role === "business" ? "Business portal member (B2B)" : "Customer app"}</dd>
+                <dt>{t("segment")}</dt>
+                <dd>{names.seg(c.segment)}</dd>
+                <dt>{t("langLabel")}</dt>
+                <dd>{c.lang === "ar" ? t("langAr") : t("langEn")}</dd>
+                <dt>{t("colWallet")}</dt>
+                <dd>{f.omr3(wallet)} · {t("loyalty", { n: f.n(c.loyalty_points) })}</dd>
+                <dt>{t("consents")}</dt>
+                <dd>{t("usageSharing", { state: c.share_usage ? t("consentOn") : t("consentOff") })}</dd>
+                <dt>{t("account")}</dt>
+                <dd>{c.role === "business" ? t("acctB2b") : t("acctApp")}</dd>
               </dl>
               <div className="pad btns">
-                <button className="btn" disabled={!canGood} title={canGood ? undefined : "Complaints agents, finance and admins only"} onClick={() => setDlg("goodwill")}>
-                  Add 2.000 OMR goodwill credit
+                <button className="btn" disabled={!canGood} title={canGood ? undefined : t("onlyGood")} onClick={() => setDlg("goodwill")}>
+                  {t("goodwillBtn")}
                 </button>
-                <button className={`btn ${c.account_blocked ? "" : "bad"}`} disabled={!canBlock} title={canBlock ? undefined : "Operators and admins only"} onClick={() => setDlg("block")}>
-                  {c.account_blocked ? "Unblock" : "Block account"}
+                <button className={`btn ${c.account_blocked ? "" : "bad"}`} disabled={!canBlock} title={canBlock ? undefined : t("onlyBlock")} onClick={() => setDlg("block")}>
+                  {c.account_blocked ? t("unblock") : t("blockAcct")}
                 </button>
                 {!c.id_verified && (
-                  <button className="btn" disabled={!canVerify} title={canVerify ? undefined : "Operators, complaints agents and admins only"} onClick={() => setDlg("verify")}>
-                    Verify ID
+                  <button className="btn" disabled={!canVerify} title={canVerify ? undefined : t("onlyVerify")} onClick={() => setDlg("verify")}>
+                    {t("verifyId")}
                   </button>
                 )}
               </div>
@@ -384,23 +410,23 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
             <div className="grid2">
               <div>
                 <div className="panel">
-                  <h2>Properties <small>{d?.props.length ?? 0}</small></h2>
+                  <h2>{t("properties")} <small>{f.n(d?.props.length ?? 0)}</small></h2>
                   <div className="tblwrap">
                     <table>
                       <thead>
-                        <tr><th>Profile and address</th><th className="num">Tank</th><th>Usual interval</th></tr>
+                        <tr><th>{t("colPropAddr")}</th><th className="num">{t("colTank")}</th><th>{t("colInterval")}</th></tr>
                       </thead>
                       <tbody>
-                        {d?.props.length === 0 && <tr><td colSpan={3} className="mut">No saved properties.</td></tr>}
+                        {d?.props.length === 0 && <tr><td colSpan={3} className="mut">{t("noProps")}</td></tr>}
                         {d?.props.map((p) => (
                           <Fragment key={p.id}>
                           <tr>
                             <td><b>{p.label}</b><small style={{ display: "block" }}>{[p.address, p.area].filter(Boolean).join(" · ") || "—"}</small></td>
-                            <td className="num">{p.tank_gal.toLocaleString()} gal</td>
+                            <td className="num">{f.gal(p.tank_gal)}</td>
                             <td>
-                              {p.interval ? `Every ~${p.interval} days` : <span className="mut">Not enough deliveries</span>}
-                              {p.next && <small style={{ display: "block" }}>Next refill ≈ {fmtDate(p.next)}</small>}
-                              <button className="btn sm ghost" onClick={() => setTrend(trend === p.id ? null : p.id)} aria-expanded={trend === p.id}>{trend === p.id ? "Hide trend" : "Consumption trend"}</button>
+                              {p.interval ? t("everyDays", { n: f.n(p.interval) }) : <span className="mut">{t("notEnough")}</span>}
+                              {p.next && <small style={{ display: "block" }}>{t("nextRefill", { date: f.date(p.next) })}</small>}
+                              <button className="btn sm ghost" onClick={() => setTrend(trend === p.id ? null : p.id)} aria-expanded={trend === p.id}>{trend === p.id ? t("hideTrend") : t("showTrend")}</button>
                             </td>
                           </tr>
                           {trend === p.id && (
@@ -413,16 +439,16 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                   </div>
                 </div>
                 <div className="panel">
-                  <h2>Contracts <small>{d?.contracts.length ?? 0}</small></h2>
+                  <h2>{t("contracts")} <small>{f.n(d?.contracts.length ?? 0)}</small></h2>
                   <div className="tblwrap">
                     <table>
                       <tbody>
-                        {d?.contracts.length === 0 && <tr><td className="mut">No contracts.</td></tr>}
+                        {d?.contracts.length === 0 && <tr><td className="mut">{t("noContracts")}</td></tr>}
                         {d?.contracts.map((k) => (
                           <tr key={k.id}>
-                            <td>CT-{k.contract_no}</td>
-                            <td><span className={`tag ${k.service_type}`}>{k.service_type}</span> {k.gallons.toLocaleString()} gal · {k.frequency}</td>
-                            <td><St tone={contractStatus(k.status)[1]}>{contractStatus(k.status)[0]}</St></td>
+                            <td><bdi dir="ltr">CT-{k.contract_no}</bdi></td>
+                            <td><span className={`tag ${k.service_type}`}>{k.service_type}</span> {f.gal(k.gallons)} · {freqLabel(k.frequency, lang)}</td>
+                            <td><St tone={contractStatus(k.status)[1]}>{contractStatus(k.status, "other", lang)[0]}</St></td>
                           </tr>
                         ))}
                       </tbody>
@@ -430,17 +456,17 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                   </div>
                 </div>
                 <div className="panel">
-                  <h2>Complaints <small>{d?.complaints.length ?? 0}</small></h2>
+                  <h2>{t("complaints")} <small>{f.n(d?.complaints.length ?? 0)}</small></h2>
                   <div className="tblwrap">
                     <table>
                       <tbody>
-                        {d?.complaints.length === 0 && <tr><td className="mut">None.</td></tr>}
+                        {d?.complaints.length === 0 && <tr><td className="mut">{t("noneDot")}</td></tr>}
                         {d?.complaints.map((x) => (
                           <tr key={x.id}>
-                            <td><Link className="lk" href={`/nws/complaints?id=${x.id}`}>C-{x.case_no}</Link></td>
-                            <td>{x.category.replace(/_/g, " ")}</td>
-                            <td><St tone={x.state === "resolved" ? "ok" : x.state === "escalated" ? "bad" : x.state === "new" ? "warn" : "act"}>{x.state[0].toUpperCase() + x.state.slice(1)}</St></td>
-                            <td><small>{fmtDate(x.created_at)}</small></td>
+                            <td><Link className="lk" href={`/nws/complaints?id=${x.id}`}><bdi dir="ltr">C-{x.case_no}</bdi></Link></td>
+                            <td>{COMPLAINTS[`cat_${x.category}`] ? tc(`cat_${x.category}`) : x.category.replace(/_/g, " ")}</td>
+                            <td><St tone={x.state === "resolved" ? "ok" : x.state === "escalated" ? "bad" : x.state === "new" ? "warn" : "act"}>{caseState(x.state)}</St></td>
+                            <td><small>{f.date(x.created_at)}</small></td>
                           </tr>
                         ))}
                       </tbody>
@@ -450,17 +476,17 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
               </div>
               <div>
                 <div className="panel">
-                  <h2>Orders <small>{d?.orders.length ?? 0}{d?.orders.length === 30 ? " (latest 30)" : ""}</small></h2>
+                  <h2>{t("orders")} <small>{f.n(d?.orders.length ?? 0)}{d?.orders.length === 30 ? t("latest30") : ""}</small></h2>
                   <div className="tblwrap">
                     <table>
                       <tbody>
-                        {d?.orders.length === 0 && <tr><td className="mut">No orders.</td></tr>}
+                        {d?.orders.length === 0 && <tr><td className="mut">{t("noOrders")}</td></tr>}
                         {d?.orders.map((o) => (
                           <tr key={o.id}>
-                            <td className={`stripe ${o.service_type}`}><Link className="lk" href={`/nws/orders/${o.id}`}>{orderNo(o.order_no)}</Link><small style={{ display: "block" }}>{fmtDate(o.created_at)}</small></td>
-                            <td>{o.gallons.toLocaleString()} gal</td>
-                            <td><St tone={statusText(o.status, o.service_type)[1]}>{statusText(o.status, o.service_type)[0]}</St></td>
-                            <td className="num">{n3(o.total)}</td>
+                            <td className={`stripe ${o.service_type}`}><Link className="lk" href={`/nws/orders/${o.id}`}><bdi dir="ltr">{orderNo(o.order_no)}</bdi></Link><small style={{ display: "block" }}>{f.date(o.created_at)}</small></td>
+                            <td>{f.gal(o.gallons)}</td>
+                            <td><St tone={statusText(o.status, o.service_type)[1]}>{statusText(o.status, o.service_type, lang)[0]}</St></td>
+                            <td className="num">{f.n3(o.total)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -468,18 +494,20 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                   </div>
                 </div>
                 <div className="panel">
-                  <h2>Wallet transactions <small>balance {omr3(wallet)}</small></h2>
+                  <h2>{t("walletTx")} <small>{t("balanceX", { amt: f.omr3(wallet) })}</small></h2>
                   <div className="tblwrap">
                     <table>
                       <tbody>
-                        {d?.tx.length === 0 && <tr><td className="mut">No wallet activity.</td></tr>}
-                        {d?.tx.map((t) => (
-                          <tr key={t.id}>
-                            <td><small>{fmtDateTime(t.created_at)}</small></td>
-                            <td>{t.kind.replace(/_/g, " ")}<small style={{ display: "block" }}>{t.memo}</small></td>
-                            <td className="num" style={{ color: Number(t.amount) < 0 ? "var(--bad)" : "var(--ok)" }}>
-                              {Number(t.amount) > 0 ? "+" : ""}
-                              {n3(t.amount)}
+                        {d?.tx.length === 0 && <tr><td className="mut">{t("noWallet")}</td></tr>}
+                        {d?.tx.map((x) => (
+                          <tr key={x.id}>
+                            <td><small>{f.dateTime(x.created_at)}</small></td>
+                            <td>{x.kind.replace(/_/g, " ")}<small style={{ display: "block" }}>{x.memo}</small></td>
+                            <td className="num" style={{ color: Number(x.amount) < 0 ? "var(--bad)" : "var(--ok)" }}>
+                              <bdi dir="ltr">
+                                {Number(x.amount) > 0 ? "+" : ""}
+                                {f.n3(x.amount)}
+                              </bdi>
                             </td>
                           </tr>
                         ))}
@@ -494,30 +522,30 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
       </aside>
       {dlg === "goodwill" && c && (
         <ReasonDialog
-          title={`Goodwill credit for ${c.full_name}`}
-          body="Adds 2.000 OMR to the customer's wallet."
-          confirm="Add 2.000 OMR"
+          title={t("gwTitle", { name: c.full_name })}
+          body={t("gwBody")}
+          confirm={t("gwConfirm")}
           onCancel={() => setDlg(null)}
-          onConfirm={(r) => act("goodwill", r, "2.000 OMR goodwill credit added", 2)}
+          onConfirm={(r) => act("goodwill", r, t("gwOk"), 2)}
         />
       )}
       {dlg === "block" && c && (
         <ReasonDialog
-          title={c.account_blocked ? `Unblock ${c.full_name}` : `Block ${c.full_name}`}
-          body={c.account_blocked ? "The customer can place orders again." : "The customer can't place new orders until unblocked."}
-          confirm={c.account_blocked ? "Unblock" : "Block account"}
+          title={c.account_blocked ? t("unblockTitle", { name: c.full_name }) : t("blockTitle", { name: c.full_name })}
+          body={c.account_blocked ? t("unblockBody") : t("blockBody")}
+          confirm={c.account_blocked ? t("unblock") : t("blockAcct")}
           danger={!c.account_blocked}
           onCancel={() => setDlg(null)}
-          onConfirm={(r) => act(c.account_blocked ? "unblock" : "block", r, c.account_blocked ? "Account unblocked" : "Account blocked")}
+          onConfirm={(r) => act(c.account_blocked ? "unblock" : "block", r, c.account_blocked ? t("unblockedOk") : t("blockedOk"))}
         />
       )}
       {dlg === "verify" && c && (
         <ReasonDialog
-          title={`Verify ID for ${c.full_name}`}
-          body="Confirm the ID was checked against the original document or the ROP record."
-          confirm="Mark verified"
+          title={t("verifyTitle", { name: c.full_name })}
+          body={t("verifyBody")}
+          confirm={t("verifyConfirm")}
           onCancel={() => setDlg(null)}
-          onConfirm={(r) => act("verify_id", r, "ID marked as verified")}
+          onConfirm={(r) => act("verify_id", r, t("verifyOk"))}
         />
       )}
     </>
@@ -526,68 +554,67 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
 
 function OrgsTab({ orgs, use, reload }: { orgs: Org[] | null; use: Map<string, { used: number; overdue: number; uninvoiced: number }>; reload: () => Promise<void> }) {
   const { can } = useStaff();
+  const t = useT(CUSTOMERS);
+  const f = useFmt();
+  const names = useNames();
   const run = useRpc();
   const [dlg, setDlg] = useState<{ org: Org; action: "raise_limit" | "pause" | "resume" | "activate" | "invoice" } | null>(null);
   const fin = can("finance", "admin");
-  const title = fin ? undefined : "Finance and admins only";
-  const TEXT = {
-    raise_limit: ["Raise credit limit by 500.000 OMR", "Raise limit", "Credit limit raised"],
-    pause: ["Pause orders", "Pause orders", "Orders paused"],
-    resume: ["Resume orders", "Resume orders", "Orders resumed"],
-    activate: ["Activate account", "Activate", "Account activated"],
-    invoice: ["Invoice now", "Issue invoice", "Invoice issued"],
-  } as const;
+  const title = fin ? undefined : t("onlyFin");
+  // Dialog title, confirm button and success toast for each action.
+  const text = (a: string): [string, string, string] => [t(`a_${a}_t`), t(`a_${a}_c`), t(`a_${a}_ok`)];
 
   return (
     <div className="panel">
       <h2>
-        Corporate and government accounts <small>credit terms, invoicing cycles and overdue balances</small>
+        {t("orgsTitle")} <small>{t("orgsSub")}</small>
       </h2>
       <div className="tblwrap">
         <table>
           <thead>
             <tr>
-              <th>Account</th>
-              <th>Segment</th>
-              <th>Status</th>
-              <th className="num">Credit limit</th>
-              <th className="num">Used</th>
-              <th>Terms</th>
-              <th>Invoicing</th>
-              <th className="num">Overdue</th>
+              <th>{t("colAccount")}</th>
+              <th>{t("segment")}</th>
+              <th>{t("status")}</th>
+              <th className="num">{t("colLimit")}</th>
+              <th className="num">{t("colUsed")}</th>
+              <th>{t("colTerms")}</th>
+              <th>{t("colInvoicing")}</th>
+              <th className="num">{t("colOverdue")}</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {!orgs && <tr><td colSpan={9} className="empty">Loading…</td></tr>}
-            {orgs?.length === 0 && <tr><td colSpan={9} className="empty">No business accounts yet.</td></tr>}
+            {!orgs && <tr><td colSpan={9} className="empty">{t("loading")}</td></tr>}
+            {orgs?.length === 0 && <tr><td colSpan={9} className="empty">{t("noOrgs")}</td></tr>}
             {orgs?.map((o) => {
               const u = use.get(o.id) ?? { used: 0, overdue: 0, uninvoiced: 0 };
               const over = u.used > Number(o.credit_limit);
               return (
                 <tr key={o.id}>
-                  <td><b>{o.name}</b><small style={{ display: "block" }}>CR {o.cr_no}</small></td>
-                  <td>{SEG_LABEL[o.segment] ?? o.segment}</td>
+                  {/* i18n-ignore: CR is the Commercial Registration number's standard abbreviation */}
+                  <td><b>{o.name}</b><small style={{ display: "block" }}>CR <bdi dir="ltr">{o.cr_no}</bdi></small></td>
+                  <td>{names.seg(o.segment)}</td>
                   <td>
-                    <St tone={ORG_TONE[o.status]}>{o.status[0].toUpperCase() + o.status.slice(1)}</St>
-                    {o.paused && <St tone="bad">Orders paused</St>}
+                    <St tone={ORG_TONE[o.status]}>{t(`org_${o.status}`)}</St>
+                    {o.paused && <St tone="bad">{t("ordersPaused")}</St>}
                   </td>
-                  <td className="num">{n3(o.credit_limit)}</td>
-                  <td className="num" style={over ? { color: "var(--bad)" } : undefined}>{n3(u.used)}</td>
-                  <td>Net {o.terms_days} days</td>
-                  <td>{o.invoicing === "weekly" ? "Weekly" : "Monthly"}</td>
-                  <td className="num">{u.overdue > 0 ? <span style={{ color: "var(--bad)" }}>{n3(u.overdue)}</span> : "—"}</td>
+                  <td className="num">{f.n3(o.credit_limit)}</td>
+                  <td className="num" style={over ? { color: "var(--bad)" } : undefined}>{f.n3(u.used)}</td>
+                  <td>{t("netDays", { n: f.n(o.terms_days) })}</td>
+                  <td>{o.invoicing === "weekly" ? t("weekly") : t("monthly")}</td>
+                  <td className="num">{u.overdue > 0 ? <span style={{ color: "var(--bad)" }}>{f.n3(u.overdue)}</span> : "—"}</td>
                   <td>
                     <div className="btns" style={{ flexWrap: "nowrap" }}>
-                      <button className="btn sm" disabled={!fin} title={title} onClick={() => setDlg({ org: o, action: "raise_limit" })}>Raise limit +500</button>
+                      <button className="btn sm" disabled={!fin} title={title} onClick={() => setDlg({ org: o, action: "raise_limit" })}>{t("raise500")}</button>
                       <button className={`btn sm ${o.paused ? "" : "bad"}`} disabled={!fin} title={title} onClick={() => setDlg({ org: o, action: o.paused ? "resume" : "pause" })}>
-                        {o.paused ? "Resume orders" : "Pause orders"}
+                        {o.paused ? t("resumeOrders") : t("pauseOrders")}
                       </button>
                       {o.status !== "active" && (
-                        <button className="btn sm pri" disabled={!fin} title={title} onClick={() => setDlg({ org: o, action: "activate" })}>Activate</button>
+                        <button className="btn sm pri" disabled={!fin} title={title} onClick={() => setDlg({ org: o, action: "activate" })}>{t("activate")}</button>
                       )}
-                      <button className="btn sm" disabled={!fin || u.uninvoiced <= 0} title={!fin ? title : u.uninvoiced <= 0 ? "No uninvoiced account orders" : undefined} onClick={() => setDlg({ org: o, action: "invoice" })}>
-                        Invoice now
+                      <button className="btn sm" disabled={!fin || u.uninvoiced <= 0} title={!fin ? title : u.uninvoiced <= 0 ? t("noUninvoiced") : undefined} onClick={() => setDlg({ org: o, action: "invoice" })}>
+                        {t("invoiceNow")}
                       </button>
                     </div>
                   </td>
@@ -597,15 +624,15 @@ function OrgsTab({ orgs, use, reload }: { orgs: Org[] | null; use: Map<string, {
           </tbody>
         </table>
       </div>
-      <p className="note">Used = uninvoiced account orders plus unpaid invoices. Invoices go to the account&apos;s admin and finance members.</p>
+      <p className="note">{t("usedNote")}</p>
       {dlg && (
         <ReasonDialog
-          title={`${TEXT[dlg.action][0]} — ${dlg.org.name}`}
-          confirm={TEXT[dlg.action][1]}
+          title={`${text(dlg.action)[0]} — ${dlg.org.name}`}
+          confirm={text(dlg.action)[1]}
           danger={dlg.action === "pause"}
           onCancel={() => setDlg(null)}
           onConfirm={async (r) => {
-            if (await run("staff_org_action", { p_org_id: dlg.org.id, p_action: dlg.action, p_reason: r, p_amount: dlg.action === "raise_limit" ? 500 : null }, TEXT[dlg.action][2])) {
+            if (await run("staff_org_action", { p_org_id: dlg.org.id, p_action: dlg.action, p_reason: r, p_amount: dlg.action === "raise_limit" ? 500 : null }, text(dlg.action)[2])) {
               setDlg(null);
               await reload();
             }
@@ -617,6 +644,9 @@ function OrgsTab({ orgs, use, reload }: { orgs: Org[] | null; use: Map<string, {
 }
 
 function ContractsTab({ contracts }: { contracts: Contract[] | null }) {
+  const t = useT(CUSTOMERS);
+  const fm = useFmt();
+  const { lang } = useLang();
   const [f, setF] = useState("all");
   const list = (contracts ?? []).filter((k) => f === "all" || k.status === f);
   return (
@@ -625,8 +655,8 @@ function ContractsTab({ contracts }: { contracts: Contract[] | null }) {
         <div className="chips">
           {["all", "active", "pending_owner", "paused", "ended", "declined"].map((k) => (
             <button key={k} className={`chip ${f === k ? "on" : ""}`} onClick={() => setF(k)}>
-              {k === "all" ? "All" : contractStatus(k)[0]}
-              <span className="tc">{(contracts ?? []).filter((x) => k === "all" || x.status === k).length}</span>
+              {k === "all" ? t("all") : contractStatus(k, "other", lang)[0]}
+              <span className="tc">{fm.n((contracts ?? []).filter((x) => k === "all" || x.status === k).length)}</span>
             </button>
           ))}
         </div>
@@ -635,33 +665,33 @@ function ContractsTab({ contracts }: { contracts: Contract[] | null }) {
         <table>
           <thead>
             <tr>
-              <th>Contract</th>
-              <th>Customer</th>
-              <th>Tanker company</th>
-              <th>Property</th>
-              <th>Service</th>
-              <th>Frequency</th>
-              <th>Term</th>
-              <th className="num">Monthly</th>
-              <th>Status</th>
+              <th>{t("colContract")}</th>
+              <th>{t("colCustomer")}</th>
+              <th>{t("colCompany")}</th>
+              <th>{t("colProperty")}</th>
+              <th>{t("service")}</th>
+              <th>{t("colFrequency")}</th>
+              <th>{t("colTerm")}</th>
+              <th className="num">{t("colMonthly")}</th>
+              <th>{t("status")}</th>
             </tr>
           </thead>
           <tbody>
-            {!contracts && <tr><td colSpan={9} className="empty">Loading…</td></tr>}
-            {contracts && list.length === 0 && <tr><td colSpan={9} className="empty">No contracts.</td></tr>}
+            {!contracts && <tr><td colSpan={9} className="empty">{t("loading")}</td></tr>}
+            {contracts && list.length === 0 && <tr><td colSpan={9} className="empty">{t("noContracts")}</td></tr>}
             {list.map((k) => {
               const p = one(k.property);
               return (
                 <tr key={k.id}>
-                  <td className={`stripe ${k.service_type}`}><b>CT-{k.contract_no}</b></td>
-                  <td>{one(k.customer)?.full_name || one(k.org)?.name || "—"}{one(k.org) && <small style={{ display: "block" }}>Business account</small>}</td>
+                  <td className={`stripe ${k.service_type}`}><b dir="ltr">CT-{k.contract_no}</b></td>
+                  <td>{one(k.customer)?.full_name || one(k.org)?.name || "—"}{one(k.org) && <small style={{ display: "block" }}>{t("bizAccount")}</small>}</td>
                   <td>{one(k.company)?.name ?? "—"}</td>
                   <td>{p ? <>{p.label}<small style={{ display: "block" }}>{p.area}</small></> : "—"}</td>
-                  <td><span className={`tag ${k.service_type}`}>{k.service_type}</span> {k.gallons.toLocaleString()} gal</td>
-                  <td>{k.frequency[0].toUpperCase() + k.frequency.slice(1)} · {k.slot}<small style={{ display: "block" }}>{k.plan} plan</small></td>
-                  <td><small>{fmtDate(k.start_date)} – {fmtDate(k.end_date)}</small></td>
-                  <td className="num">{n3(k.monthly_est)}</td>
-                  <td><St tone={contractStatus(k.status)[1]}>{contractStatus(k.status)[0]}</St></td>
+                  <td><span className={`tag ${k.service_type}`}>{k.service_type}</span> {fm.gal(k.gallons)}</td>
+                  <td>{freqLabel(k.frequency, lang)} · {k.slot}<small style={{ display: "block" }}>{t("planX", { plan: k.plan })}</small></td>
+                  <td><small>{fm.date(k.start_date)} – {fm.date(k.end_date)}</small></td>
+                  <td className="num">{fm.n3(k.monthly_est)}</td>
+                  <td><St tone={contractStatus(k.status)[1]}>{contractStatus(k.status, "other", lang)[0]}</St></td>
                 </tr>
               );
             })}
@@ -673,47 +703,50 @@ function ContractsTab({ contracts }: { contracts: Contract[] | null }) {
 }
 
 function NotifTab({ notifs }: { notifs: Notif[] | null }) {
+  const t = useT(CUSTOMERS);
+  const f = useFmt();
   const now = useNow(30_000);
+  const channel = (c: string) => (c === "sms" ? "SMS" : c === "whatsapp" ? "WhatsApp" : CUSTOMERS[`ch_${c}`] ? t(`ch_${c}`) : c[0].toUpperCase() + c.slice(1));
   return (
     <div className="panel">
       <h2>
-        Notifications sent <small>push, SMS and WhatsApp · latest 200</small>
+        {t("notifTitle")} <small>{t("notifSub")}</small>
       </h2>
       <div className="tblwrap">
         <table>
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Event</th>
-              <th>Channels</th>
-              <th>Recipient</th>
-              <th>Message</th>
-              <th>Status</th>
+              <th>{t("time")}</th>
+              <th>{t("colEvent")}</th>
+              <th>{t("colChannels")}</th>
+              <th>{t("colRecipient")}</th>
+              <th>{t("colMessage")}</th>
+              <th>{t("status")}</th>
             </tr>
           </thead>
           <tbody>
-            {!notifs && <tr><td colSpan={6} className="empty">Loading…</td></tr>}
+            {!notifs && <tr><td colSpan={6} className="empty">{t("loading")}</td></tr>}
             {notifs?.length === 0 && (
               <tr>
                 <td colSpan={6} className="empty">
-                  No notifications sent yet.
+                  {t("noNotifs")}
                 </td>
               </tr>
             )}
             {notifs?.map((n) => (
               <tr key={n.id}>
-                <td><small>{fmtDateTime(n.created_at)}</small></td>
+                <td><small>{f.dateTime(n.created_at)}</small></td>
                 <td>{n.event.replace(/_/g, " ")}</td>
-                <td>{n.channels.map((c) => (c === "sms" ? "SMS" : c === "whatsapp" ? "WhatsApp" : c[0].toUpperCase() + c.slice(1))).join(", ")}</td>
+                <td>{n.channels.map(channel).join(f.ar ? "، " : ", ")}</td>
                 <td>{one(n.user)?.full_name || "—"}</td>
                 <td>{n.title}</td>
-                <td>{n.read_at ? <St tone="ok">Read</St> : <St tone={now - Date.parse(n.created_at) > 86_400_000 ? "" : "act"}>Delivered</St>}</td>
+                <td>{n.read_at ? <St tone="ok">{t("read")}</St> : <St tone={now - Date.parse(n.created_at) > 86_400_000 ? "" : "act"}>{t("delivered")}</St>}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="note">Each notification also goes out on its channels through the delivery pipeline (Settings → Notifications → Outbox shows every message and its status). No SMS, WhatsApp or push gateway is connected yet: the built-in simulator sends them.</p>
+      <p className="note">{t("notifNote")}</p>
     </div>
   );
 }

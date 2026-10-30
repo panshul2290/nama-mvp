@@ -5,11 +5,15 @@ import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { CallerOrderModal } from "@/components/nws/CallerOrderModal";
 import { DispatchSuggestions } from "@/components/nws/DispatchSuggestions";
+import { ORD } from "@/components/nws/i18n/orders";
 import { CHANNEL_LABEL, downloadCsv, Kpi, n3, one, orderSla, useNow, useRealtime } from "@/components/nws/ops";
-import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
+import { useStaff } from "@/components/nws/StaffContext";
 import { statusText } from "@/components/OrderBits";
+import { useFmt } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
+import { useLang, useT, type Lang } from "@/lib/i18n";
+import { label, serviceLabel } from "@/lib/labels";
 import { type ServiceType } from "@/lib/pricing";
 import { muscatDayStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
@@ -27,23 +31,30 @@ type Row = {
   org: { name: string } | { name: string }[] | null;
 };
 type Group = "all" | "queue" | "progress" | "scheduled" | "approval" | "closed";
+// Group labels are keys of ORD (components/nws/i18n/orders).
 const GROUPS: [Group, string, OrderStatus[] | null][] = [
-  ["all", "All", null],
-  ["queue", "Dispatch queue", ["requested"]],
-  ["progress", "In progress", ["accepted", "arriving", "arrived", "collected"]],
-  ["scheduled", "Scheduled", ["scheduled"]],
-  ["approval", "Awaiting approval", ["pending_approval"]],
-  ["closed", "Closed", ["delivered", "cancelled"]],
+  ["all", "gAll", null],
+  ["queue", "gQueue", ["requested"]],
+  ["progress", "gProgress", ["accepted", "arriving", "arrived", "collected"]],
+  ["scheduled", "gScheduled", ["scheduled"]],
+  ["approval", "gApproval", ["pending_approval"]],
+  ["closed", "gClosed", ["delivered", "cancelled"]],
 ];
 const LIMIT = 300;
 const COLS =
   "id, order_no, service_type, gallons, area, status, total, tanker_plate, driver_name, created_at, released_at, collected_at, delivered_at, slot_end, slot_label, channel, is_emergency, is_test, customer:profiles!orders_customer_id_fkey(full_name), zone:zones!orders_zone_id_fkey(name), contract:contracts!orders_contract_id_fkey(contract_no), org:organizations!orders_org_id_fkey(name)";
 
+// English for the CSV export; planText words it on screen.
 const plan = (o: Row) => (o.channel === "contract" && one(o.contract) ? `Contract CT-${one(o.contract)!.contract_no}` : (CHANNEL_LABEL[o.channel] ?? o.channel));
+const planText = (o: Row, lang: Lang) =>
+  o.channel === "contract" && one(o.contract) ? ORD.contractX[lang].replace("{n}", String(one(o.contract)!.contract_no)) : label("channel", o.channel, lang, CHANNEL_LABEL[o.channel] ?? o.channel);
 
 export default function OrdersPage() {
   const router = useRouter();
   const { can } = useStaff();
+  const t = useT(ORD);
+  const f = useFmt();
+  const { lang } = useLang();
   const now = useNow(30_000);
   const [group, setGroup] = useState<Group>("all");
   const [type, setType] = useState<ServiceType | "">("");
@@ -73,9 +84,9 @@ export default function OrdersPage() {
       query = query.eq("order_no", Number(n));
     }
     const { data, error } = await query;
-    setError(error ? friendlyError(error) : null);
+    setError(error ? friendlyError(error, lang) : null);
     setRows((data ?? []) as unknown as Row[]);
-  }, [group, type, from, to, area, q]);
+  }, [group, type, from, to, area, q, lang]);
 
   // Status counts and dispatch KPIs (independent of the table filters). Test-zone orders don't count.
   const loadKpis = useCallback(async () => {
@@ -115,41 +126,43 @@ export default function OrdersPage() {
     <>
       <div className="vhead">
         <div>
-          <h1>Orders</h1>
-          <p>
-            All requests from the mobile app, B2B accounts, contracts and the Genesys call centre. Dispatch offers each request to the nearest online, permitted
-            tanker; operators can assign, reschedule, cancel or refund.
-          </p>
+          <h1>{t("title")}</h1>
+          <p>{t("intro")}</p>
         </div>
         <button
           className="btn pri"
           disabled={!canCall}
-          title={canCall ? undefined : "Operators and complaints agents only"}
+          title={canCall ? undefined : t("opsAgentsOnly")}
           onClick={() => setCalling(`GX-${Math.floor(10_000_000 + Math.random() * 89_999_999)}`)}
         >
-          New order for a caller
+          {t("newCaller")}
         </button>
       </div>
 
       <div className="okpis">
-        <Kpi label="In dispatch queue" value={counts.queue ?? "—"} sub="waiting for a tanker" tone={counts.queue ? "warn" : ""} />
-        <Kpi label="In progress" value={counts.progress ?? "—"} sub={`${counts.scheduled ?? 0} scheduled · ${counts.approval ?? 0} awaiting approval`} />
-        <Kpi label="Median time to assign" value={median == null ? "—" : `${Math.floor(median / 60_000)} m ${Math.round((median % 60_000) / 1000)} s`} sub="last 7 days · from release · target 10 min" tone={median == null ? undefined : median <= 10 * 60_000 ? "ok" : "warn"} />
+        <Kpi label={t("kQueue")} value={counts.queue != null ? f.n(counts.queue) : "—"} sub={t("kQueueSub")} tone={counts.queue ? "warn" : ""} />
+        <Kpi label={t("kProgress")} value={counts.progress != null ? f.n(counts.progress) : "—"} sub={t("kProgressSub", { s: f.n(counts.scheduled ?? 0), a: f.n(counts.approval ?? 0) })} />
         <Kpi
-          label="Cancelled today"
-          value={kpi ? kpi.cancelledToday : "—"}
-          sub={kpi?.createdToday ? `${Math.round((kpi.cancelledToday / kpi.createdToday) * 1000) / 10}% of ${kpi.createdToday} orders today` : "no orders today yet"}
+          label={t("kMedian")}
+          value={median == null ? "—" : t("kMedianVal", { m: f.n(Math.floor(median / 60_000)), s: f.n(Math.round((median % 60_000) / 1000)) })}
+          sub={t("kMedianSub")}
+          tone={median == null ? undefined : median <= 10 * 60_000 ? "ok" : "warn"}
+        />
+        <Kpi
+          label={t("kCancelled")}
+          value={kpi ? f.n(kpi.cancelledToday) : "—"}
+          sub={kpi?.createdToday ? t("kCancelledSub", { pct: f.ratio(kpi.cancelledToday, kpi.createdToday), n: f.n(kpi.createdToday) }) : t("kNoOrders")}
           tone={kpi && kpi.createdToday && kpi.cancelledToday / kpi.createdToday > 0.05 ? "bad" : ""}
         />
       </div>
 
       <div className="panel">
         <div className="toolbar">
-          <div className="chips" role="group" aria-label="Status">
+          <div className="chips" role="group" aria-label={t("statusGroup")}>
             {GROUPS.map(([k, l]) => (
               <button key={k} className={`chip ${group === k ? "on" : ""}`} onClick={() => setGroup(k)}>
-                {l}
-                {k !== "all" && k !== "closed" && counts[k] != null && <span className="tc">{counts[k]}</span>}
+                {t(l)}
+                {k !== "all" && k !== "closed" && counts[k] != null && <span className="tc">{f.n(counts[k])}</span>}
               </button>
             ))}
           </div>
@@ -166,28 +179,28 @@ export default function OrdersPage() {
               ])
             }
           >
-            Export CSV
+            {t("exportCsv")}
           </button>
         </div>
         <div className="toolbar" style={{ paddingTop: 0 }}>
           <div className="filters">
-            <input className="in" placeholder="Search TO-number" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search by TO number" style={{ width: 170 }} />
-            <select className="in" value={type} onChange={(e) => setType(e.target.value as ServiceType | "")} aria-label="Service type">
-              <option value="">All services</option>
-              <option value="DW">Drinking water</option>
-              <option value="WW">Wastewater</option>
-              <option value="TE">Treated effluent</option>
+            <input className="in" placeholder={t("searchTo")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("searchToAria")} style={{ width: 170 }} />
+            <select className="in" value={type} onChange={(e) => setType(e.target.value as ServiceType | "")} aria-label={t("serviceType")}>
+              <option value="">{t("allServices")}</option>
+              <option value="DW">{serviceLabel("DW", lang)}</option>
+              <option value="WW">{serviceLabel("WW", lang)}</option>
+              <option value="TE">{serviceLabel("TE", lang)}</option>
             </select>
-            <input className="in" placeholder="Area" value={area} onChange={(e) => setArea(e.target.value)} aria-label="Area" style={{ width: 150 }} />
+            <input className="in" placeholder={t("area")} value={area} onChange={(e) => setArea(e.target.value)} aria-label={t("area")} style={{ width: 150 }} />
             <label className="mut" style={{ fontSize: 12.5 }}>
-              From <input className="in" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+              {t("from")} <input className="in" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
             </label>
             <label className="mut" style={{ fontSize: 12.5 }}>
-              To <input className="in" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+              {t("to")} <input className="in" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
             </label>
           </div>
           <span className="mut" style={{ fontSize: 12.5 }}>
-            {rows ? `${rows.length} order${rows.length === 1 ? "" : "s"}${rows.length === LIMIT ? ` (first ${LIMIT})` : ""}` : "Loading…"}
+            {rows ? `${rows.length === 1 ? t("nOrder1") : t("nOrders", { n: f.n(rows.length) })}${rows.length === LIMIT ? t("firstN", { n: f.n(LIMIT) }) : ""}` : t("loading")}
           </span>
         </div>
         {error && <div className="banner badb" style={{ margin: "0 16px 12px" }}>{error}</div>}
@@ -195,17 +208,17 @@ export default function OrdersPage() {
           <table>
             <thead>
               <tr>
-                <th>Order</th>
-                <th>Customer</th>
-                <th>Type</th>
-                <th className="num">Gallons</th>
-                <th>Channel</th>
-                <th>Zone</th>
-                <th>Status</th>
-                <th>Tanker</th>
-                <th className="num">Total</th>
-                <th>SLA</th>
-                <th>Created</th>
+                <th>{t("order")}</th>
+                <th>{t("customer")}</th>
+                <th>{t("type")}</th>
+                <th className="num">{t("gallons")}</th>
+                <th>{t("thChannel")}</th>
+                <th>{t("zone")}</th>
+                <th>{t("status")}</th>
+                <th>{t("tanker")}</th>
+                <th className="num">{t("total")}</th>
+                <th>{t("thSla")}</th>
+                <th>{t("thCreated")}</th>
                 <th></th>
               </tr>
             </thead>
@@ -213,19 +226,20 @@ export default function OrdersPage() {
               {rows?.length === 0 && (
                 <tr>
                   <td colSpan={12} className="empty">
-                    No orders match these filters.
+                    {t("noMatch")}
                   </td>
                 </tr>
               )}
               {rows?.map((o) => {
-                const sla = orderSla(o, now);
+                const sla = orderSla(o, now, lang);
+                const [stText, stTone] = statusText(o.status, o.service_type, lang);
                 return (
                   <Fragment key={o.id}>
                   <tr className="click" onClick={() => router.push(`/nws/orders/${o.id}`)}>
                     <td className={`stripe ${o.service_type}`}>
-                      <b>{orderNo(o.order_no)}</b>
-                      {o.is_emergency && <span className="st bad ptag">priority</span>}
-                      {o.is_test && <span className="st warn ptag" title="Test zone order: not counted in KPIs, reports or invoices">TEST</span>}
+                      <b dir="ltr">{orderNo(o.order_no)}</b>
+                      {o.is_emergency && <span className="st bad ptag">{t("priority")}</span>}
+                      {o.is_test && <span className="st warn ptag" title={t("testTip")}>{t("test")}</span>}
                     </td>
                     <td>
                       {o.customer?.full_name || "—"}
@@ -234,26 +248,26 @@ export default function OrdersPage() {
                     <td>
                       <span className={`tag ${o.service_type}`}>{o.service_type}</span>
                     </td>
-                    <td className="num">{o.gallons.toLocaleString()}</td>
-                    <td>{plan(o)}</td>
+                    <td className="num">{f.n(o.gallons)}</td>
+                    <td>{planText(o, lang)}</td>
                     <td>
                       {one(o.zone)?.name ?? "—"}
                       <small style={{ display: "block" }}>{o.area}</small>
                     </td>
                     <td>
-                      <span className={`st ${statusText(o.status, o.service_type)[1]}`}>{statusText(o.status, o.service_type)[0]}</span>
+                      <span className={`st ${stTone}`}>{stText}</span>
                       {o.slot_label && ["scheduled", "requested"].includes(o.status) && <small style={{ display: "block" }}>{o.slot_label}</small>}
                     </td>
-                    <td>{o.tanker_plate || "—"}</td>
-                    <td className="num">{n3(o.total)}</td>
+                    <td>{o.tanker_plate ? <bdi dir="ltr">{o.tanker_plate}</bdi> : "—"}</td>
+                    <td className="num">{f.n3(o.total)}</td>
                     <td>{sla.tone ? <span className={`st ${sla.tone}`}>{sla.text}</span> : <span className="mut">—</span>}</td>
                     <td>
-                      <small>{fmtDateTime(o.created_at)}</small>
+                      <small>{f.dateTime(o.created_at)}</small>
                     </td>
                     <td className="num">
                       {o.status === "requested" && (
                         <button className="btn sm" aria-expanded={suggest === o.id} onClick={(e) => { e.stopPropagation(); setSuggest(suggest === o.id ? null : o.id); }}>
-                          {suggest === o.id ? "Hide" : "Suggest"}
+                          {suggest === o.id ? t("hide") : t("suggest")}
                         </button>
                       )}
                     </td>

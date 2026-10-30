@@ -3,32 +3,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { Empty, PageHead, ReadOnlyNote, useAudited } from "@/components/nws/admin/ui";
 import { reloadGeo, type Cluster, type Governorate } from "@/components/nws/register/geo";
+import { SETTINGS_OPS } from "@/components/nws/i18n/settingsOps";
 import { useStaff } from "@/components/nws/StaffContext";
+import { useFmt } from "@/components/portal/i18n";
+import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 
 // Settings → Clusters (0031): which operating cluster each governorate belongs to. The NWS
 // register puts every governorate in exactly one cluster, so a tanker's cluster is its
-// governorate's. Admins can move a governorate (audited, with a reason).
+// governorate's. Admins can move a governorate (audited, with a reason). Cluster and governorate
+// names come from the database as they are.
 
-const T = {
-  title: "Clusters",
-  sub: "NWS operating clusters and the governorates in each. A tanker's cluster is its governorate's; Fleet, Permits and Reports filter and count by it.",
-  cols: ["Governorate", "Cluster", "Zones", "Tankers in register", "On platform", "Served by NWS"],
-  none: "No cluster",
-  move: (g: string) => `Move ${g} to another cluster`,
-  moveBody: (from: string, to: string) => `From ${from} to ${to}. Every tanker and order in this governorate is counted under the new cluster from now on.`,
-  moved: (g: string, to: string) => `${g} is now in ${to}`,
-  confirm: "Move governorate",
-  readOnly: "admins",
-  yes: "Yes",
-  no: "No (own water company)",
-  loading: "Loading…",
-};
+const COLS = ["znGov", "clCluster", "clZones", "clInRegister", "clOnPlatform", "clServed"];
 
 export default function ClustersPage() {
   const { can } = useStaff();
   const admin = can("admin");
   const { ask, dialog } = useAudited();
+  const t = useT(SETTINGS_OPS);
+  const f = useFmt();
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [govs, setGovs] = useState<Governorate[] | null>(null);
   const [zones, setZones] = useState<Map<string, number>>(new Map());
@@ -51,17 +44,17 @@ export default function ClustersPage() {
     });
   }, []);
   useEffect(() => {
-    const t = setTimeout(load, 0);
-    return () => clearTimeout(t);
+    const timer = setTimeout(load, 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
-  const name = (c: string | null) => clusters.find((x) => x.code === c)?.name ?? T.none;
+  const name = (c: string | null) => clusters.find((x) => x.code === c)?.name ?? t("clNone");
   function move(g: Governorate, to: string) {
     ask({
-      title: T.move(g.name),
-      body: T.moveBody(name(g.cluster_code), name(to || null)),
-      confirm: T.confirm,
-      ok: T.moved(g.name, name(to || null)),
+      title: t("clMoveT", { g: g.name }),
+      body: t("clMoveB", { from: name(g.cluster_code), to: name(to || null) }),
+      confirm: t("clMoveC"),
+      ok: t("clMovedOk", { g: g.name, to: name(to || null) }),
       run: (reason) => supabase().rpc("staff_set_governorate_cluster", { p_governorate: g.code, p_cluster: to || null, p_reason: reason }),
       done: () => {
         reloadGeo();
@@ -72,27 +65,27 @@ export default function ClustersPage() {
 
   return (
     <>
-      <PageHead title={T.title} sub={T.sub} />
-      {!admin && <ReadOnlyNote who={T.readOnly} />}
+      <PageHead title={t("clTitle")} sub={t("clSub")} />
+      {!admin && <ReadOnlyNote who={t("clAdmins")} />}
       <div className="panel">
         <div className="tblwrap">
           <table>
-            <thead><tr>{T.cols.map((c, i) => <th key={c} className={i >= 2 && i <= 4 ? "num" : undefined}>{c}</th>)}</tr></thead>
+            <thead><tr>{COLS.map((c, i) => <th key={c} className={i >= 2 && i <= 4 ? "num" : undefined}>{t(c)}</th>)}</tr></thead>
             <tbody>
-              {!govs && <Empty cols={6}>{T.loading}</Empty>}
+              {!govs && <Empty cols={6}>{t("loading")}</Empty>}
               {govs?.map((g) => (
                 <tr key={g.code}>
-                  <td><b>{g.name}</b><small style={{ display: "block" }} className="mut">{g.code}</small></td>
+                  <td><b>{g.name}</b><small style={{ display: "block" }} className="mut" dir="ltr">{g.code}</small></td>
                   <td>
-                    <select className="in" aria-label={`Cluster of ${g.name}`} value={g.cluster_code ?? ""} disabled={!admin} onChange={(e) => move(g, e.target.value)} style={{ width: 160 }}>
-                      <option value="">{T.none}</option>
+                    <select className="in" aria-label={t("clOf", { g: g.name })} value={g.cluster_code ?? ""} disabled={!admin} onChange={(e) => move(g, e.target.value)} style={{ width: 160 }}>
+                      <option value="">{t("clNone")}</option>
                       {clusters.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
                     </select>
                   </td>
-                  <td className="num">{zones.get(g.code) ?? 0}</td>
-                  <td className="num">{(counts.get(g.code)?.reg ?? 0).toLocaleString()}</td>
-                  <td className="num">{(counts.get(g.code)?.plat ?? 0).toLocaleString()}</td>
-                  <td>{g.nws_served ? T.yes : T.no}</td>
+                  <td className="num">{f.n(zones.get(g.code) ?? 0)}</td>
+                  <td className="num">{f.n(counts.get(g.code)?.reg ?? 0)}</td>
+                  <td className="num">{f.n(counts.get(g.code)?.plat ?? 0)}</td>
+                  <td>{g.nws_served ? t("yes") : t("clNoOwn")}</td>
                 </tr>
               ))}
             </tbody>

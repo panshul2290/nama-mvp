@@ -1,29 +1,47 @@
 "use client";
 
-import { coords, mapLink, metres, podCheck, POD_FAR_M } from "@/lib/podLocation";
-import { omanTime } from "@/lib/time";
+import { localDigits, useLang, useT, type Dict, type Lang } from "@/lib/i18n";
+import { coords, mapLink, metres as metresEn, podCheck, POD_FAR_M } from "@/lib/podLocation";
+import { omanLocale, omanTime } from "@/lib/time";
 import type { Pod } from "@/lib/types";
 
-const time = (iso: string | null | undefined) => omanTime(iso) || null;
+const time = (iso: string | null | undefined, lang: Lang) => omanTime(iso, omanLocale(lang)) || null;
+const metres = (m: number, lang: Lang) => (lang === "ar" ? localDigits(metresEn(m).replace(" km", " كم").replace(" m", " م"), lang) : metresEn(m));
+
+export const POD_TEXT: Dict = {
+  photoGallery: { en: "Photo added (from the phone’s gallery, not taken live)", ar: "صورة مضافة (من معرض الهاتف، لم تُلتقط مباشرة)" },
+  photoTaken: { en: "Photo taken", ar: "التُقطت الصورة" },
+  submittedTanker: { en: "Submitted (tanker’s last GPS fix — no phone fix)", ar: "أُرسل (آخر موقع GPS للصهريج — لا يوجد موقع من الهاتف)" },
+  submitted: { en: "Submitted", ar: "أُرسل" },
+  none: { en: "No location was recorded with this proof.", ar: "لم يُسجَّل أي موقع مع هذا الإثبات." },
+  far: { en: "Recorded more than {d} from the delivery point — check before accepting.", ar: "سُجّل على بُعد أكثر من {d} من نقطة التوصيل — تحقّق قبل القبول." },
+  fromPoint: { en: "{d} from the delivery point", ar: "{d} من نقطة التوصيل" },
+  farTag: { en: "far", ar: "بعيد" },
+  noLoc: { en: "No location", ar: "لا يوجد موقع" },
+  diagram: { en: "Where the proof was recorded, relative to the delivery point", ar: "مكان تسجيل الإثبات بالنسبة إلى نقطة التوصيل" },
+  legend: { en: "■ delivery point · dashed {d}", ar: "■ نقطة التوصيل · المتقطع {d}" },
+};
 
 /**
- * Where a proof of delivery was recorded (staff and business screens, English): the photo's fix and
+ * Where a proof of delivery was recorded (staff and business screens, English or Arabic): the photo's fix and
  * the submit fix with accuracy and time, the distance from the delivery point, a flag when it is
  * further than POD_FAR_M, and a small pin diagram (delivery point in the middle).
  */
 export function PodLocation({ pod, site }: { pod: Pod; site?: { lat: number; lng: number } | null }) {
   const c = podCheck(pod);
+  const t = useT(POD_TEXT);
+  const { lang } = useLang();
   const rows: [string, number | null | undefined, number | null | undefined, number | null | undefined, string | null | undefined, number | null][] = [
-    [pod.photo_source === "gallery" ? "Photo added (from the phone’s gallery, not taken live)" : "Photo taken", pod.photo_lat, pod.photo_lng, pod.photo_accuracy_m, pod.photo_at, c.photoDistance],
-    [c.source === "tanker" ? "Submitted (tanker’s last GPS fix — no phone fix)" : "Submitted", pod.lat, pod.lng, pod.accuracy_m, pod.fix_at ?? pod.created_at, c.distance],
+    [t(pod.photo_source === "gallery" ? "photoGallery" : "photoTaken"), pod.photo_lat, pod.photo_lng, pod.photo_accuracy_m, pod.photo_at, c.photoDistance],
+    [t(c.source === "tanker" ? "submittedTanker" : "submitted"), pod.lat, pod.lng, pod.accuracy_m, pod.fix_at ?? pod.created_at, c.distance],
   ];
   const any = rows.some((r) => r[1] != null && r[2] != null);
-  if (!any) return <p className="mut" style={{ fontSize: 13, margin: "0 0 8px" }}>No location was recorded with this proof.</p>;
+  if (!any) return <p className="mut" style={{ fontSize: 13, margin: "0 0 8px" }}>{t("none")}</p>;
   return (
     <div className="podloc">
       {c.far && (
         <div className="banner badb" role="status" style={{ margin: "0 0 8px" }}>
-          Recorded more than {metres(POD_FAR_M)} from the delivery point — check before accepting.
+          {t("far", { d: metres(POD_FAR_M, lang) })}
         </div>
       )}
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -43,6 +61,8 @@ export function PodLocation({ pod, site }: { pod: Pod; site?: { lat: number; lng
 }
 
 function FixRow({ label, lat, lng, acc, at, dist }: { label: string; lat: number; lng: number; acc: number | null | undefined; at: string | null | undefined; dist: number | null }) {
+  const t = useT(POD_TEXT);
+  const { lang } = useLang();
   return (
     <>
       <dt>{label}</dt>
@@ -51,8 +71,8 @@ function FixRow({ label, lat, lng, acc, at, dist }: { label: string; lat: number
           {coords(lat, lng)}
         </a>
         <small className="mut" style={{ display: "block", fontWeight: 400 }}>
-          {[acc != null ? `±${Math.round(acc)} m` : null, time(at), dist != null ? `${metres(dist)} from the delivery point` : null].filter(Boolean).join(" · ")}
-          {dist != null && dist > POD_FAR_M && <b style={{ color: "var(--bad)" }}> · far</b>}
+          {[acc != null ? `±${metres(Math.round(acc), lang)}` : null, time(at, lang), dist != null ? t("fromPoint", { d: metres(dist, lang) }) : null].filter(Boolean).join(" · ")}
+          {dist != null && dist > POD_FAR_M && <b style={{ color: "var(--bad)" }}> · {t("farTag")}</b>}
         </small>
       </dd>
     </>
@@ -60,16 +80,19 @@ function FixRow({ label, lat, lng, acc, at, dist }: { label: string; lat: number
 }
 
 function Missing({ label }: { label: string }) {
+  const t = useT(POD_TEXT);
   return (
     <>
       <dt>{label}</dt>
-      <dd className="mut" style={{ fontWeight: 400 }}>No location</dd>
+      <dd className="mut" style={{ fontWeight: 400 }}>{t("noLoc")}</dd>
     </>
   );
 }
 
 /** Delivery point in the middle; the fixes placed around it to scale (at least ±100 m across). */
 function PinDiagram({ site, pod }: { site: { lat: number; lng: number }; pod: Pod }) {
+  const t = useT(POD_TEXT);
+  const { lang } = useLang();
   const W = 132;
   const H = 96;
   const pts = [
@@ -86,7 +109,7 @@ function PinDiagram({ site, pod }: { site: { lat: number; lng: number }; pod: Po
   const sy = (H / 2 - 10) / span;
   const s = Math.min(sx, sy);
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Where the proof was recorded, relative to the delivery point" style={{ background: "var(--bg, #eef3f4)", borderRadius: 8, flex: "none" }}>
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("diagram")} style={{ background: "var(--bg, #eef3f4)", borderRadius: 8, flex: "none" }}>
       <circle cx={W / 2} cy={H / 2} r={POD_FAR_M * s} fill="none" stroke="currentColor" strokeOpacity={0.18} strokeDasharray="3 3" />
       <rect x={W / 2 - 5} y={H / 2 - 5} width={10} height={10} rx={2} fill="var(--ink, #0e2329)" />
       {pts.map((p) => {
@@ -101,8 +124,8 @@ function PinDiagram({ site, pod }: { site: { lat: number; lng: number }; pod: Po
           </g>
         );
       })}
-      <text x={4} y={H - 4} fontSize={9} fill="currentColor" opacity={0.6}>
-        ■ delivery point · dashed {metres(POD_FAR_M)}
+      <text x={lang === "ar" ? W - 4 : 4} y={H - 4} fontSize={9} fill="currentColor" opacity={0.6} textAnchor={lang === "ar" ? "start" : undefined}>
+        {t("legend", { d: metres(POD_FAR_M, lang) })}
       </text>
     </svg>
   );

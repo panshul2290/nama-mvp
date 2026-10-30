@@ -34,7 +34,7 @@ export default function NwsLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { lang, dir } = useLang();
   const t = useT(PORTAL);
-  if (!profile || !profile.staff_role) return <Loading />;
+  if (!profile || !profile.staff_role) return <Loading label={t("loading")} />;
 
   async function signOut() {
     await signOutApp("nws");

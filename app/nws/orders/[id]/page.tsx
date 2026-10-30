@@ -7,16 +7,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChatBubbles } from "@/components/chat/OrderChat";
 import { FleetMap } from "@/components/nws/FleetMap";
 import type { LatLng, MapSite } from "@/components/nws/FleetMapView";
-import { CHANNEL_LABEL, maskPhone, n3, omr3, one, orderSla, St, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
+import { ORD } from "@/components/nws/i18n/orders";
+import { CHANNEL_LABEL, maskPhone, n3, one, orderSla, St, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
 import { PodLocation } from "@/components/PodLocation";
 import { SignatureSvg } from "@/components/SignatureSvg";
 import { DispatchSuggestions } from "@/components/nws/DispatchSuggestions";
 import { PenaltyDialog } from "@/components/nws/PenaltyDialog";
-import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
-import { OrderBill, STATUS_TEXT, statusText } from "@/components/OrderBits";
+import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { OrderBill, statusText } from "@/components/OrderBits";
+import { useFmt } from "@/components/portal/i18n";
 import { usePricingRules } from "@/components/usePricingRules";
 import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
+import { useLang, useT } from "@/lib/i18n";
+import { label, freqLabel } from "@/lib/labels";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Order, type OrderLocation, type OrderMessage, type Pod as BasePod } from "@/lib/types";
@@ -42,30 +46,34 @@ type WalletTx = { id: number; kind: string; amount: string; memo: string; create
 type Pod = BasePod & { signature_path: string | null; rejected_reason: string | null };
 type SourceEvent = { id: number; source: string; kind: string; meter_gal: number | null; verified: boolean; note: string; created_at: string; evidence_grade?: string | null; site: One<{ code: string; name: string }> };
 type Message = OrderMessage & { sender: One<{ full_name: string }> };
-const ROLE: Record<OrderMessage["sender_role"], string> = { customer: "Customer", driver: "Driver", staff: "NWS" };
+// Keys of ORD (components/nws/i18n/orders).
+const ROLE: Record<OrderMessage["sender_role"], string> = { customer: "roleCustomer", driver: "roleDriver", staff: "nws" };
 type Complaint = { id: string; case_no: number; category: string; state: string; created_at: string; due_at: string };
 type Penalty = { id: string; penalty_no: number; amount: string; state: string; reason: string; created_at: string; rule: One<{ label: string }> };
 type Verification = { company: string | null; permit_no: string | null; permit_valid_to: string | null; water_test: { cert_no: string; passed: boolean; tested_at: string } | null; device: string | null } | null;
 type Dlg = "reschedule" | "cancel" | "refund" | "penalty" | null;
 
-const PAY_LABEL: Record<string, string> = { wallet: "Wallet", card: "Card", omannet: "OmanNet", wallet_card: "Wallet + card", account: "On account (B2B)", cash: "Cash on delivery" };
+// Payment methods (pm_*), sources (src_*) and evidence grades (gr_*, the tender's ±10 m, 0028) are worded in ORD.
 const PAY_TONE: Record<string, string> = { authorized: "act", captured: "ok", refunded: "warn", partially_refunded: "warn", failed: "bad", on_account: "act" };
-const SOURCE_LABEL: Record<string, string> = { tfs: "Filling station (TFS)", ivms: "IVMS", stp: "Treatment plant (STP)", tas: "TAS" };
-// Evidence grade of a geofence check (0028): the tender's ±10 m.
-const GRADE: Record<string, string> = { ivms: "IVMS ±10 m", gps_precise: "GPS ±10 m", low_accuracy: "Low accuracy", test_zone: "Test zone" };
 const ON_JOB = ["accepted", "arriving", "arrived", "collected"];
 
 /** Tomorrow 08:00–10:00 Muscat time (UTC+4, no daylight saving). */
 function tomorrowMorning() {
   const m = new Date(Date.now() + 4 * 3_600_000);
   const start = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth(), m.getUTCDate() + 1, 4, 0));
-  return { start: start.toISOString(), end: new Date(start.getTime() + 2 * 3_600_000).toISOString(), label: `${start.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Muscat" })} 8–10 am` };
+  // `label` is stored on the order (English); `at` lets the screen word it in the portal language.
+  return { start: start.toISOString(), end: new Date(start.getTime() + 2 * 3_600_000).toISOString(), at: start, label: `${start.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Muscat" })} 8–10 am` };
 }
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
   const { rules } = usePricingRules();
   const { can, toast, staff } = useStaff();
+  const t = useT(ORD);
+  const f = useFmt();
+  const { lang } = useLang();
+  // A lookup in ORD with the raw value as fallback (data values not in the dictionary).
+  const tk = (prefix: string, v: string) => (ORD[`${prefix}${v}`] ? t(`${prefix}${v}`) : v);
   const readOnly = staff.staff_role === "viewer";
   const rpc = useRpc();
   const now = useNow(30_000);
@@ -108,7 +116,7 @@ export default function OrderDetail() {
       db.from("penalties").select("id, penalty_no, amount, state, reason, created_at, rule:penalty_rules(label)").eq("order_id", id).order("created_at"),
       db.from("gps_fixes").select("lat, lng").eq("order_id", id).order("recorded_at").limit(1000),
     ]);
-    if (a.error) return toast(friendlyError(a.error), true);
+    if (a.error) return toast(friendlyError(a.error, lang), true);
     if (!a.data) return setMissing(true);
     setO(a.data as unknown as Detail);
     setLoc(b.data as OrderLocation | null);
@@ -127,7 +135,7 @@ export default function OrderDetail() {
       const v = await db.rpc("order_verification", { p_order_id: id });
       setVerify((v.data ?? null) as Verification);
     }
-  }, [id, toast]);
+  }, [id, toast, lang]);
 
   useEffect(() => {
     const t = setTimeout(load, 0);
@@ -164,39 +172,43 @@ export default function OrderDetail() {
     () => (o?.tanker?.last_lat != null && o.tanker.last_lng != null ? [{ id: o.tanker.id, lat: o.tanker.last_lat, lng: o.tanker.last_lng, type: o.tanker.service_type as ServiceType, stale: false, blocked: o.tanker.blocked, label: o.tanker.plate }] : []),
     [o],
   );
-  const mapOrders = useMemo(() => (o && loc ? [{ id: o.id, lat: loc.lat, lng: loc.lng, type: o.service_type, label: `${orderNo(o.order_no)} · delivery point` }] : []), [o, loc]);
+  const mapOrders = useMemo(() => (o && loc ? [{ id: o.id, lat: loc.lat, lng: loc.lng, type: o.service_type, label: `${orderNo(o.order_no)} · ${t("deliveryPoint")}` }] : []), [o, loc, t]);
 
-  if (missing) return <div className="empty">Order not found.</div>;
-  if (!o) return <div className="empty">Loading…</div>;
+  if (missing) return <div className="empty">{t("notFoundOrder")}</div>;
+  if (!o) return <div className="empty">{t("loading")}</div>;
 
   // Timeline from the order's own status timestamps, plus any staff (audit) actions on it.
   const ww = o.service_type === "WW";
+  const channelText = label("channel", o.channel ?? "app", lang, CHANNEL_LABEL[o.channel ?? "app"] ?? o.channel);
   const timeline = [
-    { at: o.created_at, text: `${o.status === "scheduled" || o.slot_label ? "Booked" : "Requested"} via ${CHANNEL_LABEL[o.channel ?? "app"] ?? o.channel}${o.slot_label ? ` for ${o.slot_label}` : ""}`, cls: "done" },
-    { at: o.approved_at, text: "Approved by the business account", cls: "done" },
-    { at: o.released_at, text: "Released to dispatch", cls: "done" },
-    { at: o.accepted_at, text: `Accepted by ${o.driver_name ?? "driver"}${o.tanker_plate ? ` · ${o.tanker_plate}` : ""}`, cls: "done" },
-    { at: o.filled_at, text: `Filled at ${one(o.fill_site)?.name ?? "station"}${o.fill_meter_gal ? ` · ${o.fill_meter_gal.toLocaleString()} gal` : ""}`, cls: o.fill_verified === false ? "bad" : "done" },
-    { at: o.arriving_at, text: "On the way (first GPS fix)", cls: "done" },
-    { at: o.arrived_at, text: "Arrived", cls: "done" },
-    { at: o.collected_at, text: "Wastewater collected", cls: "done" },
-    { at: o.discharged_at, text: `Discharged at ${one(o.discharge_site)?.name ?? "plant"}`, cls: o.discharge_verified === false ? "bad" : "done" },
-    { at: o.delivered_at, text: ww ? "Job complete" : "Delivered", cls: "done" },
-    { at: o.cancelled_at, text: `Cancelled by ${o.cancelled_by ?? "the customer"}${o.cancel_reason ? ` — ${o.cancel_reason}` : ""}`, cls: "bad" },
-    { at: o.rated_at, text: `Rated ${"★".repeat(o.rating ?? 0)}${o.rating_comment ? ` — “${o.rating_comment}”` : ""}${Number(o.tip) > 0 ? ` · tip ${omr3(o.tip)}` : ""}`, cls: "done" },
-    ...audit.map((a) => ({ at: a.at, text: `${a.action} by ${a.actor_email ?? "staff"}${a.reason ? ` — ${a.reason}` : ""}`, cls: "done" })),
+    { at: o.created_at, text: `${t("tlVia", { what: t(o.status === "scheduled" || o.slot_label ? "tlBooked" : "tlRequested"), channel: channelText })}${o.slot_label ? t("tlFor", { slot: o.slot_label }) : ""}`, cls: "done" },
+    { at: o.approved_at, text: t("tlApproved"), cls: "done" },
+    { at: o.released_at, text: t("tlReleased"), cls: "done" },
+    { at: o.accepted_at, text: `${t("tlAccepted", { driver: o.driver_name ?? t("driver") })}${o.tanker_plate ? ` · ${o.tanker_plate}` : ""}`, cls: "done" },
+    { at: o.filled_at, text: `${t("tlFilled", { site: one(o.fill_site)?.name ?? t("tlStation") })}${o.fill_meter_gal ? ` · ${f.gal(o.fill_meter_gal)}` : ""}`, cls: o.fill_verified === false ? "bad" : "done" },
+    { at: o.arriving_at, text: t("tlOnWay"), cls: "done" },
+    { at: o.arrived_at, text: t("tlArrived"), cls: "done" },
+    { at: o.collected_at, text: t("tlCollected"), cls: "done" },
+    { at: o.discharged_at, text: t("tlDischarged", { site: one(o.discharge_site)?.name ?? t("tlPlant") }), cls: o.discharge_verified === false ? "bad" : "done" },
+    { at: o.delivered_at, text: ww ? t("tlComplete") : t("tlDelivered"), cls: "done" },
+    { at: o.cancelled_at, text: `${t("tlCancelled", { who: o.cancelled_by ?? t("tlTheCustomer") })}${o.cancel_reason ? ` — ${o.cancel_reason}` : ""}`, cls: "bad" },
+    { at: o.rated_at, text: `${t("tlRated", { stars: "★".repeat(o.rating ?? 0) })}${o.rating_comment ? ` — “${o.rating_comment}”` : ""}${Number(o.tip) > 0 ? t("tlTip", { amt: f.omr3(o.tip) }) : ""}`, cls: "done" },
+    ...audit.map((a) => ({ at: a.at, text: `${t("tlBy", { action: a.action, who: a.actor_email ?? t("tlStaff") })}${a.reason ? ` — ${a.reason}` : ""}`, cls: "done" })),
   ]
     .filter((e) => e.at)
     .sort((a, b) => String(a.at).localeCompare(String(b.at)));
 
   const pay = payments[payments.length - 1] ?? null;
   const refundable = pay ? Number(pay.amount) - Number(pay.refunded_amount) : 0;
-  const sla = orderSla(o, now);
+  const sla = orderSla(o, now, lang);
+  const [stText, stTone] = statusText(o.status, o.service_type, lang);
   const isOp = can("operator");
   const canRefund = can("operator", "finance", "complaints_agent");
-  const opTip = isOp ? undefined : "Control room operators only";
+  const opTip = isOp ? undefined : t("opsOnly");
   const short = pod && pod.meter_gal < o.gallons * 0.95;
   const slot = tomorrowMorning();
+  const slotText = lang === "en" ? slot.label : t("slotMorning", { day: f.fmt(slot.at, { weekday: "short", day: "numeric", month: "short" }) });
+  const ord = orderNo(o.order_no);
   const signed = Boolean(pod?.signature_svg?.trim() || sigFile);
 
   return (
@@ -204,64 +216,64 @@ export default function OrderDetail() {
       <div className="vhead">
         <div>
           <h1>
-            {orderNo(o.order_no)} <span className={`st ${statusText(o.status, o.service_type)[1]}`}>{statusText(o.status, o.service_type)[0]}</span> {o.is_emergency && <span className="st bad">Priority</span>}{" "}
-            {o.is_test && <span className="st warn" title="Test zone order: not counted in KPIs, reports or invoices; no penalties">TEST</span>}
+            <bdi dir="ltr">{ord}</bdi> <span className={`st ${stTone}`}>{stText}</span> {o.is_emergency && <span className="st bad">{t("priorityCap")}</span>}{" "}
+            {o.is_test && <span className="st warn" title={t("testTipFull")}>{t("test")}</span>}
           </h1>
           <p>
-            <span className={`tag ${o.service_type}`}>{o.service_type}</span> {o.gallons.toLocaleString()} gal · {o.area}
-            {one(o.zone) ? ` · ${one(o.zone)!.name}` : ""} · created {fmtDateTime(o.created_at)} · SLA {sla.tone ? <St tone={sla.tone}>{sla.text}</St> : "—"}
+            <span className={`tag ${o.service_type}`}>{o.service_type}</span> {f.gal(o.gallons)} · {o.area}
+            {one(o.zone) ? ` · ${one(o.zone)!.name}` : ""} · {t("created", { at: f.dateTime(o.created_at) })} · {t("slaX")} {sla.tone ? <St tone={sla.tone}>{sla.text}</St> : "—"}
           </p>
         </div>
         <div className="btns">
           {o.status === "requested" && (
             <button className="btn pri" disabled={!isOp} title={opTip} onClick={() => document.getElementById("dispatch")?.scrollIntoView({ behavior: "smooth", block: "center" })}>
-              Assign
+              {t("assign")}
             </button>
           )}
           {["requested", "scheduled"].includes(o.status) && (
             <button className="btn" disabled={!isOp} title={opTip} onClick={() => setDlg("reschedule")}>
-              Move to tomorrow 8–10 am
+              {t("moveTomorrow")}
             </button>
           )}
           {!["delivered", "cancelled"].includes(o.status) && (
             <button className="btn bad" disabled={!isOp} title={opTip} onClick={() => setDlg("cancel")}>
-              Cancel order
+              {t("cancelOrder")}
             </button>
           )}
           {pay && refundable > 0 && o.billing !== "account" && !(pay.method === "cash" && pay.status === "authorized") && (
             <button
               className="btn"
               disabled={!canRefund}
-              title={canRefund ? undefined : "Operators, finance and complaints agents"}
+              title={canRefund ? undefined : t("refundRoles")}
               onClick={() => {
                 setAmount(n3(refundable));
                 setDlg("refund");
               }}
             >
-              Refund to wallet
+              {t("refundWallet")}
             </button>
           )}
           <Link href="/nws/orders" className="btn">
-            ← All orders
+            {t("allOrders")}
           </Link>
         </div>
       </div>
 
       {o.status === "requested" && (
         <div id="dispatch">
-          <DispatchSuggestions orderId={o.id} orderLabel={orderNo(o.order_no)} canAssign={isOp} onAssigned={load} />
+          <DispatchSuggestions orderId={o.id} orderLabel={ord} canAssign={isOp} onAssigned={load} />
         </div>
       )}
 
       <div className="two">
         <div>
           <div className="panel">
-            <h2>Status timeline</h2>
+            <h2>{t("timeline")}</h2>
             <ul className="tl">
               {timeline.map((e, i) => (
                 <li key={i} className={e.cls}>
                   {e.text}
-                  <small>{fmtDateTime(e.at)}</small>
+                  <small>{f.dateTime(e.at)}</small>
                 </li>
               ))}
             </ul>
@@ -269,20 +281,20 @@ export default function OrderDetail() {
 
           <div className="panel">
             <h2>
-              Route and delivery point <small>{trail ? `${trail.length} GPS fixes on this job` : "no GPS trail recorded for this job"}</small>
+              {t("route")} <small>{trail ? t("nFixes", { n: f.n(trail.length) }) : t("noTrail")}</small>
             </h2>
             <div className="pad">
               <div className="minimap" style={{ height: 300 }}>
                 <FleetMap tankers={mapTankers} orders={mapOrders} sites={sites} trail={trail} />
               </div>
               <dl className="kv" style={{ padding: 0 }}>
-                <dt>Address</dt>
+                <dt>{t("address")}</dt>
                 <dd>{loc?.address || "—"}</dd>
-                <dt>Coordinates</dt>
-                <dd>{loc ? `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}` : "—"}</dd>
+                <dt>{t("coords")}</dt>
+                <dd>{loc ? <bdi dir="ltr">{`${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`}</bdi> : "—"}</dd>
                 {o.driver_note && (
                   <>
-                    <dt>Note to driver</dt>
+                    <dt>{t("noteDriver")}</dt>
                     <dd>{o.driver_note}</dd>
                   </>
                 )}
@@ -292,35 +304,35 @@ export default function OrderDetail() {
 
           <div className="panel">
             <h2>
-              Source verification <small>station, plant and IVMS events</small>
+              {t("sourceVer")} <small>{t("sourceVerSub")}</small>
             </h2>
             {events.length === 0 ? (
-              <p className="note">{ww ? "No collection or discharge events yet." : "No filling events yet."}</p>
+              <p className="note">{ww ? t("noCollect") : t("noFill")}</p>
             ) : (
               <div className="tblwrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Time</th>
-                      <th>Event</th>
-                      <th>Site</th>
-                      <th className="num">Meter</th>
-                      <th>Check</th>
+                      <th>{t("time")}</th>
+                      <th>{t("thEvent")}</th>
+                      <th>{t("thSite")}</th>
+                      <th className="num">{t("thMeter")}</th>
+                      <th>{t("thCheck")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {events.map((e) => (
                       <tr key={e.id}>
-                        <td><small>{fmtDateTime(e.created_at)}</small></td>
+                        <td><small>{f.dateTime(e.created_at)}</small></td>
                         <td>
-                          {e.kind === "fill" ? "Fill" : e.kind === "discharge" ? "Discharge" : e.kind === "valve_open" ? "Valve opened" : "Signal"}
-                          <small style={{ display: "block" }}>{SOURCE_LABEL[e.source] ?? e.source}</small>
+                          {t(e.kind === "fill" ? "evFill" : e.kind === "discharge" ? "evDischarge" : e.kind === "valve_open" ? "evValve" : "evSignal")}
+                          <small style={{ display: "block" }}>{tk("src_", e.source)}</small>
                         </td>
                         <td>{one(e.site)?.name ?? "—"}</td>
-                        <td className="num">{e.meter_gal != null ? e.meter_gal.toLocaleString() : "—"}</td>
+                        <td className="num">{e.meter_gal != null ? f.n(e.meter_gal) : "—"}</td>
                         <td>
-                          <St tone={e.verified ? "ok" : "bad"}>{e.verified ? "Verified" : "Mismatch"}</St>{" "}
-                          {e.evidence_grade && <St tone={e.evidence_grade === "low_accuracy" ? "warn" : "ok"}>{GRADE[e.evidence_grade] ?? e.evidence_grade}</St>}
+                          <St tone={e.verified ? "ok" : "bad"}>{e.verified ? t("verified") : t("mismatch")}</St>{" "}
+                          {e.evidence_grade && <St tone={e.evidence_grade === "low_accuracy" ? "warn" : "ok"}>{tk("gr_", e.evidence_grade)}</St>}
                           {e.note && <small style={{ display: "block" }}>{e.note}</small>}
                         </td>
                       </tr>
@@ -333,24 +345,24 @@ export default function OrderDetail() {
 
           <div className="panel">
             <h2>
-              Messages <small>customer, driver and NWS</small>
+              {t("messages")} <small>{t("messagesSub")}</small>
             </h2>
             {msgs.length === 0 ? (
-              <p className="note">No messages on this order.</p>
+              <p className="note">{t("noMessages")}</p>
             ) : (
               <ChatBubbles
                 msgs={msgs}
                 me="staff"
-                lang="en"
+                lang={lang}
                 allTicks
-                labels={{ sent: "Sent, not read yet", read: "Read", nws: "NWS" }}
-                who={(m) => `${one((m as Message).sender)?.full_name || ROLE[m.sender_role]} · ${ROLE[m.sender_role]}`}
+                labels={{ sent: t("msgSent"), read: t("msgRead"), nws: t("nws") }}
+                who={(m) => `${one((m as Message).sender)?.full_name || t(ROLE[m.sender_role])} · ${t(ROLE[m.sender_role])}`}
               />
             )}
             <div className="sendrow">
-              <input className="in" placeholder="Message the customer and driver as NWS…" value={body} maxLength={500} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} aria-label="Message" />
-              <button className="btn pri" disabled={!body.trim() || readOnly} title={readOnly ? "Read-only role" : undefined} onClick={send}>
-                Send
+              <input className="in" placeholder={t("msgPh")} value={body} maxLength={500} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} aria-label={t("message")} />
+              <button className="btn pri" disabled={!body.trim() || readOnly} title={readOnly ? t("readOnlyRole") : undefined} onClick={send}>
+                {t("send")}
               </button>
             </div>
           </div>
@@ -358,72 +370,72 @@ export default function OrderDetail() {
 
         <div>
           <div className="panel">
-            <h2>People and tanker</h2>
+            <h2>{t("people")}</h2>
             <dl className="kv">
-              <dt>Customer</dt>
+              <dt>{t("customer")}</dt>
               <dd>
                 {o.customer ? (
                   <Link className="lk" href={`/nws/customers?id=${o.customer.id}`}>
-                    {o.customer.full_name || "Customer"}
+                    {o.customer.full_name || t("customer")}
                   </Link>
                 ) : (
                   "—"
                 )}
-                {o.customer?.phone ? <small className="mut"> · {maskPhone(o.customer.phone)}</small> : null}
+                {o.customer?.phone ? <small className="mut"> · <bdi dir="ltr">{maskPhone(o.customer.phone)}</bdi></small> : null}
               </dd>
               {one(o.org) && (
                 <>
-                  <dt>Business account</dt>
+                  <dt>{t("bizAccount")}</dt>
                   <dd>
                     {one(o.org)!.name}
-                    {o.po_number ? <small className="mut"> · {ref.po(o.po_number)}</small> : null}
+                    {o.po_number ? <small className="mut"> · <bdi dir="ltr">{ref.po(o.po_number)}</bdi></small> : null}
                   </dd>
                 </>
               )}
-              <dt>Plan</dt>
+              <dt>{t("plan")}</dt>
               <dd>
-                {one(o.contract) ? `Contract CT-${one(o.contract)!.contract_no} · ${one(o.contract)!.frequency}` : (CHANNEL_LABEL[o.channel ?? "app"] ?? o.channel)}
-                {o.genesys_id ? <small className="mut"> · Genesys {o.genesys_id}</small> : null}
+                {one(o.contract) ? `${t("contractX", { n: one(o.contract)!.contract_no })} · ${freqLabel(one(o.contract)!.frequency, lang)}` : channelText}
+                {o.genesys_id ? <small className="mut"> · {t("genesys", { id: o.genesys_id })}</small> : null}
               </dd>
-              <dt>Driver</dt>
+              <dt>{t("driver")}</dt>
               <dd>
                 {o.driver?.full_name || o.driver_name || "—"}
-                {o.driver?.phone ? <small className="mut"> · {maskPhone(o.driver.phone)}</small> : null}
+                {o.driver?.phone ? <small className="mut"> · <bdi dir="ltr">{maskPhone(o.driver.phone)}</bdi></small> : null}
               </dd>
-              <dt>Tanker</dt>
+              <dt>{t("tanker")}</dt>
               <dd>
                 {o.tanker ? (
-                  <Link className="lk" href={`/nws/fleet?tanker=${o.tanker.id}`}>
+                  <Link className="lk" href={`/nws/fleet?tanker=${o.tanker.id}`} dir="ltr">
                     {o.tanker.plate}
                   </Link>
                 ) : (
                   o.tanker_plate || "—"
                 )}
-                {o.tanker ? <small className="mut"> · {o.tanker.service_type} · {o.tanker.capacity_gal.toLocaleString()} gal{o.tanker.blocked ? " · suspended" : ""}</small> : null}
+                {o.tanker ? <small className="mut"> · {o.tanker.service_type} · {f.gal(o.tanker.capacity_gal)}{o.tanker.blocked ? t("suspendedLc") : ""}</small> : null}
               </dd>
               {verify && (
                 <>
-                  <dt>Company</dt>
-                  <dd>{verify.company ?? "Independent"}</dd>
-                  <dt>Permit</dt>
-                  <dd>{verify.permit_no ? `${verify.permit_no} · to ${fmtDate(verify.permit_valid_to)}` : "None on file"}</dd>
+                  <dt>{t("company")}</dt>
+                  <dd>{verify.company ?? t("independent")}</dd>
+                  <dt>{t("permit")}</dt>
+                  <dd>{verify.permit_no ? t("permitTo", { no: verify.permit_no, date: f.date(verify.permit_valid_to) }) : t("noneOnFile")}</dd>
                   {o.service_type === "DW" && (
                     <>
-                      <dt>Water test</dt>
+                      <dt>{t("waterTest")}</dt>
                       <dd>
                         {verify.water_test ? (
                           <>
-                            {verify.water_test.cert_no} <St tone={verify.water_test.passed ? "ok" : "bad"}>{verify.water_test.passed ? "Passed" : "Failed"}</St>{" "}
-                            <small className="mut">{fmtDate(verify.water_test.tested_at)}</small>
+                            <bdi dir="ltr">{verify.water_test.cert_no}</bdi> <St tone={verify.water_test.passed ? "ok" : "bad"}>{verify.water_test.passed ? t("passed") : t("failed")}</St>{" "}
+                            <small className="mut">{f.date(verify.water_test.tested_at)}</small>
                           </>
                         ) : (
-                          "No test on file"
+                          t("noTest")
                         )}
                       </dd>
                     </>
                   )}
-                  <dt>IVMS device</dt>
-                  <dd>{verify.device ?? "None"}</dd>
+                  <dt>{t("ivmsDevice")}</dt>
+                  <dd>{verify.device ? <bdi dir="ltr">{verify.device}</bdi> : t("none")}</dd>
                 </>
               )}
             </dl>
@@ -431,69 +443,82 @@ export default function OrderDetail() {
 
           <div className="panel">
             <h2>
-              Price <small>tags show lines priced from rules NWS hasn’t confirmed</small>
+              {t("price")} <small>{t("priceSub")}</small>
             </h2>
             <OrderBill order={o} rules={rules} />
             <dl className="kv" style={{ paddingTop: 0 }}>
               {Number(o.discount ?? 0) > 0 && (
                 <>
-                  <dt>Discount</dt>
-                  <dd>−{n3(o.discount)} OMR{o.promo_code ? ` (${o.promo_code})` : ""}</dd>
+                  <dt>{t("discount")}</dt>
+                  <dd>
+                    −{f.omr3(o.discount ?? 0)}
+                    {o.promo_code ? (
+                      <>
+                        {" "}
+                        (<bdi dir="ltr">{o.promo_code}</bdi>)
+                      </>
+                    ) : null}
+                  </dd>
                 </>
               )}
-              <dt>Driver earnings</dt>
-              <dd>{n3(o.driver_earnings)} OMR</dd>
+              <dt>{t("driverEarnings")}</dt>
+              <dd>{f.omr3(o.driver_earnings)}</dd>
               {Number(o.cancel_fee) > 0 && (
                 <>
-                  <dt>Cancellation fee</dt>
-                  <dd>{n3(o.cancel_fee)} OMR</dd>
+                  <dt>{t("cancelFee")}</dt>
+                  <dd>{f.omr3(o.cancel_fee)}</dd>
                 </>
               )}
-              <dt>Priced in mode</dt>
+              <dt>{t("pricedMode")}</dt>
               <dd>{o.price_basis?.mode ?? "—"}</dd>
             </dl>
           </div>
 
           <div className="panel">
             <h2>
-              Payment {pay && <St tone={PAY_TONE[pay.status]}>{pay.status.replace("_", " ")}</St>}
+              {t("payment")} {pay && <St tone={PAY_TONE[pay.status]}>{ORD[`pay_${pay.status}`] ? t(`pay_${pay.status}`) : pay.status.replace("_", " ")}</St>}
             </h2>
             {!pay ? (
-              <p className="note">{o.billing === "account" ? "Billed to the business account on its next invoice." : "No payment recorded."}</p>
+              <p className="note">{o.billing === "account" ? t("billedAccount") : t("noPayment")}</p>
             ) : (
               <dl className="kv">
-                <dt>Method</dt>
+                <dt>{t("method")}</dt>
                 <dd>
-                  {PAY_LABEL[pay.method] ?? pay.method}
-                  {pay.card_last4 ? ` ·••• ${pay.card_last4}` : ""}
+                  {tk("pm_", pay.method)}
+                  {pay.card_last4 ? (
+                    <>
+                      {" ·"}
+                      <bdi dir="ltr">{`••• ${pay.card_last4}`}</bdi>
+                    </>
+                  ) : null}
                 </dd>
-                <dt>Amount</dt>
+                <dt>{t("amount")}</dt>
                 <dd>
-                  {omr3(pay.amount)}
-                  {Number(pay.wallet_amount) > 0 && Number(pay.card_amount) > 0 ? <small className="mut"> · wallet {n3(pay.wallet_amount)} + card {n3(pay.card_amount)}</small> : null}
+                  {f.omr3(pay.amount)}
+                  {Number(pay.wallet_amount) > 0 && Number(pay.card_amount) > 0 ? <small className="mut">{t("walletCard", { w: f.n3(pay.wallet_amount), c: f.n3(pay.card_amount) })}</small> : null}
                 </dd>
-                <dt>Reference</dt>
-                <dd>{pay.gateway_ref ?? "—"}</dd>
-                <dt>Authorised</dt>
-                <dd>{fmtDateTime(pay.created_at)}</dd>
-                <dt>Captured</dt>
-                <dd>{fmtDateTime(pay.captured_at)}</dd>
+                <dt>{t("reference")}</dt>
+                <dd>{pay.gateway_ref ? <bdi dir="ltr">{pay.gateway_ref}</bdi> : "—"}</dd>
+                <dt>{t("authorised")}</dt>
+                <dd>{f.dateTime(pay.created_at)}</dd>
+                <dt>{t("captured")}</dt>
+                <dd>{f.dateTime(pay.captured_at)}</dd>
                 {pay.failure_reason && (
                   <>
-                    <dt>Failure</dt>
+                    <dt>{t("failure")}</dt>
                     <dd style={{ color: "var(--bad)" }}>{pay.failure_reason}</dd>
                   </>
                 )}
-                <dt>Refunded</dt>
-                <dd>{omr3(pay.refunded_amount)}</dd>
+                <dt>{t("refunded")}</dt>
+                <dd>{f.omr3(pay.refunded_amount)}</dd>
               </dl>
             )}
             {refunds.length > 0 && (
               <ul className="tl">
                 {refunds.map((r) => (
                   <li key={r.id} className="done">
-                    {r.kind === "cancel_fee" ? "Fee" : "Wallet credit"} {n3(r.amount)} OMR — {r.memo}
-                    <small>{fmtDateTime(r.created_at)}</small>
+                    {r.kind === "cancel_fee" ? t("fee") : t("walletCredit")} {f.omr3(r.amount)} — {r.memo}
+                    <small>{f.dateTime(r.created_at)}</small>
                   </li>
                 ))}
               </ul>
@@ -502,45 +527,44 @@ export default function OrderDetail() {
 
           <div className="panel">
             <h2>
-              Proof of {pod?.kind === "collection" ? "collection" : "delivery"} {pod && <St tone={pod.status === "accepted" ? "ok" : "bad"}>{pod.status}</St>}
+              {pod?.kind === "collection" ? t("proofCollection") : t("proofDelivery")} {pod && <St tone={pod.status === "accepted" ? "ok" : "bad"}>{tk("pod_", pod.status)}</St>}
             </h2>
             {!pod ? (
-              <p className="note">Not submitted yet.</p>
+              <p className="note">{t("notSubmitted")}</p>
             ) : (
               <div className="pad">
-                {pod.status === "rejected" && pod.rejected_reason && <div className="banner badb">Rejected: {pod.rejected_reason}</div>}
+                {pod.status === "rejected" && pod.rejected_reason && <div className="banner badb">{t("rejectedX", { reason: pod.rejected_reason })}</div>}
                 {short && (
                   <div className="banner">
-                    Meter reading {pod.meter_gal.toLocaleString()} gal is more than 5% under the {o.gallons.toLocaleString()} gal ordered (short volume).
-                    {Number(o.short_credit ?? 0) > 0 &&
-                      ` ${omr3(o.short_credit ?? 0)} ${o.billing === "account" ? "credited against the account invoice" : "refunded to the customer’s wallet"}.`}
+                    {t("shortVol", { m: f.gal(pod.meter_gal), o: f.gal(o.gallons) })}
+                    {Number(o.short_credit ?? 0) > 0 && t(o.billing === "account" ? "shortAccount" : "shortWallet", { amt: f.omr3(o.short_credit ?? 0) })}
                   </div>
                 )}
                 <dl className="kv" style={{ padding: "0 0 12px" }}>
-                  <dt>Meter reading</dt>
-                  <dd>{pod.meter_gal.toLocaleString()} gal</dd>
-                  <dt>Submitted</dt>
-                  <dd>{fmtDateTime(pod.created_at)}</dd>
-                  <dt>Signature</dt>
-                  <dd>{pod.no_signature ? <St tone="warn">Customer not available to sign</St> : signed ? "Signed" : "—"}</dd>
+                  <dt>{t("meterReading")}</dt>
+                  <dd>{f.gal(pod.meter_gal)}</dd>
+                  <dt>{t("submitted")}</dt>
+                  <dd>{f.dateTime(pod.created_at)}</dd>
+                  <dt>{t("signature")}</dt>
+                  <dd>{pod.no_signature ? <St tone="warn">{t("noSign")}</St> : signed ? t("signed") : "—"}</dd>
                   {pod.left_at_tank && (
                     <>
-                      <dt>Left at tank</dt>
-                      <dd>Yes</dd>
+                      <dt>{t("leftAtTank")}</dt>
+                      <dd>{t("yes")}</dd>
                     </>
                   )}
                 </dl>
                 <PodLocation pod={pod} site={loc} />
                 <div className="grid2">
                   {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not optimisable */}
-                  {photo ? <img className="pod-img" src={photo} alt={`Proof of delivery for ${orderNo(o.order_no)}`} /> : <span className="mut" style={{ fontSize: 13 }}>{pod.photo_path ? "Loading photo…" : "No photo"}</span>}
+                  {photo ? <img className="pod-img" src={photo} alt={t("podAlt", { order: ord })} /> : <span className="mut" style={{ fontSize: 13 }}>{pod.photo_path ? t("loadingPhoto") : t("noPhoto")}</span>}
                   {signed && !pod.no_signature && (
                     <div className="sig">
                       {pod.signature_svg?.trim() ? (
-                        <SignatureSvg value={pod.signature_svg} label="Customer signature" style={{ width: "100%", color: "#0e2329" }} />
+                        <SignatureSvg value={pod.signature_svg} label={t("custSignature")} style={{ width: "100%", color: "#0e2329" }} />
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element -- signed storage URL
-                        <img src={sigFile!} alt="Customer signature" style={{ width: "100%" }} />
+                        <img src={sigFile!} alt={t("custSignature")} style={{ width: "100%" }} />
                       )}
                     </div>
                   )}
@@ -551,21 +575,21 @@ export default function OrderDetail() {
 
           <div className="panel">
             <h2>
-              Complaints and penalties
-              <button className="btn sm" disabled={!can("operator", "inspector", "admin") || !o.tanker_id} title={o.tanker_id ? undefined : "No tanker on this order"} onClick={() => setDlg("penalty")}>
-                Issue penalty
+              {t("complaintsPenalties")}
+              <button className="btn sm" disabled={!can("operator", "inspector", "admin") || !o.tanker_id} title={o.tanker_id ? undefined : t("noTankerOrder")} onClick={() => setDlg("penalty")}>
+                {t("issuePenalty")}
               </button>
             </h2>
-            {complaints.length === 0 && penalties.length === 0 && <p className="note">None on this order.</p>}
+            {complaints.length === 0 && penalties.length === 0 && <p className="note">{t("noneOnOrder")}</p>}
             {complaints.length > 0 && (
               <div className="alist">
                 {complaints.map((c) => (
                   <div key={c.id}>
-                    <Link className="lk" href={`/nws/complaints?id=${c.id}`}>
+                    <Link className="lk" href={`/nws/complaints?id=${c.id}`} dir="ltr">
                       C-{c.case_no}
                     </Link>{" "}
-                    {c.category.replace(/_/g, " ")} <St tone={c.state === "resolved" ? "ok" : c.state === "escalated" ? "bad" : "warn"}>{c.state}</St>
-                    <span className="mut" style={{ display: "block" }}>Opened {fmtDateTime(c.created_at)} · due {fmtDateTime(c.due_at)}</span>
+                    {c.category.replace(/_/g, " ")} <St tone={c.state === "resolved" ? "ok" : c.state === "escalated" ? "bad" : "warn"}>{tk("cs_", c.state)}</St>
+                    <span className="mut" style={{ display: "block" }}>{t("openedDue", { at: f.dateTime(c.created_at), due: f.dateTime(c.due_at) })}</span>
                   </div>
                 ))}
               </div>
@@ -575,10 +599,11 @@ export default function OrderDetail() {
                 {penalties.map((p) => (
                   <div key={p.id}>
                     <b>
-                      V-{p.penalty_no} · {one(p.rule)?.label ?? "Penalty"} · {omr3(p.amount)} <St tone={p.state === "cancelled" ? "" : p.state === "upheld" ? "bad" : "warn"}>{p.state}</St>
+                      <bdi dir="ltr">V-{p.penalty_no}</bdi> · {one(p.rule)?.label ?? t("penaltyWord")} · {f.omr3(p.amount)}{" "}
+                      <St tone={p.state === "cancelled" ? "" : p.state === "upheld" ? "bad" : "warn"}>{label("penalty", p.state, lang, p.state)}</St>
                     </b>
                     <span className="mut">
-                      {p.reason} · {fmtDateTime(p.created_at)}
+                      {p.reason} · {f.dateTime(p.created_at)}
                     </span>
                   </div>
                 ))}
@@ -590,47 +615,43 @@ export default function OrderDetail() {
 
       {dlg === "reschedule" && (
         <ReasonDialog
-          title={`Move ${orderNo(o.order_no)} to ${slot.label}`}
-          body="The order becomes scheduled and is released to dispatch 90 minutes before the slot. The customer keeps the same price."
-          confirm="Move order"
+          title={t("moveTitle", { order: ord, slot: slotText })}
+          body={t("moveBody")}
+          confirm={t("moveOrder")}
           onCancel={() => setDlg(null)}
-          onConfirm={(r) => act("reschedule", r, { p_slot_start: slot.start, p_slot_end: slot.end, p_slot_label: slot.label }, `${orderNo(o.order_no)} moved to ${slot.label}`)}
+          onConfirm={(r) => act("reschedule", r, { p_slot_start: slot.start, p_slot_end: slot.end, p_slot_label: slot.label }, t("movedTo", { order: ord, slot: slotText }))}
         />
       )}
       {dlg === "cancel" && (
         <ReasonDialog
-          title={`Cancel ${orderNo(o.order_no)}`}
-          body={
-            ON_JOB.includes(o.status)
-              ? `A driver is on this job (${STATUS_TEXT[o.status][0].toLowerCase()}). Cancelling stops the trip; the customer is notified and the full payment is refunded to their wallet.`
-              : "The customer is notified and any payment is refunded to their wallet."
-          }
-          confirm="Cancel order"
+          title={t("cancelTitle", { order: ord })}
+          body={ON_JOB.includes(o.status) ? t("cancelOnJob", { status: lang === "en" ? stText.toLowerCase() : stText }) : t("cancelBody")}
+          confirm={t("cancelOrder")}
           danger
           onCancel={() => setDlg(null)}
-          onConfirm={(r) => act("cancel", r, {}, `${orderNo(o.order_no)} cancelled`)}
+          onConfirm={(r) => act("cancel", r, {}, t("cancelledX", { order: ord }))}
         />
       )}
       {dlg === "refund" && (
         <ReasonDialog
-          title={`Refund ${orderNo(o.order_no)} to wallet`}
-          body={`Up to ${omr3(refundable)} can still be refunded. The customer is notified.`}
-          confirm="Refund"
+          title={t("refundTitle", { order: ord })}
+          body={t("refundBody", { amt: f.omr3(refundable) })}
+          confirm={t("refund")}
           extra={
             <div className="fld">
-              <label htmlFor="ra">Amount (OMR)</label>
-              <input id="ra" className="in" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <label htmlFor="ra">{t("amountOmr")}</label>
+              <input id="ra" className="in" inputMode="decimal" dir="ltr" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </div>
           }
           onCancel={() => setDlg(null)}
           onConfirm={(r) => {
             const amt = Number(amount);
-            if (!(amt > 0)) return toast("Enter a valid amount.", true);
-            return act("refund", r, { p_amount: Math.min(amt, refundable) }, `${omr3(Math.min(amt, refundable))} refunded to the customer’s wallet`);
+            if (!(amt > 0)) return toast(t("badAmount"), true);
+            return act("refund", r, { p_amount: Math.min(amt, refundable) }, t("refundedX", { amt: f.omr3(Math.min(amt, refundable)) }));
           }}
         />
       )}
-      {dlg === "penalty" && <PenaltyDialog title={`Issue penalty — ${orderNo(o.order_no)}`} tankerId={o.tanker_id} orderId={o.id} onClose={() => setDlg(null)} onDone={load} />}
+      {dlg === "penalty" && <PenaltyDialog title={t("penaltyTitle", { x: ord })} tankerId={o.tanker_id} orderId={o.id} onClose={() => setDlg(null)} onDone={load} />}
     </>
   );
 }

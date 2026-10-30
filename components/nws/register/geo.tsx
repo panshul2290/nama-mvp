@@ -3,11 +3,14 @@
 // Clusters and governorates (0031) for the NWS screens: names, the cluster of a governorate,
 // and the cluster / governorate filter used on Fleet, Permits and Reports.
 import { useEffect, useMemo, useState } from "react";
+import { REG } from "@/components/nws/i18n/register";
+import { useLang, useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 
 export type Cluster = { code: string; name: string; sort: number };
 export type Governorate = { code: string; name: string; cluster_code: string | null; nws_served: boolean; sort: number; aliases: string[] };
 
+/** English wording (exports); the screens use REG (components/nws/i18n/register). */
 export const GEO_T = {
   allClusters: "All clusters",
   noCluster: "No cluster",
@@ -42,6 +45,7 @@ export const reloadGeo = () => {
 };
 
 export function useGeo(version = 0): Geo {
+  const { lang } = useLang();
   const [data, setData] = useState<{ clusters: Cluster[]; governorates: Governorate[] }>({ clusters: [], governorates: [] });
   useEffect(() => {
     let live = true;
@@ -56,10 +60,10 @@ export function useGeo(version = 0): Geo {
     return {
       ...data,
       govName: (code) => (code ? (gov.get(code)?.name ?? code) : GEO_T.unknownGov),
-      clusterName: (code) => (code ? (cl.get(code)?.name ?? code) : GEO_T.noCluster),
+      clusterName: (code) => (code ? (cl.get(code)?.name ?? code) : REG.noCluster[lang]),
       clusterOf: (code) => (code ? (gov.get(code)?.cluster_code ?? null) : null),
     };
-  }, [data]);
+  }, [data, lang]);
 }
 
 /** Cluster and governorate selects; choosing a cluster narrows the governorates. */
@@ -73,18 +77,19 @@ export function GeoFilter({
   /** Only governorates NWS serves. */
   served?: boolean;
 }) {
+  const t = useT(REG);
   const govs = geo.governorates.filter((g) => (!served || g.nws_served) && (!cluster || (cluster === "none" ? !g.cluster_code : g.cluster_code === cluster)));
   return (
     <>
-      <select className="in" aria-label={GEO_T.cluster} value={cluster} onChange={(e) => onChange({ cluster: e.target.value, governorate: "" })} style={{ width: 150 }}>
-        <option value="">{GEO_T.allClusters}</option>
+      <select className="in" aria-label={t("cluster")} value={cluster} onChange={(e) => onChange({ cluster: e.target.value, governorate: "" })} style={{ width: 150 }}>
+        <option value="">{t("allClusters")}</option>
         {geo.clusters.map((c) => (
           <option key={c.code} value={c.code}>{c.name}</option>
         ))}
-        <option value="none">{GEO_T.noCluster}</option>
+        <option value="none">{t("noCluster")}</option>
       </select>
-      <select className="in" aria-label={GEO_T.governorate} value={governorate} onChange={(e) => onChange({ cluster, governorate: e.target.value })} style={{ width: 180 }}>
-        <option value="">{GEO_T.allGovernorates}</option>
+      <select className="in" aria-label={t("governorate")} value={governorate} onChange={(e) => onChange({ cluster, governorate: e.target.value })} style={{ width: 180 }}>
+        <option value="">{t("allGovernorates")}</option>
         {govs.map((g) => (
           <option key={g.code} value={g.code}>{g.name}</option>
         ))}

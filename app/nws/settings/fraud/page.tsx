@@ -2,26 +2,42 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Chips, Empty, PageHead, ReadOnlyNote, useAudited } from "@/components/nws/admin/ui";
-import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
+import { SETTINGS_OPS } from "@/components/nws/i18n/settingsOps";
+import { useStaff } from "@/components/nws/StaffContext";
+import { useFmt } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
+import { useLang, useT } from "@/lib/i18n";
+import { label } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import type { FraudFlag } from "@/lib/types";
 
-// Mirrors the checks in staff_scan() (0012): rule name, threshold and the score each flag gets.
+// Mirrors the checks in staff_scan() (0012): rule name and threshold (dictionary keys), the rule
+// text the database writes on each flag (`match`), and the score each flag gets.
 const RULES: { name: string; match: string; threshold: string; score: number }[] = [
-  { name: "Delivery without filling", match: "Delivery without filling", threshold: "Drinking or treated water delivered with no station fill event (last 30 days)", score: 80 },
-  { name: "Duplicate POD photo", match: "Duplicate proof-of-delivery photo", threshold: "Same proof-of-delivery photo hash on 2 or more deliveries", score: 90 },
-  { name: "Rating manipulation", match: "Rating manipulation", threshold: "3 or more five-star ratings from one customer to one driver within 24 h", score: 60 },
-  { name: "Wallet misuse", match: "Wallet misuse", threshold: "Wallet top-ups above 200 OMR by one customer within 24 h", score: 55 },
-  { name: "Unusual ordering", match: "Unusual ordering", threshold: "More than 5 orders by one household customer within 24 h", score: 40 },
+  { name: "frNoFill", match: "Delivery without filling", threshold: "frNoFillT", score: 80 },
+  { name: "frDupPod", match: "Duplicate proof-of-delivery photo", threshold: "frDupPodT", score: 90 },
+  { name: "frRating", match: "Rating manipulation", threshold: "frRatingT", score: 60 },
+  { name: "frWallet", match: "Wallet misuse", threshold: "frWalletT", score: 55 },
+  { name: "frOrdering", match: "Unusual ordering", threshold: "frOrderingT", score: 40 },
 ];
-const level = (s: number): [string, string] => (s >= 75 ? ["High", "bad"] : s >= 50 ? ["Medium", "warn"] : ["Low", ""]);
-const STATE: Record<FraudFlag["state"], [string, string]> = { open: ["Open", "act"], cleared: ["Cleared", "ok"], confirmed: ["Confirmed fraud", "bad"] };
+// The flag's rule as the database wrote it → its name in the viewer's language.
+const RULE_KEY: Record<string, string> = { ...Object.fromEntries(RULES.map((r) => [r.match, r.name])) };
+const SUBJECT: Record<string, string> = { order: "order", driver: "driver", customer: "customer" };
+const level = (s: number): [string, string] => (s >= 75 ? ["sev.high", "bad"] : s >= 50 ? ["sev.med", "warn"] : ["sev.low", ""]);
+const STATE: Record<FraudFlag["state"], [string, string]> = { open: ["frOpen", "act"], cleared: ["frCleared", "ok"], confirmed: ["frConfirmedFraud", "bad"] };
 type Filter = "open" | "cleared" | "confirmed" | "all";
 
 export default function FraudPage() {
   const { can, toast } = useStaff();
   const { ask, dialog } = useAudited();
+  const { lang } = useLang();
+  const t = useT(SETTINGS_OPS);
+  const fm = useFmt();
+  const sev = (s: number) => {
+    const [g, v] = level(s)[0].split(".");
+    return label(g, v, lang);
+  };
+  const ruleName = (rule: string) => (RULE_KEY[rule] ? t(RULE_KEY[rule]) : rule);
   const [flags, setFlags] = useState<FraudFlag[] | null>(null);
   const [filter, setFilter] = useState<Filter>("open");
   const [scanning, setScanning] = useState(false);
@@ -36,19 +52,19 @@ export default function FraudPage() {
     setScanning(true);
     const { data, error } = await supabase().rpc("staff_scan");
     setScanning(false);
-    if (error) return toast(friendlyError(error), true);
+    if (error) return toast(friendlyError(error, lang), true);
     const r = data as { new_flags: number; new_alerts: number };
-    toast(`Checks complete: ${r.new_flags} new flag${r.new_flags === 1 ? "" : "s"}, ${r.new_alerts} new alert${r.new_alerts === 1 ? "" : "s"}`);
+    toast(t("frScanOk", { flags: fm.n(r.new_flags), alerts: fm.n(r.new_alerts) }));
     load();
   }
 
   function decide(f: FraudFlag, state: "cleared" | "confirmed") {
     ask({
-      title: `${state === "cleared" ? "Clear" : "Confirm"} flag: ${f.rule}`,
-      body: state === "cleared" ? "Mark as a false positive. The flag is kept for the record." : "Confirm as fraud. Follow up with a penalty, account block or refund from the relevant screen.",
-      confirm: state === "cleared" ? "Clear flag" : "Confirm fraud",
+      title: `${state === "cleared" ? t("frClearT") : t("frConfirmT")}: ${ruleName(f.rule)}`,
+      body: state === "cleared" ? t("frClearB") : t("frConfirmB"),
+      confirm: state === "cleared" ? t("frClearC") : t("frConfirmC"),
       danger: state === "confirmed",
-      ok: state === "cleared" ? "Flag cleared" : "Flag confirmed as fraud",
+      ok: state === "cleared" ? t("frClearedOk") : t("frConfirmedOk"),
       run: (reason) => supabase().rpc("staff_fraud_decide", { p_flag_id: f.id, p_state: state, p_reason: reason }),
       done: load,
     });
@@ -59,13 +75,13 @@ export default function FraudPage() {
 
   return (
     <>
-      <PageHead title="Fraud detection" sub="Automatic checks on trips, proof of delivery, ratings, wallets and ordering. Flags are reviewed here; nothing is blocked automatically.">
-        <button className="btn pri" onClick={scan} disabled={scanning || !decider} title={decider ? undefined : "Super admins, operators and finance"}>{scanning ? "Running…" : "Run checks now"}</button>
+      <PageHead title={t("frTitle")} sub={t("frSub")}>
+        <button className="btn pri" onClick={scan} disabled={scanning || !decider} title={decider ? undefined : t("frWho")}>{scanning ? t("frRunning") : t("frRun")}</button>
       </PageHead>
-      {!decider && <ReadOnlyNote who="Super admins, operators and finance" />}
+      {!decider && <ReadOnlyNote who={t("frWho")} />}
       <div className="half">
         <div className="panel">
-          <h2>Detection rules <small>run every scan</small></h2>
+          <h2>{t("frRules")} <small>{t("frRulesSub")}</small></h2>
           <div className="tblwrap">
             <table>
               <tbody>
@@ -73,48 +89,48 @@ export default function FraudPage() {
                   const open = (flags ?? []).filter((f) => f.rule === r.match && f.state === "open").length;
                   return (
                     <tr key={r.name}>
-                      <td>{r.name}<small style={{ display: "block" }}>Threshold: {r.threshold}</small></td>
-                      <td><span className={`st ${level(r.score)[1]}`}>{level(r.score)[0]}</span></td>
-                      <td className="num">{open ? <b>{open} open</b> : <span className="mut">0 open</span>}</td>
+                      <td>{t(r.name)}<small style={{ display: "block" }}>{t("frThreshold", { text: t(r.threshold) })}</small></td>
+                      <td><span className={`st ${level(r.score)[1]}`}>{sev(r.score)}</span></td>
+                      <td className="num">{open ? <b>{t("frNOpen", { n: fm.n(open) })}</b> : <span className="mut">{t("frNOpen", { n: fm.n(0) })}</span>}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <p className="note">Rules and thresholds are defined in the database scan (staff_scan), which also runs on a schedule. Cashback and loyalty credits pass the Wallet misuse rule.</p>
+          <p className="note">{t("frNote")}</p>
         </div>
 
         <div className="panel">
-          <h2>Flags <small>{n("open")} need review</small></h2>
+          <h2>{t("frFlags")} <small>{t("frNeedReview", { n: fm.n(n("open")) })}</small></h2>
           <div className="toolbar" style={{ paddingTop: 0 }}>
-            <Chips<Filter> items={[["open", "Open", n("open")], ["confirmed", "Confirmed", n("confirmed")], ["cleared", "Cleared", n("cleared")], ["all", "All", n("all")]]} value={filter} onChange={setFilter} />
+            <Chips<Filter> items={[["open", t("frOpen"), n("open")], ["confirmed", t("stConfirmed"), n("confirmed")], ["cleared", t("frCleared"), n("cleared")], ["all", t("all"), n("all")]]} value={filter} onChange={setFilter} />
           </div>
           <div className="tblwrap scroll">
             <table>
               <tbody>
-                {!flags && <Empty cols={3}>Loading…</Empty>}
-                {flags && shown.length === 0 && <Empty cols={3}>No {filter === "all" ? "" : filter} flags.</Empty>}
+                {!flags && <Empty cols={3}>{t("loading")}</Empty>}
+                {flags && shown.length === 0 && <Empty cols={3}>{t(`frNone_${filter}`)}</Empty>}
                 {shown.map((f) => (
                   <tr key={f.id}>
                     <td>
-                      <b style={{ fontWeight: 600 }}>{f.rule}</b> · {f.subject_type}
+                      <b style={{ fontWeight: 600 }}>{ruleName(f.rule)}</b> · {SUBJECT[f.subject_type] ? t(SUBJECT[f.subject_type]) : f.subject_type}
                       <small style={{ display: "block" }}>{f.details}</small>
-                      <small style={{ display: "block" }}>{fmtDateTime(f.created_at)}</small>
+                      <small style={{ display: "block" }}>{fm.dateTime(f.created_at)}</small>
                     </td>
-                    <td><span className={`st ${level(f.score)[1]}`} title={`Score ${f.score}`}>{level(f.score)[0]}</span></td>
+                    <td><span className={`st ${level(f.score)[1]}`} title={t("frScore", { n: fm.n(f.score) })}>{sev(f.score)}</span></td>
                     <td className="num">
                       {f.state === "open" ? (
                         decider ? (
                           <div className="btns" style={{ justifyContent: "flex-end" }}>
-                            <button className="btn sm" onClick={() => decide(f, "cleared")}>Clear</button>
-                            <button className="btn sm bad" onClick={() => decide(f, "confirmed")}>Confirm</button>
+                            <button className="btn sm" onClick={() => decide(f, "cleared")}>{t("clear")}</button>
+                            <button className="btn sm bad" onClick={() => decide(f, "confirmed")}>{t("confirm")}</button>
                           </div>
                         ) : (
-                          <span className="st act">Open</span>
+                          <span className="st act">{t("frOpen")}</span>
                         )
                       ) : (
-                        <span className={`st ${STATE[f.state][1]}`}>{STATE[f.state][0]}</span>
+                        <span className={`st ${STATE[f.state][1]}`}>{t(STATE[f.state][0])}</span>
                       )}
                     </td>
                   </tr>

@@ -2,6 +2,7 @@
 // Permits → Register, Permits → Campaign and the importer. Everything is filtered and paged
 // in the database: no screen holds the ~11,000 register tankers.
 import { friendlyError } from "@/lib/errors";
+import type { Lang } from "@/lib/i18n";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 
@@ -33,6 +34,7 @@ export type RegRow = {
 export type RegKpis = { valid: number; expiring_30: number; blocked: number; pending: number; on_platform: number; register_only: number; capacity_unknown: number };
 export type RegPage = { total: number; privileged: boolean; kpis: RegKpis; rows: RegRow[] };
 
+/** English stage names (exports); REG["stage.<stage>"] (components/nws/i18n/register) has the Arabic. */
 export const STAGE_LABEL: Record<Stage, string> = {
   register: "In register only",
   invited: "Owner invited",
@@ -46,17 +48,17 @@ export const STAGE_TONE: Record<Stage, string> = { register: "", invited: "act",
 /** Drop empty keys so the database sees only real filters. */
 export const cleanFilter = (f: RegFilter) => Object.fromEntries(Object.entries(f).filter(([, v]) => v !== "" && v != null && v !== "all"));
 
-export async function fetchRegister(f: RegFilter, limit: number, offset: number): Promise<{ data: RegPage | null; error: string | null }> {
+export async function fetchRegister(f: RegFilter, limit: number, offset: number, lang: Lang = "en"): Promise<{ data: RegPage | null; error: string | null }> {
   const { data, error } = await supabase().rpc("staff_register_tankers", { p_filter: cleanFilter(f), p_limit: limit, p_offset: offset });
-  return { data: (data as RegPage | null) ?? null, error: error ? friendlyError(error) : null };
+  return { data: (data as RegPage | null) ?? null, error: error ? friendlyError(error, lang) : null };
 }
 
 /** Every matching row in pages of 2,000 (for CSV export), up to `cap`. */
-export async function fetchAllRegister(f: RegFilter, cap = 20000, onProgress?: (n: number, total: number) => void) {
+export async function fetchAllRegister(f: RegFilter, cap = 20000, onProgress?: (n: number, total: number) => void, lang: Lang = "en") {
   const rows: RegRow[] = [];
   let total = 0;
   for (let off = 0; off < cap; off += 2000) {
-    const { data, error } = await fetchRegister(f, 2000, off);
+    const { data, error } = await fetchRegister(f, 2000, off, lang);
     if (error || !data) return { rows, total, error: error ?? "No data" };
     total = data.total;
     rows.push(...data.rows);
@@ -70,7 +72,8 @@ export type InviteResult = { queued: number; considered: number; daily_left: num
 
 /** Calls staff_invite_registry_owners until nothing more is queued (≤ 500 per call), or the daily cap. */
 export async function inviteLoop(
-  args: { owners?: string[]; batch?: string; filter?: RegFilter; lang: "en" | "ar"; reason: string },
+  // lang: the SMS language; uiLang: the language of the error text shown on screen.
+  args: { owners?: string[]; batch?: string; filter?: RegFilter; lang: "en" | "ar"; reason: string; uiLang?: Lang },
   onProgress?: (queued: number) => void,
 ): Promise<{ queued: number; last: InviteResult | null; skipped: Record<string, number>; error: string | null }> {
   let queued = 0;
@@ -82,7 +85,7 @@ export async function inviteLoop(
       const { data, error } = await supabase().rpc("staff_invite_registry_owners", {
         p_owner_ids: ids, p_batch_id: args.batch ?? null, p_filter: args.filter ? cleanFilter(args.filter) : null, p_lang: args.lang, p_limit: 500, p_reason: args.reason,
       });
-      if (error) return { queued, last, skipped, error: friendlyError(error) };
+      if (error) return { queued, last, skipped, error: friendlyError(error, args.uiLang) };
       last = data as InviteResult;
       queued += last.queued;
       onProgress?.(queued);
@@ -100,6 +103,7 @@ export async function inviteLoop(
   return { queued, last, skipped, error: null };
 }
 
+/** English skip reasons; REG["skip.<reason>"] has the Arabic. */
 export const SKIP_LABEL: Record<string, string> = {
   no_phone: "no mobile number",
   opted_out: "opted out",

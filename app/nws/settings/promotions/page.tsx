@@ -1,15 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Empty, int, PageHead, ReadOnlyNote, Switch, useAudited } from "@/components/nws/admin/ui";
-import { fmtDate, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { Empty, PageHead, ReadOnlyNote, Switch, useAudited } from "@/components/nws/admin/ui";
+import { SETTINGS_OPS } from "@/components/nws/i18n/settingsOps";
+import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { useFmt } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
+import { useLang, useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { omanToday } from "@/lib/time";
 import type { Promotion } from "@/lib/types";
 
 type Loyalty = { points_per_omr: number; redeem_points: number; redeem_omr: number };
-const AUDIENCE: Record<string, string> = { all: "Everyone", new: "New customers", household: "Households", business: "Business accounts" };
+// Audience → dictionary key.
+const AUDIENCE: Record<string, string> = { all: "pmAudAll", new: "pmAudNew", household: "pmAudHousehold", business: "pmAudBusiness" };
 const upsert = (p: Omit<Promotion, "uses" | "pct"> & { pct: number }, reason: string) =>
   supabase().rpc("staff_upsert_promotion", {
     p_code: p.code, p_label: p.label, p_pct: p.pct, p_audience: p.audience, p_max_uses: p.max_uses, p_active: p.active, p_valid_to: p.valid_to || null, p_reason: reason,
@@ -18,6 +22,8 @@ const upsert = (p: Omit<Promotion, "uses" | "pct"> & { pct: number }, reason: st
 export default function PromotionsPage() {
   const { can } = useStaff();
   const { ask, dialog } = useAudited();
+  const t = useT(SETTINGS_OPS);
+  const f = useFmt();
   const [promos, setPromos] = useState<Promotion[] | null>(null);
   const [loyalty, setLoyalty] = useState<Loyalty | null>(null);
   const [form, setForm] = useState<Loyalty | null>(null);
@@ -38,10 +44,10 @@ export default function PromotionsPage() {
 
   function toggle(p: Promotion) {
     ask({
-      title: `${p.active ? "Pause" : "Activate"} ${p.code}`,
-      body: p.active ? "Customers can no longer apply this code." : "Customers in the audience can apply this code again.",
-      confirm: p.active ? "Pause campaign" : "Activate campaign",
-      ok: p.active ? "Campaign paused" : "Campaign active",
+      title: t(p.active ? "pmPauseT" : "pmActivateT", { code: p.code }),
+      body: p.active ? t("pmPauseB") : t("pmActivateB"),
+      confirm: p.active ? t("pmPauseC") : t("pmActivateC"),
+      ok: p.active ? t("pmPausedOk") : t("pmActiveOk"),
       run: (reason) => upsert({ ...p, pct: Number(p.pct), active: !p.active }, reason),
       done: load,
     });
@@ -50,10 +56,10 @@ export default function PromotionsPage() {
   function saveLoyalty() {
     if (!form) return;
     ask({
-      title: "Update loyalty settings",
-      body: `Earn ${form.points_per_omr} point(s) per OMR paid; ${form.redeem_points} points redeem for ${form.redeem_omr} OMR wallet credit.`,
-      confirm: "Save loyalty",
-      ok: "Loyalty settings saved",
+      title: t("lyUpdateT"),
+      body: t("lyUpdateB", { earn: f.n(form.points_per_omr, 1), points: f.n(form.redeem_points), omr: f.n3(form.redeem_omr) }),
+      confirm: t("lySave"),
+      ok: t("lySaved"),
       run: (reason) => supabase().rpc("staff_update_setting", { p_key: "LOYALTY", p_value: form, p_reason: reason }),
       done: load,
     });
@@ -61,66 +67,66 @@ export default function PromotionsPage() {
 
   const dirty = form && loyalty && JSON.stringify(form) !== JSON.stringify(loyalty);
   const num = (k: keyof Loyalty, step = 1) => (
-    <input className="inl" type="number" min={0} step={step} aria-label={k} disabled={!admin} value={form?.[k] ?? ""} onChange={(e) => form && setForm({ ...form, [k]: Number(e.target.value) })} />
+    <input className="inl" type="number" min={0} step={step} dir="ltr" aria-label={t(`ly_${k}`)} disabled={!admin} value={form?.[k] ?? ""} onChange={(e) => form && setForm({ ...form, [k]: Number(e.target.value) })} />
   );
 
   return (
     <>
-      <PageHead title="Promotions and loyalty" sub="Discount campaigns on the delivery fee, and how customers earn and redeem loyalty points." />
-      {!promoEditor && <ReadOnlyNote who="Finance and Super admins" />}
+      <PageHead title={t("pmTitle")} sub={t("pmSub")} />
+      {!promoEditor && <ReadOnlyNote who={t("whoAdminFinance")} />}
       <div className="wide">
         <div className="panel">
           <div className="toolbar">
-            <b style={{ fontSize: 15 }}>Campaigns</b>
-            {promoEditor && <button className="btn pri" onClick={() => setEdit("new")}>New campaign</button>}
+            <b style={{ fontSize: 15 }}>{t("pmCampaigns")}</b>
+            {promoEditor && <button className="btn pri" onClick={() => setEdit("new")}>{t("pmNew")}</button>}
           </div>
           <div className="tblwrap">
             <table>
               <thead>
-                <tr><th>Code</th><th className="num">Discount</th><th>Audience</th><th className="num">Uses</th><th>Valid to</th><th>Active</th><th></th></tr>
+                <tr><th>{t("pmCodeH")}</th><th className="num">{t("pmDiscount")}</th><th>{t("pmAudience")}</th><th className="num">{t("pmUses")}</th><th>{t("pmValidTo")}</th><th>{t("active")}</th><th></th></tr>
               </thead>
               <tbody>
-                {!promos && <Empty cols={7}>Loading…</Empty>}
-                {promos?.length === 0 && <Empty cols={7}>No campaigns yet.</Empty>}
+                {!promos && <Empty cols={7}>{t("loading")}</Empty>}
+                {promos?.length === 0 && <Empty cols={7}>{t("pmNone")}</Empty>}
                 {promos?.map((p) => {
                   const expired = p.valid_to != null && p.valid_to < omanToday();
                   return (
                     <tr key={p.code}>
-                      <td><b>{p.code}</b><small style={{ display: "block" }}>{p.label}</small></td>
-                      <td className="num">{Math.round(Number(p.pct) * 100)}%</td>
-                      <td>{AUDIENCE[p.audience] ?? p.audience}</td>
-                      <td className="num">{int(p.uses)} <small>/ {int(p.max_uses)}</small></td>
-                      <td>{p.valid_to ? <>{fmtDate(p.valid_to)}{expired && <span className="st warn ptag">Expired</span>}</> : <span className="mut">No end date</span>}</td>
-                      <td><Switch on={p.active} disabled={!promoEditor} label={p.active ? "Active" : "Paused"} onClick={() => toggle(p)} /></td>
-                      <td className="num">{promoEditor && <button className="btn sm" onClick={() => setEdit(p)}>Edit</button>}</td>
+                      <td><b dir="ltr">{p.code}</b><small style={{ display: "block" }}>{p.label}</small></td>
+                      <td className="num">{f.pct(Number(p.pct), 0)}</td>
+                      <td>{AUDIENCE[p.audience] ? t(AUDIENCE[p.audience]) : p.audience}</td>
+                      <td className="num">{f.n(p.uses)} <small>/ {f.n(p.max_uses)}</small></td>
+                      <td>{p.valid_to ? <>{f.date(p.valid_to)}{expired && <span className="st warn ptag">{t("expired")}</span>}</> : <span className="mut">{t("pmNoEnd")}</span>}</td>
+                      <td><Switch on={p.active} disabled={!promoEditor} label={p.active ? t("active") : t("pmPaused")} onClick={() => toggle(p)} /></td>
+                      <td className="num">{promoEditor && <button className="btn sm" onClick={() => setEdit(p)}>{t("edit")}</button>}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <p className="note">Discounts apply to the delivery fee only (the regulated water charge is never discounted) and are capped at 50%.</p>
+          <p className="note">{t("pmNote")}</p>
         </div>
 
         <div className="panel">
-          <h2>Loyalty</h2>
+          <h2>{t("lyTitle")}</h2>
           <div className="tblwrap">
             <table>
               <tbody>
-                <tr><td>Points earned per 1 OMR spent <span className="st warn ptag">Assumption</span></td><td className="num">{num("points_per_omr", 0.5)}</td></tr>
-                <tr><td>Points needed to redeem</td><td className="num">{num("redeem_points", 10)}</td></tr>
-                <tr><td>Wallet credit per redemption (OMR)</td><td className="num">{num("redeem_omr", 0.5)}</td></tr>
+                <tr><td>{t("ly_points_per_omr")} <span className="st warn ptag">{t("stAssumption")}</span></td><td className="num">{num("points_per_omr", 0.5)}</td></tr>
+                <tr><td>{t("ly_redeem_points")}</td><td className="num">{num("redeem_points", 10)}</td></tr>
+                <tr><td>{t("ly_redeem_omr")}</td><td className="num">{num("redeem_omr", 0.5)}</td></tr>
               </tbody>
             </table>
           </div>
           <div className="pad" style={{ paddingTop: 12 }}>
             {admin ? (
-              <button className="btn pri" disabled={!dirty} onClick={saveLoyalty}>Save loyalty</button>
+              <button className="btn pri" disabled={!dirty} onClick={saveLoyalty}>{t("lySave")}</button>
             ) : (
-              <small className="mut">Loyalty settings are changed by a Super admin.</small>
+              <small className="mut">{t("lyByAdmin")}</small>
             )}
           </div>
-          <p className="note">Cashback and points are checked by the fraud rules (Wallet misuse) before they reach the wallet.</p>
+          <p className="note">{t("lyNote")}</p>
         </div>
       </div>
       {edit && <PromoDialog promo={edit === "new" ? null : edit} taken={(promos ?? []).map((x) => x.code)} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
@@ -131,6 +137,8 @@ export default function PromotionsPage() {
 
 function PromoDialog({ promo, taken, onClose, onDone }: { promo: Promotion | null; taken: string[]; onClose: () => void; onDone: () => void }) {
   const { toast } = useStaff();
+  const { lang } = useLang();
+  const t = useT(SETTINGS_OPS);
   const [code, setCode] = useState(promo?.code ?? "");
   const [label, setLabel] = useState(promo?.label ?? "");
   const [pctV, setPct] = useState(promo ? String(Math.round(Number(promo.pct) * 100)) : "10");
@@ -140,45 +148,45 @@ function PromoDialog({ promo, taken, onClose, onDone }: { promo: Promotion | nul
   const [active, setActive] = useState(promo?.active ?? true);
   return (
     <ReasonDialog
-      title={promo ? `Edit ${promo.code}` : "New campaign"}
-      confirm={promo ? "Save campaign" : "Create campaign"}
+      title={promo ? t("prEditTitle", { key: promo.code }) : t("pmNew")}
+      confirm={promo ? t("pmSaveC") : t("pmCreateC")}
       extra={
         <>
           <div className="row2">
             <div className="fld">
-              <label htmlFor="pm-code">Code</label>
-              <input id="pm-code" className="in" value={code} disabled={!!promo} maxLength={20} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} placeholder="SUMMER10" />
+              <label htmlFor="pm-code">{t("pmCodeH")}</label>
+              <input id="pm-code" className="in" dir="ltr" value={code} disabled={!!promo} maxLength={20} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} placeholder="SUMMER10" />
             </div>
             <div className="fld">
-              <label htmlFor="pm-pct">Discount on fee (%)</label>
-              <input id="pm-pct" className="in" type="number" min={1} max={50} value={pctV} onChange={(e) => setPct(e.target.value)} />
+              <label htmlFor="pm-pct">{t("pmPctL")}</label>
+              <input id="pm-pct" className="in" type="number" dir="ltr" min={1} max={50} value={pctV} onChange={(e) => setPct(e.target.value)} />
             </div>
           </div>
           <div className="fld">
-            <label htmlFor="pm-label">Label shown to customers</label>
+            <label htmlFor="pm-label">{t("pmLabelL")}</label>
             <input id="pm-label" className="in" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} />
           </div>
           <div className="row2">
             <div className="fld">
-              <label htmlFor="pm-aud">Audience</label>
+              <label htmlFor="pm-aud">{t("pmAudience")}</label>
               <select id="pm-aud" className="in" value={audience} onChange={(e) => setAudience(e.target.value)}>
-                {Object.entries(AUDIENCE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {Object.entries(AUDIENCE).map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
               </select>
             </div>
             <div className="fld">
-              <label htmlFor="pm-max">Maximum uses</label>
-              <input id="pm-max" className="in" type="number" min={1} value={maxUses} onChange={(e) => setMaxUses(e.target.value)} />
+              <label htmlFor="pm-max">{t("pmMax")}</label>
+              <input id="pm-max" className="in" type="number" dir="ltr" min={1} value={maxUses} onChange={(e) => setMaxUses(e.target.value)} />
             </div>
           </div>
           <div className="row2">
             <div className="fld">
-              <label htmlFor="pm-to">Valid to (optional)</label>
+              <label htmlFor="pm-to">{t("pmValidToOpt")}</label>
               <input id="pm-to" className="in" type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
             </div>
             <div className="fld">
-              <label>Status</label>
+              <label>{t("status")}</label>
               <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, paddingTop: 6 }}>
-                <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active
+                <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> {t("active")}
               </label>
             </div>
           </div>
@@ -187,14 +195,14 @@ function PromoDialog({ promo, taken, onClose, onDone }: { promo: Promotion | nul
       onCancel={onClose}
       onConfirm={async (reason) => {
         const pct = Number(pctV) / 100;
-        if (!/^[A-Z0-9]{3,20}$/.test(code)) return toast("Codes are 3–20 capital letters or digits.", true);
+        if (!/^[A-Z0-9]{3,20}$/.test(code)) return toast(t("pmBadCode"), true);
         // Saving is an upsert, so a new campaign with an existing code would overwrite it.
-        if (!promo && taken.includes(code)) return toast(`${code} already exists — edit that campaign instead.`, true);
-        if (!label.trim()) return toast("Enter a label.", true);
-        if (!(pct > 0 && pct <= 0.5)) return toast("The discount must be between 1% and 50%.", true);
+        if (!promo && taken.includes(code)) return toast(t("pmTaken", { code }), true);
+        if (!label.trim()) return toast(t("pmNoLabel"), true);
+        if (!(pct > 0 && pct <= 0.5)) return toast(t("pmBadPct"), true);
         const { error } = await upsert({ code, label: label.trim(), pct, audience, max_uses: Math.max(1, Number(maxUses) || 1), active, valid_to: validTo || null }, reason);
-        if (error) return toast(friendlyError(error), true);
-        toast(promo ? "Campaign saved" : `Campaign ${code} created`);
+        if (error) return toast(friendlyError(error, lang), true);
+        toast(promo ? t("pmSavedOk") : t("pmCreatedOk", { code }));
         onDone();
       }}
     />

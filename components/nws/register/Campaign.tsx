@@ -6,9 +6,13 @@
 // Each stage drills down to its tankers (paged), which export to CSV; owners not yet on the
 // platform can be invited by SMS (selected rows, or everyone in the view).
 import { useEffect, useState } from "react";
+import { REG } from "@/components/nws/i18n/register";
 import { downloadCsv, Kpi, St, SERVICE_NAME } from "@/components/nws/ops";
-import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { useFmt } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
+import { useLang, useT } from "@/lib/i18n";
+import { label as svcLabel } from "@/lib/labels";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import { omanDateKey } from "@/lib/time";
@@ -23,63 +27,34 @@ type Counts = {
   expiring_30: number; expiring_60: number; expired: number; no_phone: number; opted_out: number; invitable: number;
 };
 type Report = { total: Counts; by_cluster: (Counts & { cluster_code: string | null; name: string })[]; by_governorate: (Counts & { governorate_code: string; cluster_code: string | null; name: string })[] };
+/** label: a key of REG (components/nws/i18n/register), also the drill's identity. */
 type Drill = { stage?: RegFilter["stage"]; permit?: RegFilter["permit"]; days?: number; label: string };
 
-const T = {
-  intro: "Bringing the NWS tanker register onto the platform: each tanker counts at the furthest step it has reached. Click a step to list its tankers.",
-  steps: [
-    ["in_register", "In NWS register", { label: "All register tankers" }],
-    ["invited", "Owner contacted / invited", { stage: "reached_invited", label: "Owner invited or further" }],
-    ["registered", "Registered on platform", { stage: "reached_registered", label: "Registered on the platform or further" }],
-    ["applied", "Permit applied", { stage: "reached_applied", label: "Permit applied or further" }],
-    ["review", "Under review", { stage: "reached_review", label: "Under review or permitted" }],
-    ["permitted", "Permitted", { stage: "permitted", label: "Permitted" }],
-  ] as [keyof Counts, string, Drill][],
-  exact: [
-    ["register", "Not contacted yet"], ["invited", "Invited, not registered"], ["registered", "Registered, no application"],
-    ["applied", "Applied (submitted)"], ["review", "In review"], ["permitted", "Permitted"],
-  ] as [RegRow["stage"], string][],
-  kExp: "Expiring in 30 days", kExpSub: (n: number) => `${n.toLocaleString()} within 60 days`,
-  kExpired: "Expired", kExpiredSub: "had a permit, now lapsed",
-  kInvitable: "Can be invited", kInvitableSub: (p: number, o: number) => `${p.toLocaleString()} without a number · ${o.toLocaleString()} opted out`,
-  kConv: "Permitted", kConvSub: "of the register",
-  byGov: "By governorate",
-  govCols: ["Governorate", "Cluster", "In register", "Invited", "Registered", "Applied", "In review", "Permitted", "% permitted", "Expiring 30 d"],
-  services: [["", "All types"], ["DW", "Drinking water"], ["WW", "Wastewater"], ["TE", "Treated effluent"]] as const,
-  list: "Tankers",
-  selectAll: "Select the invitable tankers on this page",
-  inviteSel: (n: number) => `Invite selected owners (${n})`,
-  inviteAll: "Invite everyone not yet registered in this view",
-  inviteAllOnly: "Choose a step before registration (not contacted, invited)",
-  inviteSelWho: (n: number) => `${n.toLocaleString()} selected owners`,
-  inviteAllWho: (l: string) => `every owner not yet on the platform in this view (${l})`,
-  officers: "Permit officers and admins",
-  export: "Export CSV",
-  exporting: (n: number, t: number) => `Exporting ${n.toLocaleString()} / ${t.toLocaleString()}…`,
-  cols: ["", "Tanker", "Governorate", "Owner", "Stage", "Invited", "Permit", ""],
-  none: "No tankers at this step.",
-  loading: "Loading…",
-  never: "Not yet",
-  times: (n: number) => (n === 1 ? "once" : `${n} times`),
-  noPhone: "no mobile number", optedOut: "opted out",
-  optOut: "Opt out", optIn: "Opt back in",
-  optOutTitle: (n: string) => `Record that ${n} opted out of SMS`,
-  optOutBody: "No more register invitations go to this number; any still queued are withdrawn.",
-  optInTitle: (n: string) => `${n} may receive SMS again`,
-  pager: (a: number, b: number, n: number) => `${a.toLocaleString()}–${b.toLocaleString()} of ${n.toLocaleString()}`,
-  prev: "Previous", next: "Next",
-  error: "Couldn’t load the campaign:",
-};
-
-const pctOf = (n: number, d: number) => (d ? `${Math.round((n / d) * 1000) / 10}%` : "—");
+// Funnel steps: count, step name key, drill-down (label = REG key).
+const STEPS: [keyof Counts, string, Drill][] = [
+  ["in_register", "step.in_register", { label: "drill.in_register" }],
+  ["invited", "step.invited", { stage: "reached_invited", label: "drill.invited" }],
+  ["registered", "step.registered", { stage: "reached_registered", label: "drill.registered" }],
+  ["applied", "step.applied", { stage: "reached_applied", label: "drill.applied" }],
+  ["review", "step.review", { stage: "reached_review", label: "drill.review" }],
+  ["permitted", "step.permitted", { stage: "permitted", label: "drill.permitted" }],
+];
+const EXACT: RegRow["stage"][] = ["register", "invited", "registered", "applied", "review", "permitted"];
+const GOV_COLS = ["governorate", "cluster", "gInRegister", "gInvited", "gRegistered", "gApplied", "gInReview", "gPermitted", "gPct", "gExp30"];
+const SERVICES = ["", "DW", "WW", "TE"] as const;
+const COLS = ["", "colTanker", "governorate", "colOwner", "colStage", "colInvited", "colPermit", ""];
 
 export function Campaign({ geo }: { geo: Geo }) {
   const { can, toast } = useStaff();
+  const t = useT(REG);
+  const f = useFmt();
+  const { lang } = useLang();
+  const pctOf = (n: number, d: number) => f.ratio(n, d);
   const officer = can("permit_officer");
   const [geoF, setGeoF] = useState({ cluster: "", governorate: "" });
   const [service, setService] = useState<"" | ServiceType>("");
   const [report, setReport] = useState<{ key: string; r: Report | null; error: string | null } | null>(null);
-  const [drill, setDrill] = useState<Drill>({ stage: "not_registered", label: "Not yet registered (register only or invited)" });
+  const [drill, setDrill] = useState<Drill>({ stage: "not_registered", label: "drill.not_registered" });
   const [page, setPage] = useState(0);
   const [list, setList] = useState<{ key: string; p: RegPage | null; error: string | null } | null>(null);
   const [sel, setSel] = useState<Map<string, string>>(new Map()); // tanker → owner
@@ -98,22 +73,22 @@ export function Campaign({ geo }: { geo: Geo }) {
   useEffect(() => {
     let live = true;
     supabase().rpc("report_permit_campaign", { p_filter: JSON.parse(baseJson) }).then(({ data, error }) => {
-      if (live) setReport({ key: rkey, r: (data as Report | null) ?? null, error: error ? friendlyError(error) : null });
+      if (live) setReport({ key: rkey, r: (data as Report | null) ?? null, error: error ? friendlyError(error, lang) : null });
     });
     return () => {
       live = false;
     };
-  }, [rkey, baseJson]);
+  }, [rkey, baseJson, lang]);
 
   useEffect(() => {
     let live = true;
-    fetchRegister(JSON.parse(viewJson) as RegFilter, PAGE, page * PAGE).then(({ data, error }) => {
+    fetchRegister(JSON.parse(viewJson) as RegFilter, PAGE, page * PAGE, lang).then(({ data, error }) => {
       if (live) setList({ key: lkey, p: data, error });
     });
     return () => {
       live = false;
     };
-  }, [lkey, viewJson, page]);
+  }, [lkey, viewJson, page, lang]);
 
   const r = report?.key === rkey ? report.r : null;
   const rerr = report?.key === rkey ? report.error : null;
@@ -133,8 +108,8 @@ export function Campaign({ geo }: { geo: Geo }) {
   };
 
   async function exportCsv() {
-    setExporting(T.exporting(0, p?.total ?? 0));
-    const all = await fetchAllRegister(view, 20000, (n, t) => setExporting(T.exporting(n, t)));
+    setExporting(t("exporting", { n: f.n(0), total: f.n(p?.total ?? 0) }));
+    const all = await fetchAllRegister(view, 20000, (n, tot) => setExporting(t("exporting", { n: f.n(n), total: f.n(tot) })), lang);
     setExporting(null);
     if (all.error) toast(all.error, true);
     downloadCsv(`permit-campaign-${omanDateKey(new Date())}`, [
@@ -157,69 +132,69 @@ export function Campaign({ geo }: { geo: Geo }) {
     <>
       <div className="panel">
         <div className="toolbar">
-          <span className="mut" style={{ fontSize: 13, maxWidth: 560 }}>{T.intro}</span>
+          <span className="mut" style={{ fontSize: 13, maxWidth: 560 }}>{t("cIntro")}</span>
           <div className="filters">
             <GeoFilter geo={geo} cluster={geoF.cluster} governorate={geoF.governorate} onChange={geoChange} />
-            <select className="in" aria-label="Service type" value={service} onChange={(e) => { setService(e.target.value as "" | ServiceType); setPage(0); setSel(new Map()); }} style={{ width: 150 }}>
-              {T.services.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            <select className="in" aria-label={t("serviceType")} value={service} onChange={(e) => { setService(e.target.value as "" | ServiceType); setPage(0); setSel(new Map()); }} style={{ width: 150 }}>
+              {SERVICES.map((v) => <option key={v} value={v}>{v ? svcLabel("svc", v, lang) : t("allTypes")}</option>)}
             </select>
           </div>
         </div>
-        {rerr && <div className="banner badb" role="alert">{T.error} {rerr}</div>}
+        {rerr && <div className="banner badb" role="alert">{t("loadErr")} {rerr}</div>}
         <div className="funnel">
-          {T.steps.map(([k, label, d]) => {
+          {STEPS.map(([k, label, d]) => {
             const n = total ? total[k] : 0;
             const on = drill.label === d.label;
             return (
               <button key={k} className={on ? "on" : ""} aria-pressed={on} onClick={() => pick(d)}>
-                <span>{label}</span>
+                <span>{t(label)}</span>
                 <span className="track"><span className="fill" style={{ display: "block", width: `${total?.in_register ? (n / total.in_register) * 100 : 0}%` }} /></span>
-                <span className="num"><b>{total ? n.toLocaleString() : "…"}</b><small>{total ? pctOf(n, total.in_register) : ""}</small></span>
+                <span className="num"><b>{total ? f.n(n) : "…"}</b><small>{total ? pctOf(n, total.in_register) : ""}</small></span>
               </button>
             );
           })}
         </div>
         <div className="toolbar" style={{ paddingTop: 0 }}>
           <div className="chips">
-            {T.exact.map(([s, l]) => (
-              <button key={s} className={`chip ${drill.stage === s ? "on" : ""}`} onClick={() => pick({ stage: s, label: l })}>{l}</button>
+            {EXACT.map((s) => (
+              <button key={s} className={`chip ${drill.stage === s ? "on" : ""}`} onClick={() => pick({ stage: s, label: `exact.${s}` })}>{t(`exact.${s}`)}</button>
             ))}
-            <button className={`chip ${drill.permit === "expiring" ? "on" : ""}`} onClick={() => pick({ permit: "expiring", days: 30, label: T.kExp })}>{T.kExp}<span className="tc">{total?.expiring_30 ?? 0}</span></button>
-            <button className={`chip ${drill.permit === "expired" ? "on" : ""}`} onClick={() => pick({ permit: "expired", label: T.kExpired })}>{T.kExpired}<span className="tc">{total?.expired ?? 0}</span></button>
+            <button className={`chip ${drill.permit === "expiring" ? "on" : ""}`} onClick={() => pick({ permit: "expiring", days: 30, label: "kExp" })}>{t("kExp")}<span className="tc">{f.n(total?.expiring_30 ?? 0)}</span></button>
+            <button className={`chip ${drill.permit === "expired" ? "on" : ""}`} onClick={() => pick({ permit: "expired", label: "cExpired" })}>{t("cExpired")}<span className="tc">{f.n(total?.expired ?? 0)}</span></button>
           </div>
         </div>
       </div>
 
       <div className="okpis">
-        <Kpi label={T.kConv} value={total ? pctOf(total.permitted, total.in_register) : "…"} sub={T.kConvSub} tone="ok" />
-        <Kpi label={T.kExp} value={total ? total.expiring_30.toLocaleString() : "…"} sub={total ? T.kExpSub(total.expiring_60) : ""} tone={total?.expiring_30 ? "warn" : ""} />
-        <Kpi label={T.kExpired} value={total ? total.expired.toLocaleString() : "…"} sub={T.kExpiredSub} tone={total?.expired ? "bad" : ""} />
-        <Kpi label={T.kInvitable} value={total ? total.invitable.toLocaleString() : "…"} sub={total ? T.kInvitableSub(total.no_phone, total.opted_out) : ""} />
+        <Kpi label={t("cConv")} value={total ? pctOf(total.permitted, total.in_register) : "…"} sub={t("cConvSub")} tone="ok" />
+        <Kpi label={t("kExp")} value={total ? f.n(total.expiring_30) : "…"} sub={total ? t("cExpSub", { n: f.n(total.expiring_60) }) : ""} tone={total?.expiring_30 ? "warn" : ""} />
+        <Kpi label={t("cExpired")} value={total ? f.n(total.expired) : "…"} sub={t("cExpiredSub")} tone={total?.expired ? "bad" : ""} />
+        <Kpi label={t("cInvitable")} value={total ? f.n(total.invitable) : "…"} sub={total ? t("cInvitableSub", { p: f.n(total.no_phone), o: f.n(total.opted_out) }) : ""} />
       </div>
 
       <div className="panel">
-        <h2>{T.byGov}</h2>
+        <h2>{t("byGov")}</h2>
         <div className="tblwrap">
           <table>
-            <thead><tr>{T.govCols.map((c, i) => <th key={c} className={i > 1 ? "num" : undefined}>{c}</th>)}</tr></thead>
+            <thead><tr>{GOV_COLS.map((c, i) => <th key={c} className={i > 1 ? "num" : undefined}>{t(c)}</th>)}</tr></thead>
             <tbody>
-              {!r && !rerr && <tr><td colSpan={10} className="empty">{T.loading}</td></tr>}
+              {!r && !rerr && <tr><td colSpan={10} className="empty">{t("loading")}</td></tr>}
               {r?.by_governorate.map((g) => (
                 <tr key={g.governorate_code} className="click" onClick={() => geoChange({ cluster: geoF.cluster, governorate: g.governorate_code })}>
                   <td><b>{g.name}</b></td>
                   <td>{geo.clusterName(g.cluster_code)}</td>
-                  {(["in_register", "invited", "registered", "applied", "review", "permitted"] as const).map((k) => <td key={k} className="num">{g[k].toLocaleString()}</td>)}
+                  {(["in_register", "invited", "registered", "applied", "review", "permitted"] as const).map((k) => <td key={k} className="num">{f.n(g[k])}</td>)}
                   <td className="num">{pctOf(g.permitted, g.in_register)}</td>
-                  <td className="num">{g.expiring_30.toLocaleString()}</td>
+                  <td className="num">{f.n(g.expiring_30)}</td>
                 </tr>
               ))}
               {r && r.by_cluster.length > 1 && r.by_cluster.map((c) => (
                 <tr key={`c-${c.cluster_code}`} className="click" onClick={() => geoChange({ cluster: c.cluster_code ?? "none", governorate: "" })}>
-                  <td><b>{c.name}</b> <small className="mut">all governorates</small></td>
+                  <td><b>{c.name}</b> <small className="mut">{t("allGovs")}</small></td>
                   <td></td>
-                  {(["in_register", "invited", "registered", "applied", "review", "permitted"] as const).map((k) => <td key={k} className="num"><b>{c[k].toLocaleString()}</b></td>)}
+                  {(["in_register", "invited", "registered", "applied", "review", "permitted"] as const).map((k) => <td key={k} className="num"><b>{f.n(c[k])}</b></td>)}
                   <td className="num"><b>{pctOf(c.permitted, c.in_register)}</b></td>
-                  <td className="num"><b>{c.expiring_30.toLocaleString()}</b></td>
+                  <td className="num"><b>{f.n(c.expiring_30)}</b></td>
                 </tr>
               ))}
             </tbody>
@@ -229,11 +204,11 @@ export function Campaign({ geo }: { geo: Geo }) {
 
       <div className="panel">
         <div className="toolbar">
-          <h2 style={{ margin: 0, padding: 0, border: 0 }}>{T.list} <small>{drill.label}</small></h2>
+          <h2 style={{ margin: 0, padding: 0, border: 0 }}>{t("list")} <small>{t(drill.label)}</small></h2>
           <div className="btns">
-            <button className="btn sm" disabled={!p?.total || !!exporting} onClick={exportCsv}>{exporting ?? T.export}</button>
-            <button className="btn sm" disabled={!officer || sel.size === 0} title={officer ? undefined : T.officers} onClick={() => setInvite("sel")}>{T.inviteSel(new Set(sel.values()).size)}</button>
-            <button className="btn sm pri" disabled={!officer || !p?.total || !inviteAllStage} title={!officer ? T.officers : !inviteAllStage ? T.inviteAllOnly : undefined} onClick={() => setInvite("all")}>{T.inviteAll}</button>
+            <button className="btn sm" disabled={!p?.total || !!exporting} onClick={exportCsv}>{exporting ?? t("exportCsv")}</button>
+            <button className="btn sm" disabled={!officer || sel.size === 0} title={officer ? undefined : t("importTitle")} onClick={() => setInvite("sel")}>{t("inviteSel", { n: f.n(new Set(sel.values()).size) })}</button>
+            <button className="btn sm pri" disabled={!officer || !p?.total || !inviteAllStage} title={!officer ? t("importTitle") : !inviteAllStage ? t("inviteAllOnly") : undefined} onClick={() => setInvite("all")}>{t("inviteAll")}</button>
           </div>
         </div>
         {cur?.error && <div className="banner badb" role="alert">{cur.error}</div>}
@@ -242,7 +217,7 @@ export function Campaign({ geo }: { geo: Geo }) {
             <thead>
               <tr>
                 <th>
-                  <input type="checkbox" aria-label={T.selectAll} disabled={!officer || pageInvitable.length === 0} checked={allSel}
+                  <input type="checkbox" aria-label={t("selectAll")} disabled={!officer || pageInvitable.length === 0} checked={allSel}
                     onChange={(e) => setSel((m) => {
                       const n = new Map(m);
                       for (const x of pageInvitable) {
@@ -252,16 +227,16 @@ export function Campaign({ geo }: { geo: Geo }) {
                       return n;
                     })} />
                 </th>
-                {T.cols.slice(1).map((c, i) => <th key={i}>{c}</th>)}
+                {COLS.slice(1).map((c, i) => <th key={i}>{c ? t(c) : ""}</th>)}
               </tr>
             </thead>
             <tbody>
-              {!cur && <tr><td colSpan={8} className="empty">{T.loading}</td></tr>}
-              {p && p.rows.length === 0 && <tr><td colSpan={8} className="empty">{T.none}</td></tr>}
+              {!cur && <tr><td colSpan={8} className="empty">{t("loading")}</td></tr>}
+              {p && p.rows.length === 0 && <tr><td colSpan={8} className="empty">{t("noneStep")}</td></tr>}
               {p?.rows.map((x) => (
                 <tr key={x.tanker_id}>
                   <td>
-                    <input type="checkbox" aria-label={`Select ${x.plate}`} disabled={!officer || !invitable(x)} checked={sel.has(x.tanker_id)}
+                    <input type="checkbox" aria-label={t("selectX", { plate: x.plate })} disabled={!officer || !invitable(x)} checked={sel.has(x.tanker_id)}
                       onChange={(e) => setSel((m) => {
                         const n = new Map(m);
                         if (e.target.checked) n.set(x.tanker_id, x.owner_id!);
@@ -270,22 +245,22 @@ export function Campaign({ geo }: { geo: Geo }) {
                       })} />
                   </td>
                   <td className={`stripe ${x.service_type}`} style={{ whiteSpace: "nowrap" }}>
-                    <b>{x.plate}</b>
-                    <small style={{ display: "block" }}>{SERVICE_NAME[x.service_type as ServiceType]}</small>
+                    <b dir="ltr">{x.plate}</b>
+                    <small style={{ display: "block" }}>{svcLabel("svc", x.service_type, lang, SERVICE_NAME[x.service_type as ServiceType])}</small>
                   </td>
                   <td>{geo.govName(x.governorate)}<small style={{ display: "block" }}>{geo.clusterName(x.cluster)}</small></td>
                   <td>
                     {x.company ?? x.owner_name ?? "—"}
-                    <small style={{ display: "block" }} dir="ltr">{x.has_phone ? x.phone : T.noPhone}{x.opted_out ? ` · ${T.optedOut}` : ""}</small>
+                    <small style={{ display: "block" }}>{x.has_phone ? <bdi dir="ltr">{x.phone}</bdi> : t("noPhone")}{x.opted_out ? ` · ${t("optedOut")}` : ""}</small>
                   </td>
-                  <td><St tone={STAGE_TONE[x.stage]}>{STAGE_LABEL[x.stage]}</St></td>
-                  <td>{x.invited_at ? <>{fmtDateTime(x.invited_at)}<small style={{ display: "block" }}>{T.times(x.invite_count)}</small></> : <span className="mut">{T.never}</span>}</td>
+                  <td><St tone={STAGE_TONE[x.stage]}>{REG[`stage.${x.stage}`] ? t(`stage.${x.stage}`) : STAGE_LABEL[x.stage]}</St></td>
+                  <td>{x.invited_at ? <>{f.dateTime(x.invited_at)}<small style={{ display: "block" }}>{x.invite_count === 1 ? t("once") : t("timesN", { n: f.n(x.invite_count) })}</small></> : <span className="mut">{t("never")}</span>}</td>
                   <td>
-                    {x.permit_no ? <>{x.permit_no}<small style={{ display: "block" }}>{x.permit_expires ? fmtDate(x.permit_expires) : ""}</small></> : x.pending_no ? <>{x.pending_no}<small style={{ display: "block" }}>{x.pending_stage}</small></> : <span className="mut">—</span>}
+                    {x.permit_no ? <><bdi dir="ltr">{x.permit_no}</bdi><small style={{ display: "block" }}>{x.permit_expires ? f.date(x.permit_expires) : ""}</small></> : x.pending_no ? <><bdi dir="ltr">{x.pending_no}</bdi><small style={{ display: "block" }}>{x.pending_stage ? svcLabel("stage", x.pending_stage, lang) : ""}</small></> : <span className="mut">—</span>}
                   </td>
                   <td>
                     {x.owner_id && x.has_phone && (
-                      <button className="btn sm" disabled={!officer} title={officer ? undefined : T.officers} onClick={() => setOpt(x)}>{x.opted_out ? T.optIn : T.optOut}</button>
+                      <button className="btn sm" disabled={!officer} title={officer ? undefined : t("importTitle")} onClick={() => setOpt(x)}>{x.opted_out ? t("optIn") : t("optOut")}</button>
                     )}
                   </td>
                 </tr>
@@ -295,33 +270,33 @@ export function Campaign({ geo }: { geo: Geo }) {
         </div>
         {p && p.total > 0 && (
           <div className="regpager">
-            <span>{T.pager(from, to, p.total)}</span>
-            <button className="btn sm" disabled={page === 0} onClick={() => setPage((n) => n - 1)}>{T.prev}</button>
-            <button className="btn sm" disabled={to >= p.total} onClick={() => setPage((n) => n + 1)}>{T.next}</button>
+            <span>{t("pager", { a: f.n(from), b: f.n(to), n: f.n(p.total) })}</span>
+            <button className="btn sm" disabled={page === 0} onClick={() => setPage((n) => n - 1)}>{t("prev")}</button>
+            <button className="btn sm" disabled={to >= p.total} onClick={() => setPage((n) => n + 1)}>{t("next")}</button>
           </div>
         )}
       </div>
 
       {invite === "sel" && (
-        <InviteDialog who={T.inviteSelWho(new Set(sel.values()).size)} owners={[...new Set(sel.values())]} onClose={() => setInvite(null)}
+        <InviteDialog who={t("inviteSelWho", { n: f.n(new Set(sel.values()).size) })} owners={[...new Set(sel.values())]} onClose={() => setInvite(null)}
           onDone={() => { setSel(new Map()); setTick((n) => n + 1); }} />
       )}
       {invite === "all" && (
-        <InviteDialog who={T.inviteAllWho(drill.label)} filter={{ ...view, stage: inviteAllStage ?? "not_registered" }}
+        <InviteDialog who={t("inviteAllWho", { l: t(drill.label) })} filter={{ ...view, stage: inviteAllStage ?? "not_registered" }}
           onClose={() => setInvite(null)} onDone={() => setTick((n) => n + 1)} />
       )}
       {opt && (
         <ReasonDialog
-          title={opt.opted_out ? T.optInTitle(opt.owner_name ?? opt.plate) : T.optOutTitle(opt.owner_name ?? opt.plate)}
-          body={opt.opted_out ? undefined : T.optOutBody}
-          confirm={opt.opted_out ? T.optIn : T.optOut}
+          title={opt.opted_out ? t("optInTitle", { n: opt.owner_name ?? opt.plate }) : t("optOutTitle", { n: opt.owner_name ?? opt.plate })}
+          body={opt.opted_out ? undefined : t("optOutBody")}
+          confirm={opt.opted_out ? t("optIn") : t("optOut")}
           danger={!opt.opted_out}
-          defaultReason={opt.opted_out ? "" : "Owner replied STOP"}
+          defaultReason={opt.opted_out ? "" : t("optOutReason")}
           onCancel={() => setOpt(null)}
           onConfirm={async (reason) => {
             const { error } = await supabase().rpc("staff_registry_owner_opt_out", { p_owner_id: opt.owner_id, p_opt_out: !opt.opted_out, p_reason: reason });
-            if (error) return toast(friendlyError(error), true);
-            toast(opt.opted_out ? "Opted back in" : "Opt-out recorded");
+            if (error) return toast(friendlyError(error, lang), true);
+            toast(opt.opted_out ? t("optedBackIn") : t("optOutDone"));
             setOpt(null);
             setTick((n) => n + 1);
           }}

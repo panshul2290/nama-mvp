@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Chips, PageHead, Tabs, useRun } from "@/components/nws/admin/ui";
-import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
+import { REPORTS } from "@/components/nws/i18n/reports";
+import { useStaff } from "@/components/nws/StaffContext";
+import { useFmt } from "@/components/portal/i18n";
+import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import Builder from "./_tabs/Builder";
 import Clusters from "./_tabs/Clusters";
@@ -16,6 +19,8 @@ type Tab = "ops" | "clu" | "cons" | "fb" | "build";
 export default function ReportsPage() {
   const { staff } = useStaff();
   const run = useRun();
+  const t = useT(REPORTS);
+  const f = useFmt();
   const [tab, setTab] = useState<Tab>("ops");
   const [range, setRange] = useState("30");
   const [refData, setRefData] = useState<Ref | null>(null);
@@ -30,19 +35,20 @@ export default function ReportsPage() {
   const days = Number(range);
   return (
     <>
-      <PageHead title="Reports" sub="Operations, consumption, segmentation and feedback analytics — counted in the database over every order — plus a report builder for custom web reports in standard formats.">
+      <PageHead title={t("title")} sub={t("sub")}>
         {staff.staff_role !== "viewer" && (
-          <button className="btn" onClick={async () => { if (await run(supabase().rpc("staff_refresh_reports"), "Report views refreshed")) setTick((n) => n + 1); }}>
-            Refresh BI views
+          <button className="btn" onClick={async () => { if (await run(supabase().rpc("staff_refresh_reports"), t("refreshedOk"))) setTick((n) => n + 1); }}>
+            {t("refreshBi")}
           </button>
         )}
       </PageHead>
-      <Tabs<Tab> tabs={[["ops", "Operations"], ["clu", "Clusters"], ["cons", "Consumption and refill"], ["fb", "Feedback"], ["build", "Report builder"]]} value={tab} onChange={setTab} />
+      <Tabs<Tab> tabs={[["ops", t("tabOps")], ["clu", t("tabClu")], ["cons", t("tabCons")], ["fb", t("tabFb")], ["build", t("tabBuild")]]} value={tab} onChange={setTab} />
       {tab !== "build" && (
         <div className="rangebar">
-          <Chips items={RANGES.map(([v, l]) => [v, l] as [string, string])} value={range} onChange={setRange} />
+          <Chips items={RANGES.map(([v]) => [v, t(`range${v}`)] as [string, string])} value={range} onChange={setRange} />
           <span className="mut" style={{ fontSize: 12.5 }}>
-            Live figures · test-zone orders excluded{refreshed ? ` · BI daily view refreshed ${fmtDateTime(refreshed)}` : ""}
+            {t("liveNote")}
+            {refreshed ? t("biRefreshed", { at: f.dateTime(refreshed) }) : ""}
           </span>
         </div>
       )}

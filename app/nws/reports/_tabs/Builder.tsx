@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { cappedNote, dayKey, Empty, fetchPaged, groupBy, omr, sinceIso, useRun } from "@/components/nws/admin/ui";
-import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cappedNote, dayKey, Empty, fetchPaged, groupBy, sinceIso, useRun } from "@/components/nws/admin/ui";
+import { REPORT_VALUES, REPORTS } from "@/components/nws/i18n/reports";
+import { useStaff } from "@/components/nws/StaffContext";
+import { useFmt } from "@/components/portal/i18n";
 import { saveTable, type CsvCell } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
+import { useLang, useT } from "@/lib/i18n";
 import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
-import { fmtOman, omanStamp } from "@/lib/time";
+import { omanStamp } from "@/lib/time";
 import { CHANNEL_LABEL, companyName, ORDER_COLS, RANGES, ROW_CAP, zoneName, type ORow, type Ref } from "./data";
 
 type Dataset = "Orders" | "Revenue" | "Complaints" | "Ratings" | "Fleet" | "Payments" | "Permits";
@@ -39,6 +42,8 @@ const COLUMNS: Record<Dataset, string[]> = {
   Payments: ["Payments", "Amount (OMR)", "Failed", "Refunded (OMR)"],
   Permits: ["Permits", "Approved", "In review", "Rejected or expired"],
 };
+// Group keys, labels and column names stay English: they are what the CSV/XLS/PDF exports write.
+// The screen shows them through REPORT_VALUES (tv) in the portal language.
 // Columns shown with 3 decimals (OMR) or 2 (averages).
 const decimals = (ds: Dataset, i: number) => (COLUMNS[ds][i].includes("OMR") ? 3 : ds === "Ratings" && i === 1 ? 2 : 0);
 const METHOD: Record<string, string> = { wallet: "Wallet", card: "Card", omannet: "OmanNet", wallet_card: "Wallet + card", account: "On account", cash: "Cash" };
@@ -136,6 +141,14 @@ function aggregate(raw: Raw, g: Group, ref: Ref | null): [string, number[]][] {
 export default function Builder({ refData }: { refData: Ref | null }) {
   const { toast } = useStaff();
   const run = useRun();
+  const t = useT(REPORTS);
+  const tv = useT(REPORT_VALUES);
+  const f = useFmt();
+  const { lang } = useLang();
+  const langRef = useRef(lang);
+  useEffect(() => {
+    langRef.current = lang;
+  });
   const [ds, setDs] = useState<Dataset>("Orders");
   const [group, setGroup] = useState<Group>("zone");
   const [range, setRange] = useState("30");
@@ -151,7 +164,7 @@ export default function Builder({ refData }: { refData: Ref | null }) {
     let live = true;
     load(ds, Number(range)).then(({ raw: r, error, truncated: cut }) => {
       if (!live) return;
-      if (error) toast(friendlyError(error), true);
+      if (error) toast(friendlyError(error, langRef.current), true);
       setRaw(r);
       setTruncated(cut);
     });
@@ -170,9 +183,14 @@ export default function Builder({ refData }: { refData: Ref | null }) {
     return g === "day" ? l.sort((a, b) => a[0].localeCompare(b[0])) : l.sort((a, b) => b[1][0] - a[1][0]);
   }, [raw, ds, g, refData]);
   const totals = lines ? COLUMNS[ds].map((_, i) => (ds === "Ratings" && i === 1 ? (() => { const n = lines.reduce((a, l) => a + l[1][0], 0); return n ? lines.reduce((a, l) => a + l[1][1] * l[1][0], 0) / n : 0; })() : lines.reduce((a, l) => a + l[1][i], 0))) : [];
-  const cell = (v: number, i: number) => (decimals(ds, i) === 3 ? omr(v) : decimals(ds, i) === 2 ? v.toFixed(2) : v.toLocaleString());
+  const cell = (v: number, i: number) => (decimals(ds, i) === 3 ? f.n3(v) : decimals(ds, i) === 2 ? f.n(v, 2) : f.n(v));
+  // English title and range: file names, the export log and the default schedule name.
   const title = `${ds} by ${groupLabel(ds, g).toLowerCase()}`;
   const rangeLabel = [["1", "Today"], ...RANGES].find((r) => r[0] === range)?.[1] ?? "";
+  // The same, as the screen shows them.
+  const shownTitle = lang === "ar" ? t("titleBy", { ds: tv(ds), g: tv(groupLabel(ds, g)) }) : title;
+  const shownRange = lang === "ar" ? t(`range${range}`) : rangeLabel.toLowerCase();
+  const datasetOf = (d: string) => DATASETS.find((x) => x.toLowerCase() === d);
 
   function exportNow() {
     if (!lines) return;
@@ -186,66 +204,69 @@ export default function Builder({ refData }: { refData: Ref | null }) {
     if (fmt === "pdf") printTable(`${title} — ${rangeLabel}`, rows);
     else saveTable(file, rows, fmt === "xlsx" ? "xls" : "csv");
     void supabase().rpc("staff_log_export", { p_what: `report: ${title}, ${rangeLabel.toLowerCase()} (${fmt})`, p_rows: lines.length });
-    toast(fmt === "pdf" ? "Choose “Save as PDF” in the print dialog" : `${fmt === "xlsx" ? "Excel" : "CSV"} file downloaded`);
+    toast(t(fmt === "pdf" ? "pdfHint" : fmt === "xlsx" ? "excelDone" : "csvDone"));
   }
 
   async function schedule() {
-    const ok = await run(supabase().rpc("staff_save_scheduled_report", { p_name: name.trim() || title, p_dataset: ds.toLowerCase(), p_group_by: g, p_cadence: cadence, p_format: fmt, p_recipients: recipients.trim() }), "Report scheduled");
+    const ok = await run(supabase().rpc("staff_save_scheduled_report", { p_name: name.trim() || title, p_dataset: ds.toLowerCase(), p_group_by: g, p_cadence: cadence, p_format: fmt, p_recipients: recipients.trim() }), t("scheduledOk"));
     if (ok) { setName(""); loadSaved(); }
   }
 
   return (
     <div className="wide">
       <div className="panel">
-        <h2>Report builder</h2>
+        <h2>{t("builder")}</h2>
         <div className="pad">
           <div className="form">
             <div className="fld">
-              <label htmlFor="rb-ds">Dataset</label>
+              <label htmlFor="rb-ds">{t("dataset")}</label>
               <select id="rb-ds" className="in" value={ds} onChange={(e) => { setRaw(null); setDs(e.target.value as Dataset); }}>
-                {DATASETS.map((d) => <option key={d}>{d}</option>)}
+                {DATASETS.map((d) => <option key={d} value={d}>{tv(d)}</option>)}
               </select>
             </div>
             <div className="fld">
-              <label htmlFor="rb-range">Date range</label>
+              <label htmlFor="rb-range">{t("dateRange")}</label>
               <select id="rb-range" className="in" value={range} onChange={(e) => setRange(e.target.value)}>
-                {[["1", "Today"], ...RANGES].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {[["1"], ...RANGES].map(([v]) => <option key={v} value={v}>{t(`range${v}`)}</option>)}
               </select>
             </div>
             <div className="fld">
-              <label htmlFor="rb-grp">Group by</label>
+              <label htmlFor="rb-grp">{t("groupBy")}</label>
               <select id="rb-grp" className="in" value={g} onChange={(e) => setGroup(e.target.value as Group)}>
-                {GROUPS[ds].map((x) => <option key={x} value={x}>{groupLabel(ds, x)}</option>)}
+                {GROUPS[ds].map((x) => <option key={x} value={x}>{tv(groupLabel(ds, x))}</option>)}
               </select>
             </div>
             <div className="fld">
-              <label htmlFor="rb-fmt">Format</label>
+              <label htmlFor="rb-fmt">{t("format")}</label>
               <select id="rb-fmt" className="in" value={fmt} onChange={(e) => setFmt(e.target.value as Fmt)}>
                 <option value="csv">CSV</option>
-                <option value="xlsx">Excel</option>
-                <option value="pdf">PDF (print)</option>
+                <option value="xlsx">{t("fmtExcel")}</option>
+                <option value="pdf">{t("fmtPdf")}</option>
               </select>
             </div>
           </div>
-          <h3 className="preview-h">Preview — {title}, {rangeLabel.toLowerCase()}{ds === "Fleet" ? " (fleet as of now; trips in range)" : ""}</h3>
-          {lines && truncated && <div className="banner info" role="status">{cappedNote(true, ROW_CAP, "rows")}</div>}
+          <h3 className="preview-h">
+            {t("preview", { title: shownTitle, range: shownRange })}
+            {ds === "Fleet" ? t("fleetNow") : ""}
+          </h3>
+          {lines && truncated && <div className="banner info" role="status">{cappedNote(true, ROW_CAP, t("rowsWhat"), lang)}</div>}
           <div className="tblwrap scroll">
             <table>
               <thead>
-                <tr><th>{groupLabel(ds, g)}</th>{COLUMNS[ds].map((c) => <th key={c} className="num">{c}</th>)}</tr>
+                <tr><th>{tv(groupLabel(ds, g))}</th>{COLUMNS[ds].map((c) => <th key={c} className="num">{tv(c)}</th>)}</tr>
               </thead>
               <tbody>
-                {!lines && <Empty cols={COLUMNS[ds].length + 1}>Loading…</Empty>}
-                {lines?.length === 0 && <Empty cols={COLUMNS[ds].length + 1}>No rows in this range.</Empty>}
+                {!lines && <Empty cols={COLUMNS[ds].length + 1}>{t("loading")}</Empty>}
+                {lines?.length === 0 && <Empty cols={COLUMNS[ds].length + 1}>{t("noRows")}</Empty>}
                 {lines?.map(([k, v]) => (
                   <tr key={k}>
-                    <td>{g === "day" ? fmtOman(k, { weekday: "short", day: "numeric", month: "short" }) : k}</td>
+                    <td>{g === "day" ? f.fmt(k, { weekday: "short", day: "numeric", month: "short" }) : tv(k)}</td>
                     {v.map((x, i) => <td key={i} className="num">{cell(x, i)}</td>)}
                   </tr>
                 ))}
                 {lines && lines.length > 1 && (
                   <tr>
-                    <td><b>Total</b></td>
+                    <td><b>{t("total")}</b></td>
                     {totals.map((x, i) => <td key={i} className="num"><b>{cell(x, i)}</b></td>)}
                   </tr>
                 )}
@@ -253,54 +274,63 @@ export default function Builder({ refData }: { refData: Ref | null }) {
             </table>
           </div>
           <div className="btns" style={{ marginTop: 12 }}>
-            <button className="btn pri" onClick={exportNow} disabled={!lines?.length}>{fmt === "pdf" ? "Print or save as PDF" : `Export ${fmt === "xlsx" ? "Excel" : "CSV"}`}</button>
+            <button className="btn pri" onClick={exportNow} disabled={!lines?.length}>{t(fmt === "pdf" ? "printPdf" : fmt === "xlsx" ? "exportExcel" : "exportCsv")}</button>
           </div>
 
-          <h3 className="preview-h">Schedule</h3>
+          <h3 className="preview-h">{t("schedule")}</h3>
           <div className="form">
             <div className="fld">
-              <label htmlFor="rb-name">Report name</label>
+              <label htmlFor="rb-name">{t("reportName")}</label>
               <input id="rb-name" className="in" placeholder={title} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
             </div>
             <div className="fld">
-              <label htmlFor="rb-cad">Cadence</label>
+              <label htmlFor="rb-cad">{t("cadence")}</label>
               <select id="rb-cad" className="in" value={cadence} onChange={(e) => setCadence(e.target.value)}>
-                <option value="daily">Daily 06:00</option>
-                <option value="weekly">Weekly, Sunday</option>
-                <option value="monthly">Monthly, 1st</option>
+                <option value="daily">{t("cadDaily")}</option>
+                <option value="weekly">{t("cadWeekly")}</option>
+                <option value="monthly">{t("cadMonthly")}</option>
               </select>
             </div>
             <div className="fld" style={{ gridColumn: "span 2" }}>
-              <label htmlFor="rb-to">Recipients</label>
-              <input id="rb-to" className="in" placeholder="ops@nws.com.om, bi@nws.com.om" value={recipients} onChange={(e) => setRecipients(e.target.value)} />
+              <label htmlFor="rb-to">{t("recipients")}</label>
+              <input id="rb-to" className="in" dir="ltr" placeholder="ops@nws.com.om, bi@nws.com.om" value={recipients} onChange={(e) => setRecipients(e.target.value)} />
             </div>
           </div>
           <div className="btns" style={{ marginTop: 12 }}>
-            <button className="btn" onClick={schedule}>Save and schedule</button>
+            <button className="btn" onClick={schedule}>{t("saveSchedule")}</button>
           </div>
         </div>
       </div>
 
       <div className="panel">
-        <h2>Scheduled reports</h2>
+        <h2>{t("scheduled")}</h2>
         <div className="tblwrap">
           <table>
-            <thead><tr><th>Report</th><th>Data</th><th>Format</th><th>Schedule</th></tr></thead>
+            <thead><tr><th>{t("thReport")}</th><th>{t("thData")}</th><th>{t("thFormat")}</th><th>{t("thSchedule")}</th></tr></thead>
             <tbody>
-              {!saved && <Empty cols={4}>Loading…</Empty>}
-              {saved?.length === 0 && <Empty cols={4}>No scheduled reports yet.</Empty>}
-              {saved?.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.name}<small style={{ display: "block" }}>{r.recipients || "No recipients"} · {fmtDateTime(r.created_at)}</small></td>
-                  <td style={{ textTransform: "capitalize" }}>{r.dataset} by {r.group_by}</td>
-                  <td>{r.format.toUpperCase()}</td>
-                  <td style={{ textTransform: "capitalize" }}>{r.cadence}</td>
-                </tr>
-              ))}
+              {!saved && <Empty cols={4}>{t("loading")}</Empty>}
+              {saved?.length === 0 && <Empty cols={4}>{t("noScheduled")}</Empty>}
+              {saved?.map((r) => {
+                const d = datasetOf(r.dataset);
+                const gl = d && (GROUPS[d] as string[]).includes(r.group_by) ? groupLabel(d, r.group_by as Group) : r.group_by;
+                return (
+                  <tr key={r.id}>
+                    <td>
+                      {r.name}
+                      <small style={{ display: "block" }}>
+                        {r.recipients ? <bdi dir="ltr">{r.recipients}</bdi> : t("noRecipients")} · {f.dateTime(r.created_at)}
+                      </small>
+                    </td>
+                    <td style={{ textTransform: "capitalize" }}>{lang === "ar" ? t("titleBy", { ds: d ? tv(d) : r.dataset, g: tv(gl) }) : `${r.dataset} by ${r.group_by}`}</td>
+                    <td>{r.format.toUpperCase()}</td>
+                    <td style={{ textTransform: "capitalize" }}>{t(r.cadence)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-        <p className="note">NWS staff with report rights can build and schedule reports in the web interface. Delivery of scheduled files is simulated; the BI warehouse also receives nightly extracts.</p>
+        <p className="note">{t("builderNote")}</p>
       </div>
     </div>
   );
