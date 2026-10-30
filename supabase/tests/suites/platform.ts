@@ -231,12 +231,12 @@ export async function platformSuite(t: Target, r: Reporter) {
   r.check("business members can't see another customer's orders", (await t.as(BM.id, "select 1 from orders where customer_id = $1", [C1.id])).length === 0);
 
   // ---- settings ------------------------------------------------------------------------------
-  await r.denies("an operator can't change pricing rules", () => one(OP.id, "select * from staff_update_pricing_rule('fee_dw_omr', '4', 'assumption', 'TEST', 'TEST reason')"), "forbidden_for_role");
+  await r.denies("an operator can't change pricing rules", () => one(OP.id, "select * from staff_update_pricing_rule('peak_multiplier', '1.4', 'assumption', 'TEST', 'TEST reason')"), "forbidden_for_role");
   const pr = await t.adminRollback(async (qq) => {
     await qq("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: AD.id, role: "authenticated" })]);
-    return (await qq<{ value: string }>("select value from staff_update_pricing_rule('fee_dw_omr', '4', 'assumption', 'TEST', 'TEST reason')"))[0];
+    return (await qq<{ value: string }>("select value from staff_update_pricing_rule('peak_multiplier', '1.4', 'assumption', 'TEST', 'TEST reason')"))[0];
   });
-  r.check("admin can change a pricing rule (rolled back here)", pr.value === "4", pr);
+  r.check("admin can change a pricing rule (rolled back here)", pr.value === "1.4", pr);
   if (t.fresh) {
     const em = await one<{ e: Row }>(OP.id, "select staff_set_emergency(true, 'Seeb', 'TEST supply outage') as e");
     r.check("operator activates emergency mode for a zone", em.e.on === true && em.e.zone === "Seeb", em.e);

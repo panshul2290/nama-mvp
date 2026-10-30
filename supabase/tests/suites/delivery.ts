@@ -173,7 +173,8 @@ export async function deliverySuite(t: Target, r: Reporter) {
     r.check("demand: open requests per online tanker above the threshold raise the fee (capped)",
       f.f.open_requests >= 3 && f.f.demand_mult > 1 && Math.abs(f.f.demand_mult - Math.round(expect * 1000) / 1000) < 0.0011, f.f);
     await q("update app_settings set value = 'production' where key = 'BILLING_MODE'");
-    await q("update pricing_rules set status = 'confirmed' where rule_key in ('fee_te_omr', 'vat_rate', 'driver_share', 'peak_multiplier')");
+    await q("update pricing_rules set status = 'confirmed' where rule_key in ('vat_rate', 'driver_share', 'peak_multiplier')");
+    await q("update delivery_charges set status = 'confirmed' where service_type = 'TE'");
     let err = "";
     try {
       await q("savepoint s");

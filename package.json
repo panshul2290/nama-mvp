@@ -18,7 +18,7 @@
     "db:apply": "node --env-file-if-exists=.env.local scripts/apply-migration.mjs",
     "test:db:supabase": "tsx --env-file-if-exists=.env.local supabase/tests/run.ts supabase",
     "evidence": "node --env-file-if-exists=.env.local scripts/evidence.mjs",
-    "test:unit": "tsx tests/unit/tracking.test.ts && tsx tests/unit/privacy.test.ts && tsx tests/unit/phone.test.ts && tsx tests/unit/legs.test.ts && tsx tests/unit/apps.test.ts && tsx tests/unit/time.test.ts && tsx tests/unit/recommend.test.ts && tsx tests/unit/training.test.ts && tsx tests/unit/importRegister.test.ts && tsx tests/unit/i18n.test.ts",
+    "test:unit": "tsx tests/unit/tracking.test.ts && tsx tests/unit/privacy.test.ts && tsx tests/unit/phone.test.ts && tsx tests/unit/legs.test.ts && tsx tests/unit/apps.test.ts && tsx tests/unit/time.test.ts && tsx tests/unit/recommend.test.ts && tsx tests/unit/training.test.ts && tsx tests/unit/importRegister.test.ts && tsx tests/unit/i18n.test.ts && tsx tests/unit/ubl.test.ts",
     "verify:seed": "tsx scripts/verify-demo-seed.mts",
     "build:apk:customer": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs customer",
     "build:apk:driver": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs driver",

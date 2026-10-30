@@ -45,20 +45,26 @@ export async function pricingSuite(t: Target, r: Reporter) {
   // ---- the seeded rules
   const rules = await t.admin<{ rule_key: string; value: string; status: string; source: string }>("select rule_key, value, status, source from pricing_rules order by rule_key");
   const by = (s: string) => rules.filter((x) => x.status === s).map((x) => x.rule_key).sort();
-  r.check("confirmed (tender tariff table): DW ≤650 gal 1 baisa, WW 1 baisa, TE 0.05 baisa (+ the 650 gal threshold)",
-    JSON.stringify(by("confirmed")) === JSON.stringify(["dw_rate_upto_650", "dw_tier_threshold_gal", "te_rate", "ww_rate"]) &&
-      rules.find((x) => x.rule_key === "dw_rate_upto_650")?.value === "1" && rules.find((x) => x.rule_key === "ww_rate")?.value === "1" && rules.find((x) => x.rule_key === "te_rate")?.value === "0.05" &&
-      rules.filter((x) => x.status === "confirmed").every((x) => x.source === "Tender tariff table"),
-    by("confirmed"));
-  r.check("pending clarification: DW >650 gal basis (Q05: slab vs whole volume) and VAT application (Q07)",
-    JSON.stringify(by("pending_clarification")) === JSON.stringify(["dw_above_650_basis", "dw_rate_above_650", "vat_rate"]) &&
-      rules.find((x) => x.rule_key === "dw_above_650_basis")?.source === "Q05" && rules.find((x) => x.rule_key === "dw_rate_above_650")?.source === "Q05" &&
+  // The tariff and the delivery fees are tables since 0034 (tariff_classes, delivery_charges).
+  const classes = await t.admin<{ code: string; service_type: string; min_gal: number; max_gal: number | null; rate_baisa: string; status: string; source: string }>(
+    "select code, service_type, min_gal, max_gal, rate_baisa::float8::text as rate_baisa, status, source from tariff_classes where active order by code");
+  r.check("tariff classes (tender tariff table): DW 1–650 gal 1 baisa, WW 1 baisa, TE 0.05 baisa confirmed; DW 651+ gal 3 baisa pending (Q05)",
+    JSON.stringify(classes.map((c) => `${c.code}:${c.min_gal}-${c.max_gal ?? ""}@${c.rate_baisa}:${c.status}:${c.source}`)) ===
+      JSON.stringify(["DW-1:1-650@1:confirmed:Tender tariff table", "DW-2:651-@3:pending_clarification:Q05", "TE-1:1-@0.05:confirmed:Tender tariff table", "WW-1:1-@1:confirmed:Tender tariff table"]),
+    classes);
+  const charges = await t.admin<{ k: string }>(
+    "select c.code || '=' || d.amount_omr::float8 || ':' || d.status as k from delivery_charges d join tariff_classes c on c.id = d.class_id where d.zone_id is null order by c.code");
+  r.check("default delivery charges per class (assumptions, migrated from the old base fees): DW 3.5 / WW 6 / TE 8",
+    JSON.stringify(charges.map((x) => x.k)) === JSON.stringify(["DW-1=3.5:assumption", "DW-2=3.5:assumption", "TE-1=8:assumption", "WW-1=6:assumption"]), charges);
+  r.check("pending clarification: how the classes apply (tariff_basis, Q05: slab vs whole volume) and VAT application (Q07)",
+    JSON.stringify(by("pending_clarification")) === JSON.stringify(["tariff_basis", "vat_rate"]) && by("confirmed").length === 0 &&
+      rules.find((x) => x.rule_key === "tariff_basis")?.source === "Q05" && rules.find((x) => x.rule_key === "tariff_basis")?.value === "slab" &&
       rules.find((x) => x.rule_key === "vat_rate")?.source === "Q07",
     by("pending_clarification"));
-  r.check("assumptions: base fees DW 3.5 / WW 6 / TE 8, driver share 0.85, peak 1.2, priority 1.5, monthly 0.10, yearly 0.15, cancel fee 1",
+  r.check("assumptions: driver share 0.85, peak 1.2, priority 1.5, monthly 0.10, yearly 0.15, cancel fee 1",
     JSON.stringify(rules.filter((x) => x.status === "assumption").map((x) => `${x.rule_key}=${x.value}`).sort()) ===
       JSON.stringify(["cancel_fee_omr=1", "demand_cap=1.3", "demand_min_open=10", "demand_ratio_threshold=3", "demand_step=0.1", "discount_monthly=0.10", "discount_yearly=0.15",
-        "distance_cap=1.5", "distance_free_km=15", "distance_per_km=0.02", "driver_share=0.85", "dynamic_cap=2.5", "fee_dw_omr=3.5", "fee_te_omr=8", "fee_ww_omr=6",
+        "distance_cap=1.5", "distance_free_km=15", "distance_per_km=0.02", "driver_share=0.85", "dynamic_cap=2.5",
         "peak_multiplier=1.2", "priority_multiplier=1.5"]),
     by("assumption"));
   const [mode] = await t.admin<{ value: string }>("select value from app_settings where key = 'BILLING_MODE'");
@@ -85,10 +91,10 @@ export async function pricingSuite(t: Target, r: Reporter) {
 
   // ---- prices come only from the rules table
   await t.adminRollback(async (q) => {
-    await q("update pricing_rules set value = '4' where rule_key = 'fee_dw_omr'");
+    await q("update delivery_charges set amount_omr = 4 where zone_id is null and class_id = (select id from tariff_classes where code = 'DW-1')");
     const [a] = await q<{ delivery_fee: string; total: string }>("select delivery_fee, total from price_quote('DW', 600)");
-    r.check("changing a rule changes the price (fee_dw_omr 3.5 → 4: DW 600 = 4.830)", a.delivery_fee === "4.000" && a.total === "4.830", a);
-    await q("update pricing_rules set value = 'whole_volume' where rule_key = 'dw_above_650_basis'");
+    r.check("changing the delivery charge changes the price (DW-1 default 3.5 → 4: DW 600 = 4.830)", a.delivery_fee === "4.000" && a.total === "4.830", a);
+    await q("update pricing_rules set value = 'whole_volume' where rule_key = 'tariff_basis'");
     const [b] = await q<{ water_charge: string }>("select water_charge from price_quote('DW', 3000)");
     r.check("switching Q05 to whole_volume prices DW 3,000 gal water at 9.000 (3 baisa on every gallon)", b.water_charge === "9.000", b);
   });
@@ -105,34 +111,35 @@ export async function pricingSuite(t: Target, r: Reporter) {
     await q("update app_settings set value = 'production' where key = 'BILLING_MODE'");
     const p1 = await asUserIn(q, C1.id, PLACE, ["DW", 600]);
     r.check("production: an order using unconfirmed rules is refused with a clear error",
-      !!p1.error && p1.error.includes("pricing_unconfirmed") && p1.error.includes("fee_dw_omr (assumption") && p1.error.includes("vat_rate (pending_clarification, Q07)") && p1.error.includes("driver_share (assumption"),
+      !!p1.error && p1.error.includes("pricing_unconfirmed") && p1.error.includes("delivery charge DW-1 default (assumption") && p1.error.includes("vat_rate (pending_clarification, Q07)") && p1.error.includes("driver_share (assumption"),
       p1.error ?? p1.rows);
     const p2 = await asUserIn(q, C1.id, PLACE, ["DW", 3000]);
-    r.check("production: the error also names the Q05 rules for DW above 650 gal",
-      !!p2.error && p2.error.includes("dw_rate_above_650 (pending_clarification, Q05)") && p2.error.includes("dw_above_650_basis (pending_clarification, Q05)"), p2.error);
+    r.check("production: the error also names the Q05 tariff class and basis for DW above 650 gal",
+      !!p2.error && p2.error.includes("tariff class DW-2 (pending_clarification, Q05)") && p2.error.includes("tariff_basis (pending_clarification, Q05)"), p2.error);
     const p3 = await adminIn(q, "insert into orders (customer_id, service_type, gallons, area, water_charge, delivery_fee, vat, total, driver_earnings) values ($1,'WW',100,$2,0,0,0,0,0)", [C1.id, TEST_AREA]);
     r.check("production: the trigger also refuses a privileged direct insert", !!p3.error && p3.error.includes("pricing_unconfirmed"), p3.error);
 
-    await q(`update pricing_rules set status = 'confirmed' where rule_key in ('fee_dw_omr', 'vat_rate', 'driver_share'${peak ? ", 'peak_multiplier'" : ""})`);
+    await q(`update pricing_rules set status = 'confirmed' where rule_key in ('vat_rate', 'driver_share'${peak ? ", 'peak_multiplier'" : ""})`);
+    await q("update delivery_charges set status = 'confirmed' where service_type = 'DW'");
     const p4 = await asUserIn(q, C1.id, PLACE, ["DW", 600]);
     const pb = p4.rows?.[0]?.price_basis as Record<string, unknown> | undefined;
     r.check("production: once every rule the order uses is confirmed, it is priced (DW 600 gal)",
       !p4.error && p4.rows?.[0]?.total === (peak ? "5.040" : "4.305") && pb?.mode === "production" && pb?.total === "confirmed", p4.error ?? pb);
     const p5 = await asUserIn(q, C1.id, PLACE, ["DW", 3000]);
     r.check("production: DW 3,000 gal is still refused while Q05 is pending — and only the Q05 rules are listed",
-      !!p5.error && p5.error.includes("dw_rate_above_650") && !p5.error.includes("fee_dw_omr") && !p5.error.includes("vat_rate"), p5.error);
+      !!p5.error && p5.error.includes("tariff class DW-2") && p5.error.includes("tariff_basis") && !p5.error.includes("delivery charge") && !p5.error.includes("vat_rate"), p5.error);
     const bad = await adminIn(q, "update app_settings set value = 'live' where key = 'BILLING_MODE'");
     r.check("BILLING_MODE only accepts demo or production", !!bad.error && bad.error.includes("check"), bad.error);
   });
   const [after] = await t.admin<{ value: string }>("select value from app_settings where key = 'BILLING_MODE'");
-  const [feeStill] = await t.admin<{ status: string }>("select status from pricing_rules where rule_key = 'fee_dw_omr'");
+  const [feeStill] = await t.admin<{ status: string }>("select d.status from delivery_charges d join tariff_classes c on c.id = d.class_id where c.code = 'DW-1' and d.zone_id is null");
   r.check("after the production-mode checks, BILLING_MODE and rule statuses are back as they were (rolled back)", after.value === "demo" && feeStill.status === "assumption", { after, feeStill });
 
   // ---- nobody but the database owner can change rules or the mode
   await r.denies("anon cannot read pricing_rules", () => t.as(null, "select * from pricing_rules"), "permission denied");
   await r.allows("signed-in users can read pricing_rules (for the quote screen)", () => t.as(C1.id, "select rule_key, status from pricing_rules"), (x) => x.length === rules.length);
   for (const [role, uid] of [["customer", C1.id], ["driver", D2.id]] as const) {
-    await r.denies(`${role} cannot change a pricing rule`, () => t.as(uid, "update pricing_rules set value = '0' where rule_key = 'fee_dw_omr'"), "permission denied");
+    await r.denies(`${role} cannot change a pricing rule`, () => t.as(uid, "update pricing_rules set value = '0' where rule_key = 'vat_rate'"), "permission denied");
     await r.denies(`${role} cannot mark a rule confirmed`, () => t.as(uid, "update pricing_rules set status = 'confirmed'"), "permission denied");
     await r.denies(`${role} cannot add a pricing rule`, () => t.as(uid, "insert into pricing_rules (rule_key, value, status, source) values ('x', '0', 'confirmed', 'x')"), "permission denied");
     await r.denies(`${role} cannot change BILLING_MODE`, () => t.as(uid, "update app_settings set value = 'demo' where key = 'BILLING_MODE'"), "permission denied");

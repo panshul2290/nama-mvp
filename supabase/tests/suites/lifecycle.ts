@@ -1,6 +1,6 @@
 // Order lifecycle, pricing and order numbers. Every assertion is scoped to rows
 // this suite created, so it is safe to run against a live project.
-import { quote as jsQuote, type PricingRule } from "../../../lib/pricing";
+import { quote as jsQuote, type DeliveryCharge, type PricingRule, type TariffClass } from "../../../lib/pricing";
 import type { Reporter, Target } from "../lib/harness";
 import { makeWorld, peakNow, placeOrder, setOnline, deliver } from "../lib/world";
 
@@ -19,14 +19,18 @@ export async function lifecycleSuite(t: Target, r: Reporter) {
     const got = [p.water_charge, p.delivery_fee, p.vat, p.total, p.driver_earnings].map(String);
     r.check(`price_quote ${type} ${g} gal = ${want[3]} OMR (water/fee/VAT/total/earnings)`, JSON.stringify(got) === JSON.stringify(want), got);
   }
-  // lib/pricing.ts must reproduce price_quote() from the same rules table.
+  // lib/pricing.ts must reproduce price_quote() from the same rules, tariff classes and delivery charges.
   const rules = Object.fromEntries((await t.admin<PricingRule>("select rule_key, value, status, source, notes from pricing_rules")).map((x) => [x.rule_key, x]));
+  const tariff = {
+    classes: await t.admin<TariffClass>("select id, service_type, code, min_gal, max_gal, rate_baisa, status, source, active from tariff_classes"),
+    charges: await t.admin<DeliveryCharge>("select id, zone_id, service_type, class_id, amount_omr, status, source from delivery_charges"),
+  };
   let mismatch = 0;
   const first: unknown[] = [];
   for (const type of ["DW", "WW", "TE"] as const) {
     for (const g of [1, 2, 3, 9, 10, 11, 19, 20, 21, 99, 649, 650, 651, 652, 999, 1234, 3333, 5000, 9999, 10001, 19999]) {
       const p = await q(type, g);
-      const js = jsQuote(type, g, rules);
+      const js = jsQuote(type, g, rules, tariff);
       const sql = [...[p.water_charge, p.delivery_fee, p.vat, p.total, p.driver_earnings].map((v) => Math.round(Number(v) * 1000)), p.water_status, p.fee_status, p.vat_status, p.total_status, p.earnings_status];
       const mine = [js.water, js.fee, js.vat, js.total, js.driverEarnings, js.status.water, js.status.fee, js.status.vat, js.status.total, js.status.earnings];
       if (JSON.stringify(sql) !== JSON.stringify(mine)) {
@@ -35,7 +39,7 @@ export async function lifecycleSuite(t: Target, r: Reporter) {
       }
     }
   }
-  r.check("lib/pricing.ts reproduces price_quote() amounts and line statuses from the rules table (63 type/volume pairs)", mismatch === 0, first);
+  r.check("lib/pricing.ts reproduces price_quote() amounts and line statuses from the rules, tariff classes and delivery charges (63 type/volume pairs)", mismatch === 0, first);
 
   r.start("LIFE order lifecycle");
   const w = await makeWorld(t, "life");
