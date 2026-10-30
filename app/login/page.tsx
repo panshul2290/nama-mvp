@@ -52,7 +52,8 @@ function Login() {
   const [keep, setKeep] = useState(true);
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
+  // ?ended=1: this app's session ended on its own (password changed, signed out elsewhere).
+  const [note, setNote] = useState<string | null>(() => (params.has("ended") ? t("sessionEnded") : null));
   const [busy, setBusy] = useState(false);
   // Set when an account of another kind tried this app (also ?wrong=<role> from the email-link callback or an app).
   const [wrong, setWrong] = useState<Role | null | undefined>(() => (params.has("wrong") ? asRole(params.get("wrong")) : undefined));

@@ -102,6 +102,7 @@ export const AUTH: Dict = {
   e_phone_disabled: { en: "Sign-in by mobile number isn’t switched on for this project yet.", ar: "الدخول برقم الهاتف غير مفعّل في هذا المشروع بعد." },
 
   // An account of another kind on this app's sign-in (each app accepts only its own accounts)
+  sessionEnded: { en: "Your session ended — please sign in again.", ar: "انتهت جلستك — يرجى تسجيل الدخول مجدداً." },
   wrong_customer: { en: "This is a customer account.", ar: "هذا حساب عميل." },
   wrong_driver: { en: "This is a driver account.", ar: "هذا حساب سائق." },
   wrong_owner: { en: "This is a tanker company account.", ar: "هذا حساب شركة صهاريج." },

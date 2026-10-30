@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { appFor, enforceSessionChoice, signOutApp } from "@/components/portal/session";
+import { appFor, enforceSessionChoice, signOutApp, useSessionEnd } from "@/components/portal/session";
 import { supabase } from "@/lib/supabase/client";
 import type { Profile, Role } from "@/lib/types";
 
@@ -13,6 +13,7 @@ import type { Profile, Role } from "@/lib/types";
 export function useProfile(expected?: Role) {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
+  useSessionEnd(expected ? `/login?app=${appFor(expected)}` : "/login");
 
   useEffect(() => {
     let cancelled = false;

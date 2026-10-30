@@ -63,6 +63,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
   const map = useRef<maplibregl.Map | null>(null);
   const ready = useRef(false);
   const known = useRef(new Set<string>()); // ids already framed
+  const framedAreas = useRef(0); // number of test-zone outlines the current framing knew about
   const userMoved = useRef(false); // the operator panned or zoomed: stop auto-framing
   const onSel = useRef(onSelect);
   const data = useRef({ tankers, orders, sites, trail, selectedId, alerts });
@@ -307,6 +308,12 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
       // Frame everything whenever a new tanker or order appears (not on every GPS move),
       // until the operator takes over the view.
       const pts = [...tankers, ...orders];
+      // The test-zone outlines load after the first points: frame again once they arrive, so
+      // tankers in a test zone (e.g. India) aren't left off-screen.
+      if (framedAreas.current !== areas.current.length && !userMoved.current) {
+        framedAreas.current = areas.current.length;
+        known.current.clear();
+      }
       const first = known.current.size === 0;
       const added = pts.filter((p) => !known.current.has(p.id));
       for (const p of added) known.current.add(p.id);

@@ -1,6 +1,8 @@
 "use client";
 
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { appFor, homeFor, type AppKey } from "@/lib/apps";
 import { currentApp, supabase } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
@@ -45,7 +47,26 @@ export async function signOutApp(app: AppKey | null = currentApp()) {
   } catch {
     /* ignore */
   }
+  signingOut = true;
   await supabase(app).auth.signOut({ scope: "local" });
+}
+let signingOut = false;
+
+/**
+ * When this app's session ends without the user signing out (password changed, signed out
+ * elsewhere, refresh token expired), go to its sign-in with "your session ended" rather than
+ * leaving the page to query as a signed-out visitor.
+ */
+export function useSessionEnd(signIn: string) {
+  const router = useRouter();
+  useEffect(() => {
+    const { data } = supabase().auth.onAuthStateChange((event) => {
+      if (event !== "SIGNED_OUT") return;
+      if (signingOut) return void (signingOut = false);
+      router.replace(`${signIn}${signIn.includes("?") ? "&" : "?"}ended=1`);
+    });
+    return () => data.subscription.unsubscribe();
+  }, [router, signIn]);
 }
 
 export type Admitted = { ok: true; app: AppKey; role: Role; home: string } | { ok: false; wrong: Role | null };

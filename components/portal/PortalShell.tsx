@@ -9,7 +9,7 @@ import { Icon, NamaLogo, type IconName } from "@/components/icons";
 import { supabase } from "@/lib/supabase/client";
 import type { OrgRole, Profile, Role } from "@/lib/types";
 import { ToastProvider } from "./kit";
-import { appFor, areaApp, enforceSessionChoice, signOutApp } from "./session";
+import { appFor, areaApp, enforceSessionChoice, signOutApp, useSessionEnd } from "./session";
 
 export type PortalProfile = Profile & { company_id: string | null; org_id: string | null; org_role: OrgRole | null };
 
@@ -23,6 +23,7 @@ export function usePortalProfile(expected: Role) {
   const router = useRouter();
   const [profile, setProfile] = useState<PortalProfile | null>(null);
   const [nonce, setNonce] = useState(0);
+  useSessionEnd(`/login?app=${appFor(expected)}`);
 
   useEffect(() => {
     let cancelled = false;
