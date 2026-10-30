@@ -6,7 +6,8 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { ddate, dshort, gal, omr3, windowText } from "@/components/customer/fmt";
-import { useProperties } from "@/components/customer/hooks";
+import { useNow, useProperties } from "@/components/customer/hooks";
+import { SlaChip } from "@/components/customer/sla";
 import { StatusTag } from "@/components/customer/ui";
 import { Loading } from "@/components/Shell";
 import { useToast } from "@/components/useToast";
@@ -30,6 +31,7 @@ export default function OrdersPage() {
 function Orders() {
   const profile = useCustomer();
   const { t, lang } = useCx();
+  const now = useNow(60_000);
   const router = useRouter();
   const params = useSearchParams();
   const toast = useToast();
@@ -182,6 +184,7 @@ function Orders() {
                   {o.rating ? ` · ${localDigits(o.rating, lang)}★` : ""}
                   {o.contract_id ? ` · ${t("contractTag")}` : ""}
                 </p>
+                {(o.status === "delivered" || o.status === "collected") && <SlaChip order={o} now={now} />}
               </Link>
             ))
           )}

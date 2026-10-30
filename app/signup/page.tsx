@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { IdentityFields, ID_DICT, idNoProblem, saveIdentityPhotos, verifyIdNumber, type DocKind, type IdPhotos, type IdType } from "@/components/customer/identity";
 import { NamaLogo } from "@/components/icons";
 import { AuthFrame } from "@/components/portal/AuthChrome";
 import { AUTH, authError } from "@/components/portal/authI18n";
@@ -43,6 +44,7 @@ function Signup() {
   const app = asApp(useSearchParams().get("app"));
   const router = useRouter();
   const t = useT(AUTH);
+  const ti = useT(ID_DICT);
   const [role, setRole] = useState<SignupRole>(() => roleFor(app));
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -52,6 +54,10 @@ function Signup() {
   const [codeFor, setCodeFor] = useState<string | null>(null); // E.164 the code was sent to
   const [busy, setBusy] = useState(false);
   const [wrong, setWrong] = useState<Role | null | undefined>(undefined);
+  // E1: customers register with their ID / resident card number and a photo of the card.
+  const [idType, setIdType] = useState<IdType>("civil_id");
+  const [idNo, setIdNo] = useState("");
+  const [photos, setPhotos] = useState<IdPhotos>({});
   const copy = COPY[role];
   const desktop = role === "owner" || role === "business";
   // Without an app (older links) people pick customer or driver; each app signs up its own kind only.
@@ -64,6 +70,14 @@ function Signup() {
       return setWrong(res.wrong);
     }
     rememberSession(true, res.app);
+    if (role === "customer" && res.role === "customer") {
+      // The account exists now: check the number (simulated) and upload the card photos. A problem
+      // doesn't undo the sign-up; Account opens on the identity step instead.
+      const db = supabase(res.app);
+      const idErr = await verifyIdNumber(db, idType, idNo);
+      const up = await saveIdentityPhotos(db, session.user.id, photos);
+      if (idErr || up.problem) return router.replace(`/customer/account?identity=${idErr ? "number" : up.problem}`);
+    }
     router.replace(res.home);
   }
 
@@ -75,6 +89,11 @@ function Signup() {
     if (!e164) return setError(t("badMobile"));
     const mail = email.trim().toLowerCase();
     if (mail && !isEmail(mail)) return setError(t("badEmail"));
+    if (role === "customer" && !desktop) {
+      const bad = idNoProblem(idType, idNo);
+      if (bad) return setError(ti(bad));
+      if (!photos.id_front) return setError(ti("frontNeeded"));
+    }
     setBusy(true);
     const scratch = scratchClient();
     const { data, error } = await scratch.auth.signUp({
@@ -208,6 +227,24 @@ function Signup() {
           <label htmlFor="password">{t("password")}</label>
           <input id="password" type="password" required minLength={6} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
+        {role === "customer" && (
+          <>
+            <h4 className="ch-sec" style={{ margin: "16px 0 4px" }}>
+              {ti("idSec")}
+            </h4>
+            <p className="mut small" style={{ marginTop: 0 }}>
+              {ti("idSecS")}
+            </p>
+            <IdentityFields
+              type={idType}
+              no={idNo}
+              photos={photos}
+              onType={setIdType}
+              onNo={setIdNo}
+              onPhoto={(k: DocKind, f) => setPhotos((p) => ({ ...p, [k]: f }))}
+            />
+          </>
+        )}
         <button className="cta" disabled={busy}>
           {busy ? t("creating") : t("createAccount")}
         </button>

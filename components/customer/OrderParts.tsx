@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icons";
 import { SignatureSvg } from "@/components/SignatureSvg";
@@ -43,7 +44,6 @@ export function useVerification(orderId: string, tankerId: string | null) {
 /** Driver + tanker card with the NWS verification grid (prototype driverCard); `children` = message / call buttons. */
 export function DriverCard({ order, v, today, children }: { order: Order; v: Verification; today: string; children?: React.ReactNode }) {
   const { t, lang } = useCx();
-  const [cert, setCert] = useState(false);
   const valid = (d: string | null | undefined) => Boolean(d && d.slice(0, 10) >= today);
   const wt = v?.water_test;
   const water = order.service_type !== "WW";
@@ -75,14 +75,13 @@ export function DriverCard({ order, v, today, children }: { order: Order; v: Ver
             {water && <Check ok={Boolean(wt?.passed)} text={wt ? (wt.passed ? t("wqPass", { d: ddate(wt.tested_at, lang) }) : t("wqFail")) : t("wqNone")} />}
           </div>
           {water && wt && (
-            <button type="button" className="lk" onClick={() => setCert(true)}>
+            <Link className="lk" href={`/customer/certificate?order=${order.id}`}>
               {t("cert")}
-            </button>
+            </Link>
           )}
         </>
       )}
       {children}
-      {cert && wt && <CertSheet wt={wt} plate={plate ?? ""} onClose={() => setCert(false)} />}
     </div>
   );
 }
@@ -93,44 +92,6 @@ function Check({ ok, text }: { ok: boolean; text: string }) {
       <Icon name={ok ? "check" : "alert"} />
       {text}
     </span>
-  );
-}
-
-function CertSheet({ wt, plate, onClose }: { wt: WaterTest; plate: string; onClose: () => void }) {
-  const { t, lang } = useCx();
-  const n = (v: number | string) => localDigits(String(v), lang);
-  const nd = (s: string) => /not detected/i.test(s);
-  const rows: [string, string, string, boolean][] = [
-    [t("wqCl"), `${n(wt.chlorine)} mg/L`, "0.2–1.0", Number(wt.chlorine) >= 0.2 && Number(wt.chlorine) <= 1],
-    [t("wqTurb"), `${n(wt.turbidity)} NTU`, "< 1", Number(wt.turbidity) < 1],
-    [t("wqTds"), `${n(wt.tds)} ppm`, "< 1000", Number(wt.tds) < 1000],
-    [t("wqPh"), n(wt.ph), "6.5–8.5", Number(wt.ph) >= 6.5 && Number(wt.ph) <= 8.5],
-    [t("wqEcoli"), nd(wt.ecoli) ? t("notDetected") : wt.ecoli, "0 / 100 mL", nd(wt.ecoli)],
-    [t("wqColi"), nd(wt.coliforms) ? t("notDetected") : wt.coliforms, "0 / 100 mL", nd(wt.coliforms)],
-  ];
-  return (
-    <Sheet title={t("certT")} onClose={onClose}>
-      <p className="mut small" style={{ marginTop: 0 }}>
-        {plate} · {t("nwsLab")} · {ddate(wt.tested_at, lang)} · {wt.cert_no}
-      </p>
-      <table className="cx-table">
-        <tbody>
-          {rows.map(([a, b, c, ok]) => (
-            <tr key={a}>
-              <td>{a}</td>
-              <td>{b}</td>
-              <td className="mut" dir="ltr">
-                {c}
-              </td>
-              <td>
-                <span className={`st ${ok ? "ok" : "bad"}`}>{t(ok ? "pass" : "fail")}</span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="mut small">{t("wqStd")}</p>
-    </Sheet>
   );
 }
 

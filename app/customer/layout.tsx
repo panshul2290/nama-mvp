@@ -10,7 +10,7 @@ import { Loading, TabBar, type Tab } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
 
 const HOME = ["/customer/request", "/customer/inbox", "/customer/complaint"];
-const ORDERS = ["/customer/orders", "/customer/order", "/customer/contract"];
+const ORDERS = ["/customer/orders", "/customer/order", "/customer/contract", "/customer/certificate"];
 const ACCOUNT = ["/customer/account", "/customer/complaints"];
 const under = (p: string, list: string[]) => list.some((x) => p === x || p.startsWith(`${x}/`));
 

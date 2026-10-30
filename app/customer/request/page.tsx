@@ -6,7 +6,8 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { gal, omr3 } from "@/components/customer/fmt";
-import { useNow, useOnline, usePaymentMethods, useProperties, useWallet, type PayMethodRow } from "@/components/customer/hooks";
+import { useNow, useOnline, usePaymentMethods, usePrefs, useProperties, useWallet, type PayMethodRow } from "@/components/customer/hooks";
+import { householdKey, recoFor, RecoCard } from "@/components/customer/Reco";
 import { PropertySheet } from "@/components/customer/PropertySheet";
 import { slotOptions } from "@/components/customer/slots";
 import { Bill, quoteToBill, SvcTag, Toggle } from "@/components/customer/ui";
@@ -43,6 +44,7 @@ function RequestWizard() {
   const { props, reload: reloadProps } = useProperties(profile.id);
   const { wallet } = useWallet();
   const { methods } = usePaymentMethods(profile.id);
+  const { prefs, set: setPrefs } = usePrefs(profile.id);
 
   const initialType = TYPES.includes(params.get("type") as ServiceType) ? (params.get("type") as ServiceType) : "DW";
   const paramGallons = Number(params.get("gallons"));
@@ -122,22 +124,16 @@ function RequestWizard() {
   const slots = useMemo(() => slotOptions(now), [now]);
   const slot = slots.find((s) => s.id === slotId) ?? slots[0];
 
-  const suggestion = useMemo(() => {
-    if (type === "DW") {
-      const tank = prop?.tank_gal ?? 3000;
-      const g = Math.min(5000, tank);
-      const ts = history
-        .filter((o) => o.service_type === "DW" && (!prop || o.property_id === prop.id) && o.delivered_at)
-        .map((o) => new Date(o.delivered_at!).getTime())
-        .slice(0, 8);
-      const days = ts.length >= 2 ? Math.max(1, Math.round((ts[0] - ts[ts.length - 1]) / (ts.length - 1) / 86_400_000)) : null;
-      const text = days
-        ? t("recoDwHist", { p: prop?.label ?? t("yourHome"), g: gal(g, lang), d: days, n: ts.length })
-        : t("recoDwTank", { p: prop?.label ?? t("yourHome"), g: gal(g, lang), tank: gal(tank, lang) });
-      return { g, text };
-    }
-    return type === "WW" ? { g: 3000, text: t("recoWw") } : { g: 10000, text: t("recoTe") };
-  }, [type, prop, history, t, lang]);
+  // Smart recommendation (E11): size and frequency from the tank, the household and past deliveries.
+  const household = prefs?.household;
+  const { reco, people } = useMemo(() => recoFor(type, prop, history, household), [type, prop, history, household]);
+  const suggestion = { g: reco.gallons };
+  const setPeople = (n: number) => {
+    const next = { ...(household ?? {}) };
+    if (n > 0) next[householdKey(prop)] = n;
+    else delete next[householdKey(prop)];
+    setPrefs({ household: next });
+  };
 
   // Live quote on the review step (peak, priority and promotion included).
   const slotStart = slot?.start ?? null;
@@ -405,9 +401,18 @@ function RequestWizard() {
                 }}
               />
             </div>
-            <div className="reco">
-              <b>{t("reco")}:</b> {suggestion.text}
-            </div>
+            <RecoCard
+              service={type}
+              prop={prop}
+              reco={reco}
+              people={people}
+              picked={gallons === reco.gallons}
+              onPick={() => {
+                gallonsTouched.current = true;
+                setGallons(reco.gallons);
+              }}
+              onPeople={prefs ? setPeople : undefined}
+            />
             <h4 className="ch-sec">{t("plan")}</h4>
             <div className="seg" role="tablist">
               {(["one", "monthly", "yearly"] as Plan[]).map((k) => (

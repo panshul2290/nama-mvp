@@ -7,6 +7,8 @@ import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { dshort, gal } from "@/components/customer/fmt";
 import { usePrefs, useProperties, type Prefs } from "@/components/customer/hooks";
+import { IdentityFields, ID_DICT, idNoProblem, saveIdentityPhotos, useIdentityDocs, verifyIdNumber, type DocKind, type IdentityDoc, type IdPhotos, type IdType } from "@/components/customer/identity";
+import { SlaHistory } from "@/components/customer/sla";
 import { PropertySheet } from "@/components/customer/PropertySheet";
 import { Sheet, Toggle } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
@@ -14,14 +16,12 @@ import { Loading } from "@/components/Shell";
 import { useToast } from "@/components/useToast";
 import { friendlyError } from "@/lib/errors";
 import { initials } from "@/lib/format";
-import { LangToggle } from "@/lib/i18n";
+import { LangToggle, useT } from "@/lib/i18n";
 import { signOutApp } from "@/components/portal/session";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Complaint, type DataRequest, type Profile, type Property } from "@/lib/types";
 
 type Me = Pick<Profile, "full_name" | "phone" | "id_type" | "id_no" | "id_verified">;
-const ID_TYPES = ["civil_id", "resident_card", "passport"] as const;
-const ID_KEY: Record<(typeof ID_TYPES)[number], string> = { civil_id: "civil", resident_card: "resident", passport: "passport" };
 const CHANNELS: [keyof Prefs, string][] = [
   ["push", "push"],
   ["sms", "sms"],
@@ -49,7 +49,11 @@ function Account() {
   const [email, setEmail] = useState<string | null>(null);
   const [cx, setCx] = useState<Complaint[] | null>(null);
   const [dsr, setDsr] = useState<DataRequest[] | null>(null);
-  const [sheet, setSheet] = useState<"edit" | "id" | "help" | null>(null);
+  const identityParam = params.get("identity");
+  const [sheet, setSheet] = useState<"edit" | "id" | "help" | null>(identityParam ? "id" : null);
+  const ti = useT(ID_DICT);
+  const db = useCallback(() => supabase(), []);
+  const { docs, urls, reload: reloadDocs } = useIdentityDocs(db, profile.id);
   const [propSheet, setPropSheet] = useState<Property | "new" | null>(params.get("add") === "property" ? "new" : null);
 
   // Identity fields are private columns: they come from my_private_profile(), not the table.
@@ -124,7 +128,14 @@ function Account() {
 
         <div className="dcard">
           <div className="dc-top">
-            <span className="av">{initials(name)}</span>
+            {urls.selfie ? (
+              <span className="av photo-av">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={urls.selfie} alt={ti("selfie")} />
+              </span>
+            ) : (
+              <span className="av">{initials(name)}</span>
+            )}
             <div>
               <b>{name || t("customer")}</b>
               <small dir="ltr" style={{ display: "block", textAlign: "start" }}>
@@ -139,13 +150,14 @@ function Account() {
           {me?.id_verified ? (
             <div className="vf">
               <Icon name="shield" />
-              {t(ID_KEY[me.id_type ?? "civil_id"])} · {t("verified")}
+              {ti(me.id_type ?? "civil_id")} · {ti("simulated")}
             </div>
           ) : (
             <button className="cta sec" style={{ margin: 0 }} onClick={() => setSheet("id")}>
               {t("idT")}
             </button>
           )}
+          <IdDocsStatus docs={docs} urls={urls} onUpdate={() => setSheet("id")} />
         </div>
 
         <h4 className="cx-h" id="properties">
@@ -173,6 +185,8 @@ function Account() {
         <button className="btn sm" style={{ margin: "10px 0" }} onClick={() => setPropSheet("new")}>
           + {t("addProp")}
         </button>
+
+        <SlaHistory customerId={profile.id} />
 
         <h4 className="cx-h">{t("notifs")}</h4>
         {CHANNELS.map(([k, l]) => (
@@ -258,13 +272,19 @@ function Account() {
           }}
         />
       )}
-      {sheet === "id" && (
+      {sheet === "id" && me && (
         <IdSheet
+          userId={profile.id}
+          verified={Boolean(me.id_verified)}
+          hasFront={Boolean(docs?.some((d) => d.kind === "id_front" && d.review_status !== "rejected"))}
+          existing={urls}
+          problem={identityParam}
           onClose={() => setSheet(null)}
-          onDone={() => {
+          onDone={(msg) => {
             setSheet(null);
             loadMe();
-            toast.show(t("idOk"));
+            reloadDocs();
+            toast.show(msg);
           }}
         />
       )}
@@ -311,39 +331,99 @@ function EditSheet({ me, userId, onClose, onSaved }: { me: Me; userId: string; o
   );
 }
 
-function IdSheet({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+/** Identity documents on file and their review state (0030); the national ID check itself is simulated. */
+function IdDocsStatus({ docs, urls, onUpdate }: { docs: IdentityDoc[] | null; urls: Partial<Record<DocKind, string>>; onUpdate: () => void }) {
+  const ti = useT(ID_DICT);
+  if (docs === null) return null;
+  const card = docs.filter((d) => d.kind !== "selfie");
+  const worst = card.some((d) => d.review_status === "rejected") ? "rejected" : card.length && card.every((d) => d.review_status === "accepted") ? "accepted" : card.length ? "received" : null;
+  return (
+    <div className="id-status">
+      <span className={`st ${worst === "accepted" ? "ok" : worst === "rejected" ? "bad" : worst ? "warn" : ""}`}>
+        {ti(worst === "accepted" ? "docsAccepted" : worst === "rejected" ? "docsRejected" : worst ? "docsReceived" : "docsNone")}
+      </span>
+      <button type="button" className="lk" onClick={onUpdate}>
+        {ti("updateDocs")}
+      </button>
+      {card.some((d) => urls[d.kind]) && (
+        <div className="id-thumbs">
+          {card.map((d) =>
+            urls[d.kind] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={d.kind} src={urls[d.kind]} alt={ti(d.kind)} />
+            ) : null,
+          )}
+        </div>
+      )}
+      {docs.find((d) => d.review_status === "rejected" && d.review_note) && <small className="mut">{docs.find((d) => d.review_status === "rejected")?.review_note}</small>}
+    </div>
+  );
+}
+
+function IdSheet({
+  userId,
+  verified,
+  hasFront,
+  existing,
+  problem,
+  onClose,
+  onDone,
+}: {
+  userId: string;
+  verified: boolean;
+  hasFront: boolean;
+  existing: Partial<Record<DocKind, string>>;
+  problem: string | null;
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
   const { t } = useCx();
-  const [type, setType] = useState<(typeof ID_TYPES)[number]>("civil_id");
+  const ti = useT(ID_DICT);
+  const [type, setType] = useState<IdType>("civil_id");
   const [no, setNo] = useState("");
+  const [photos, setPhotos] = useState<IdPhotos>({});
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function verify() {
-    setBusy(true);
+  const [error, setError] = useState<string | null>(problem === "unavailable" ? ti("docsLater") : problem === "failed" ? ti("docsFailed") : null);
+  const chosen = Object.values(photos).some(Boolean);
+  async function save() {
     setError(null);
-    const { error } = await supabase().rpc("verify_identity", { p_id_type: type, p_id_no: no.trim() });
+    if (!verified) {
+      const bad = idNoProblem(type, no);
+      if (bad) return setError(ti(bad));
+    }
+    if (!hasFront && !photos.id_front) return setError(ti("frontNeeded"));
+    setBusy(true);
+    const db = supabase();
+    if (!verified) {
+      const code = await verifyIdNumber(db, type, no);
+      if (code) {
+        setBusy(false);
+        return setError(friendlyError({ message: code }));
+      }
+    }
+    const up = await saveIdentityPhotos(db, userId, photos);
     setBusy(false);
-    if (error) return setError(friendlyError(error));
-    onDone();
+    if (up.problem) return setError(ti(up.problem === "unavailable" ? "docsLater" : "docsFailed"));
+    onDone(verified ? ti("docsSaved") : t("idOk"));
   }
   return (
-    <Sheet title={t("idT")} onClose={onClose}>
+    <Sheet title={verified ? ti("idDocs") : t("idT")} onClose={onClose}>
       <p className="mut small" style={{ marginTop: 0 }}>
-        {t("idS")}
+        {ti("idSecS")}
       </p>
-      <div className="seg">
-        {ID_TYPES.map((k) => (
-          <button key={k} type="button" className={type === k ? "on" : ""} onClick={() => setType(k)}>
-            {t(ID_KEY[k])}
-          </button>
-        ))}
-      </div>
-      <div className="fld">
-        <label htmlFor="idn">{t("idNo")}</label>
-        <input id="idn" dir="ltr" maxLength={30} inputMode={type === "passport" ? "text" : "numeric"} value={no} onChange={(e) => setNo(e.target.value)} />
-      </div>
+      <IdentityFields
+        type={type}
+        no={no}
+        photos={photos}
+        onType={setType}
+        onNo={setNo}
+        onPhoto={(k, f) => setPhotos((p) => ({ ...p, [k]: f }))}
+        existing={existing}
+        numberLocked={verified}
+      />
       {error && <div className="banner badb">{error}</div>}
-      <button className="cta" disabled={busy || no.trim().length < 5} onClick={verify}>
-        {busy ? t("verifying") : t("verify")}
+      <button className="cta" disabled={busy || (verified ? !chosen : no.trim().length < 5)} onClick={save}>
+        {busy ? ti("uploading") : verified ? ti("saveDocs") : t("verify")}
       </button>
     </Sheet>
   );

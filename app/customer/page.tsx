@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { dshort, gal, windowText } from "@/components/customer/fmt";
-import { useEmergency, useNow, useOnline, useProperties } from "@/components/customer/hooks";
+import { useEmergency, useNow, useOnline, usePrefs, useProperties } from "@/components/customer/hooks";
+import { recoFor, useRecoText } from "@/components/customer/Reco";
 import { fillPending, Progress5, StatusTag, statusKey, useUnread } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
 import { firstName } from "@/lib/format";
@@ -48,6 +49,8 @@ export default function CustomerHome() {
   const emergency = useEmergency();
   const now = useNow(60_000);
   const { props } = useProperties(profile.id);
+  const { prefs } = usePrefs(profile.id);
+  const recoText = useRecoText();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [delivered, setDelivered] = useState<number | null>(null);
@@ -77,6 +80,13 @@ export default function CustomerHome() {
     () => (orders && props && !active.some((o) => o.service_type === "DW") ? refillDue(orders, props, now) : null),
     [orders, props, active, now],
   );
+  // Smart recommendation (E11) for the main property when no refill is due yet.
+  const home = useMemo(() => {
+    if (!orders || !props || !props.length || refill || active.some((o) => o.service_type === "DW")) return null;
+    const prop = props[0];
+    const { reco, people } = recoFor("DW", prop, orders, prefs?.household);
+    return { prop, reco, text: recoText(reco, "DW", prop, people) };
+  }, [orders, props, refill, active, prefs?.household, recoText]);
   const propLabel = (id: string | null | undefined) => props?.find((p) => p.id === id)?.label;
   const h = muscatHour(now);
 
@@ -151,6 +161,23 @@ export default function CustomerHome() {
           </div>
           <Link className="btn sm pri" href={`/customer/request?type=DW&gallons=${refill.gallons}${refill.prop ? `&property=${refill.prop.id}` : ""}`}>
             {t("orderG", { g: gal(refill.gallons, lang) })}
+          </Link>
+        </div>
+      )}
+
+      {home && (
+        <div className="ch-refill">
+          <span className="ri">
+            <Icon name="zap" />
+          </span>
+          <div>
+            <b>
+              {t("recoHomeT")} · {home.text.head}
+            </b>
+            <p>{home.text.why}</p>
+          </div>
+          <Link className="btn sm pri" href={`/customer/request?type=DW&gallons=${home.reco.gallons}&property=${home.prop.id}`}>
+            {t("recoOrder", { g: gal(home.reco.gallons, lang) })}
           </Link>
         </div>
       )}

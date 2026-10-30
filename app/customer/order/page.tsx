@@ -9,6 +9,7 @@ import { gal, omr3, tshort, windowText } from "@/components/customer/fmt";
 import { useNow } from "@/components/customer/hooks";
 import { ChatButton, ChatSheet, useChatHub, useOrderChat, type ChatLabels } from "@/components/chat/OrderChat";
 import { CancelSheet, DriverCard, PodCard, RateCard, ReschedSheet, useVerification } from "@/components/customer/OrderParts";
+import { SlaChip } from "@/components/customer/sla";
 import { Bill, fillPending, orderToBill, StatusTag, TimelineH, useUnread } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
@@ -273,6 +274,7 @@ function OrderDetail() {
                 {order.tanker_plate ? ` · ${order.tanker_plate}` : ""}
               </small>
             </div>
+            <SlaChip order={order} now={now} />
           </div>
           <TimelineH order={order} />
           <PodCard order={order} />
@@ -398,6 +400,11 @@ function OrderDetail() {
           )}
           {order.is_emergency && <div className="banner info">{t("emergOn")}</div>}
 
+          {order.status !== "pending_approval" && (
+            <div className="sla-line">
+              <SlaChip order={order} now={now} />
+            </div>
+          )}
           <TimelineH order={order} />
 
           {slow && (

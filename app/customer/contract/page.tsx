@@ -48,7 +48,8 @@ function ContractWizard() {
   const [propChoice, setPropChoice] = useState<string | null>(params.get("property"));
   const [adding, setAdding] = useState(false);
   const [gallons, setGallons] = useState(g0 >= 100 ? g0 : 3000);
-  const [freq, setFreq] = useState<Contract["frequency"]>("weekly");
+  // A suggested frequency (smart recommendation, E11) arrives as ?frequency=.
+  const [freq, setFreq] = useState<Contract["frequency"]>(() => FREQS.find((f) => f === params.get("frequency")) ?? "weekly");
   const [plan, setPlan] = useState<Contract["plan"]>(p0 === "yearly" ? "yearly" : "monthly");
   const [months, setMonths] = useState(p0 === "yearly" ? 12 : 1);
   const minDate = omanDateKey(now, 1); // Muscat dates

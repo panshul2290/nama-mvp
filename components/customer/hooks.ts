@@ -53,8 +53,17 @@ export function useEmergency() {
   return em;
 }
 
-export type Prefs = { push?: boolean; sms?: boolean; whatsapp?: boolean; promotions?: boolean; share_usage?: boolean; autopay?: boolean };
-export const PREF_DEFAULTS: Required<Prefs> = { push: true, sms: true, whatsapp: false, promotions: false, share_usage: false, autopay: false };
+export type Prefs = {
+  push?: boolean;
+  sms?: boolean;
+  whatsapp?: boolean;
+  promotions?: boolean;
+  share_usage?: boolean;
+  autopay?: boolean;
+  /** People living at each property (property id, or "pin"), for the size and frequency suggestion. */
+  household?: Record<string, number>;
+};
+export const PREF_DEFAULTS: Required<Prefs> = { push: true, sms: true, whatsapp: false, promotions: false, share_usage: false, autopay: false, household: {} };
 
 /** profiles.prefs: merged with defaults; set() writes the whole object back. */
 export function usePrefs(userId: string) {
