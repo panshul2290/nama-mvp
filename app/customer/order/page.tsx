@@ -18,6 +18,7 @@ import { useRoadEta } from "@/components/useRoadEta";
 import { usePricingRules } from "@/components/usePricingRules";
 import { useToast } from "@/components/useToast";
 import { announceGone } from "@/lib/feed";
+import { askPush } from "@/lib/push";
 import { initials, kmText } from "@/lib/format";
 import { DEFAULT_CENTER } from "@/lib/geo";
 import { STALE_AFTER_S } from "@/lib/gps";
@@ -42,14 +43,16 @@ export default function OrderPage() {
 }
 
 function OrderDetail() {
-  const id = useSearchParams().get("id") ?? "";
+  const params = useSearchParams();
+  const id = params.get("id") ?? "";
   const profile = useCustomer();
   const { t, lang, dir } = useCx();
   const toast = useToast();
   const chat = useOrderChat(id, "customer");
   const hub = useChatHub();
   const { refresh: refreshUnread } = useUnread();
-  const [chatTapped, setChatTapped] = useState(false);
+  // ?chat=1: opened from a message push notification.
+  const [chatTapped, setChatTapped] = useState(() => params.get("chat") === "1");
   // Open from the button here, or from a message banner / inbox tap elsewhere in the app.
   const chatOpen = chatTapped || (Boolean(id) && hub.pending === id);
   const { setActive } = hub;
@@ -70,6 +73,11 @@ function OrderDetail() {
   const [tankerFix, setTankerFix] = useState<{ tankerId: string; pos: LngLat; fixAt: number } | null>(null);
   const [missing, setMissing] = useState(false);
   const [sheet, setSheet] = useState<"cancel" | "resched" | null>(null);
+  // Right after an order is placed is when push makes sense ("your tanker is on the way"); asked once.
+  const orderOpen = Boolean(order && !["delivered", "cancelled"].includes(order.status));
+  useEffect(() => {
+    if (orderOpen) askPush().catch(() => undefined);
+  }, [orderOpen]);
 
   const load = useCallback(() => {
     if (!id) return Promise.resolve();

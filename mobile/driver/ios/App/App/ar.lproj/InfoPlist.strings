@@ -1,0 +1,7 @@
+"CFBundleDisplayName" = "نماء للسائقين";
+"NSCameraUsageDescription" = "لالتقاط صور إثبات التسليم وصور مستنداتك.";
+"NSPhotoLibraryUsageDescription" = "لاختيار صور إثبات التسليم والمستندات من مكتبتك.";
+"NSPhotoLibraryAddUsageDescription" = "لحفظ الصور التي تلتقطها في التطبيق.";
+"NSLocationWhenInUseUsageDescription" = "لمشاركة موقع صهريجك مع نماء وعميلك أثناء اتصالك.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "لمواصلة مشاركة موقعك خلال المناوبة أو المهمة والتطبيق في الخلفية أو الشاشة مطفأة.";
+"NSUserNotificationsUsageDescription" = "لإعلامك بالمهام الجديدة والرسائل وتحديثات التصاريح.";

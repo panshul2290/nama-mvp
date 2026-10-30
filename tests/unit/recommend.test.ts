@@ -1,6 +1,7 @@
 // Unit tests for smart recommendations (lib/recommend.ts) and the household SLA reading
 // (lib/orderSla.ts).  npm run test:unit
 import { appSla, readSla, slaSummary } from "../../lib/orderSla";
+import { pushRoute } from "../../lib/pushRoute";
 import { contractFrequency, fitPreset, GAL_PER_PERSON_DAY, recommend } from "../../lib/recommend";
 
 let pass = 0;
@@ -58,6 +59,14 @@ eq("database row with on_time", [readSla({ on_time: false, due_at: "2026-10-01T0
 eq("database row: due time read", readSla([{ is_on_time: true, deadline: "2026-10-01T09:00:00Z" }], o).dueAt, Date.parse("2026-10-01T09:00:00Z"));
 eq("unreadable answer falls back to the app rule", readSla({ something: 1 }, o).source, "app");
 eq("summary", slaSummary([appSla(o), appSla({ ...o, delivered_at: "2026-10-01T11:00:00Z" }), appSla({ ...o, delivered_at: null })]), { served: 2, onTime: 1, late: 1, pct: 50 });
+
+console.log("## UNIT push notification taps");
+eq("customer: an order update opens the order", pushRoute("customer", { order_id: "abc", event: "order_arriving" }), "/customer/order?id=abc");
+eq("customer: a message opens the order's chat", pushRoute("customer", { order_id: "abc", event: "new_message" }), "/customer/order?id=abc&chat=1");
+eq("driver: a new job opens Jobs", pushRoute("driver", { event: "new_job" }), "/driver/jobs");
+eq("driver: a message opens the trip", pushRoute("driver", { order_id: "x", event: "new_message" }), "/driver/trip");
+eq("an explicit route for the same app is used", pushRoute("driver", { route: "/driver/profile#permit" }), "/driver/profile#permit");
+eq("a route into another app is ignored", pushRoute("customer", { route: "/nws/orders" }), "/customer/inbox");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

@@ -8,6 +8,7 @@ import { useCx } from "@/components/customer/i18n";
 import { UnreadProvider, useUnread } from "@/components/customer/ui";
 import { Loading, TabBar, type Tab } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
+import { usePushBridge } from "@/lib/usePush";
 
 const HOME = ["/customer/request", "/customer/inbox", "/customer/complaint"];
 const ORDERS = ["/customer/orders", "/customer/order", "/customer/contract", "/customer/certificate"];
@@ -39,6 +40,7 @@ function Chats({ userId, children }: { userId: string; children: React.ReactNode
 
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {
   const profile = useProfile("customer");
+  usePushBridge("customer", Boolean(profile));
   if (!profile) return <Loading />;
   return (
     <CustomerCtx value={profile}>

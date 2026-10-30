@@ -7,12 +7,16 @@ import { createContext, use, useCallback, useEffect, useMemo, useRef, useState }
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { DICT, muscatDay, useErrText } from "@/components/driver/i18n";
 import { legIndex, tripLegs, type Leg } from "@/components/driver/legs";
+import { LESSONS } from "@/components/driver/training";
 import { useProfile } from "@/components/useProfile";
 import { useToast } from "@/components/useToast";
 import { errorCode } from "@/lib/errors";
+import { askNotificationPermission, askPush } from "@/lib/push";
+import { isMissing } from "@/lib/rpcCompat";
+import { backgroundCapable, postFixNative, watchShiftPosition } from "@/lib/shiftLocation";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/env";
 import { FEED_CHANNEL, GONE_EVENT } from "@/lib/feed";
-import { DEFAULT_CENTER } from "@/lib/geo";
-import { getCurrentPosition, keepScreenOn, wakeLockSupported, watchPosition, type GeoError } from "@/lib/geo-source";
+import { getCurrentPosition, keepScreenOn, wakeLockSupported, type GeoError } from "@/lib/geo-source";
 import { useT } from "@/lib/i18n";
 import { buildDemoRoute, DEMO_MODE, positionAt, travelled, type SimRoute } from "@/lib/simulator";
 import { supabase } from "@/lib/supabase/client";
@@ -27,6 +31,23 @@ const POKE_AFTER_MS = 8_000;
 const NO_FIX_MS = 30_000;
 const JOBS_REFRESH_MS = 15_000;
 
+// report_location with the fix's source ('phone' or 'simulated', 0030); the 4-argument form
+// before that migration is applied. Accuracy always goes with the fix.
+let sourceArg = true;
+async function reportFix(f: Fix, source: "phone" | "simulated") {
+  const args = { p_lat: f.lat, p_lng: f.lng, p_accuracy_m: f.accuracy, p_recorded_at: new Date(f.at).toISOString() };
+  const db = supabase();
+  // Native app: the request goes through the native HTTP stack, so it isn't throttled in the background.
+  const token = backgroundCapable() ? (await db.auth.getSession()).data.session?.access_token : null;
+  const send = (a: Record<string, unknown>) => (token ? postFixNative(SUPABASE_URL, SUPABASE_ANON_KEY, token, a) : db.rpc("report_location", a));
+  if (sourceArg) {
+    const { error } = await send({ ...args, p_source: source });
+    if (!error || !isMissing(error)) return { error };
+    sourceArg = false;
+  }
+  return send(args);
+}
+
 export type TrackingIssue = "denied" | "hidden" | "nofix";
 
 /** Orders a driver is working (wastewater stays active until it is discharged). */
@@ -36,7 +57,10 @@ export type Job = { order: Order; loc: OrderLocation | null; customer: Pick<Prof
 export type SimState = { status: "loading" | "running" | "done"; totalKm: number; leftKm: number; source: "osrm" | "straight-line"; leg: string };
 export type JobFn = "confirm_fill" | "mark_arrived" | "submit_pod" | "confirm_discharge";
 export type IssueKind = "breakdown" | "customer_unreachable" | "wrong_address" | "station_closed" | "accident";
-export type Prefs = { training?: number[]; declined?: number } & Record<string, unknown>;
+export type Prefs = { training?: number[]; training_done?: string[]; declined?: number } & Record<string, unknown>;
+/** Training (D13): lessons passed, whether NWS requires it before going online, and where it's stored. */
+export type Training = { done: string[]; required: boolean; complete: boolean; loaded: boolean; source: "db" | "prefs" };
+export type LessonResult = { passed: boolean; correct: number; total: number; complete: boolean };
 
 type DriverState = {
   profile: Profile;
@@ -88,6 +112,9 @@ type DriverState = {
   savePrefs: (patch: Prefs) => Promise<void>;
   unread: number;
   refreshUnread: () => void;
+  training: Training;
+  /** Grades a lesson quiz (on the server when it can); null on an error (already shown). */
+  submitLesson: (lesson: string, answers: number[]) => Promise<LessonResult | null>;
   toast: (m: string) => void;
 };
 
@@ -119,6 +146,8 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   const [openJobs, setOpenJobs] = useState<OpenRequest[]>([]);
   const [seenAt, setSeenAt] = useState<Record<string, number>>({});
   const [declined, setDeclined] = useState<string[]>([]);
+  const [trainingRows, setTrainingRows] = useState<{ done: string[]; source: "db" | "prefs"; loaded: boolean }>({ done: [], source: "db", loaded: false });
+  const [trainingRequired, setTrainingRequired] = useState(false);
 
   const [me, setMe] = useState<LngLat | null>(null);
   const [gpsError, setGpsError] = useState(false);
@@ -128,6 +157,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   const deniedRef = useRef(false);
   const lastFixAt = useRef(0); // when the last *usable* fix arrived (local clock)
   const fixRef = useRef<Fix | null>(null); // latest usable fix (accuracy ≤ 100 m)
+  const fixSource = useRef<"phone" | "simulated">("phone");
   const lastSent = useRef<Sent | null>(null);
   const simRoute = useRef<{ route: SimRoute; startedAt: number } | null>(null);
   const feed = useRef<RealtimeChannel | null>(null);
@@ -198,6 +228,19 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     db.rpc("my_private_profile").then(({ data }) => setPrefs((data as { prefs?: Prefs | null } | null)?.prefs ?? {}));
     loadToday(profile.id);
     refreshUnread();
+    // Training record (0030); before that migration, the lessons passed are kept in prefs.
+    db.from("driver_training")
+      .select("lesson")
+      .eq("driver_id", profile.id)
+      .then(({ data, error }) => {
+        if (error && isMissing(error)) return setTrainingRows((r) => ({ ...r, source: "prefs", loaded: true }));
+        setTrainingRows({ done: (data ?? []).map((d) => d.lesson as string), source: "db", loaded: true });
+      });
+    db.from("app_settings")
+      .select("value")
+      .eq("key", "DRIVER_TRAINING_REQUIRED")
+      .maybeSingle()
+      .then(({ data }) => setTrainingRequired(data?.value === "true"));
   }, [profile, router, loadJob, loadToday, refreshUnread]);
 
   const refreshTanker = useCallback(async () => {
@@ -259,11 +302,9 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     if (!shouldSend(fix, lastSent.current, now)) return;
     const f = fix as Fix;
     lastSent.current = { lat: f.lat, lng: f.lng, at: now };
-    supabase()
-      .rpc("report_location", { p_lat: f.lat, p_lng: f.lng, p_accuracy_m: f.accuracy, p_recorded_at: new Date(f.at).toISOString() })
-      .then(({ error }) => {
-        if (error) lastSent.current = null; // retry with the next fix or tick
-      });
+    reportFix(f, fixSource.current).then(({ error }) => {
+      if (error) lastSent.current = null; // retry with the next fix or tick
+    });
   }, []);
 
   // One entry point for fixes, real or simulated. Fixes worse than 100 m are dropped (the server rejects them too).
@@ -283,6 +324,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       deniedRef.current = false;
       setGpsError(false);
       if (simRoute.current) return; // the simulator is driving
+      fixSource.current = "phone";
       acceptFix(f);
     },
     [acceptFix],
@@ -292,28 +334,78 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     setGpsError(true);
   }, []);
 
-  // GPS while online or on a job.
+  // GPS while online or on a job. In the app this keeps running in the background (foreground
+  // service notification); in a browser only while the page is visible.
+  const bgTitle = t("bgTitle");
+  const bgMessage = t(onJob ? "bgMessageJob" : "bgMessage");
   useEffect(() => {
     if (!(online || onJob)) return;
-    return watchPosition(onFix, onFixError, { highAccuracy: true, maximumAgeMs: 5_000, timeoutMs: 20_000 });
-  }, [online, onJob, onFix, onFixError]);
+    return watchShiftPosition(onFix, onFixError, { title: bgTitle, message: bgMessage }, { highAccuracy: true, maximumAgeMs: 5_000, timeoutMs: 20_000 });
+  }, [online, onJob, onFix, onFixError, bgTitle, bgMessage]);
+
+  const prefsDone = prefs.training_done;
+  const trainingDone = useMemo(() => (trainingRows.source === "prefs" ? (prefsDone ?? []) : trainingRows.done), [trainingRows.source, trainingRows.done, prefsDone]);
+  const training: Training = useMemo(
+    () => ({
+      done: trainingDone,
+      required: trainingRequired,
+      complete: LESSONS.every((l) => trainingDone.includes(l.key)),
+      loaded: trainingRows.loaded,
+      source: trainingRows.source,
+    }),
+    [trainingDone, trainingRequired, trainingRows.loaded, trainingRows.source],
+  );
+
+  const submitLesson = useCallback(
+    async (lesson: string, answers: number[]): Promise<LessonResult | null> => {
+      const done = (list: string[], ok: boolean) => (ok && !list.includes(lesson) ? [...list, lesson] : list);
+      if (trainingRows.source === "db") {
+        const { data, error } = await supabase().rpc("complete_training_lesson", { p_lesson: lesson, p_answers: answers });
+        if (!error) {
+          const res = data as LessonResult;
+          setTrainingRows((r) => ({ ...r, done: done(r.done, res.passed) }));
+          return res;
+        }
+        if (!isMissing(error)) {
+          showToast(errText(error));
+          return null;
+        }
+        setTrainingRows((r) => ({ ...r, source: "prefs" }));
+      }
+      // Not in this database yet: grade here and keep the result in prefs.
+      const l = LESSONS.find((x) => x.key === lesson);
+      if (!l) return null;
+      const correct = l.quiz.filter((q, i) => q.answer === answers[i]).length;
+      const passed = correct === l.quiz.length;
+      const list = done(prefs.training_done ?? [], passed);
+      if (passed) await savePrefs({ training_done: list });
+      return { passed, correct, total: l.quiz.length, complete: LESSONS.every((x) => list.includes(x.key)) };
+    },
+    [trainingRows.source, prefs.training_done, savePrefs, showToast, errText],
+  );
 
   const toggleOnline = useCallback(async () => {
     if (!tanker || job) return;
     const next = !tanker.is_online;
     if (next && !shiftChecked) return showToast(t("needCheck"));
+    if (next && training.required && training.loaded && !training.complete) return showToast(t("trainingNeeded"));
     setTanker({ ...tanker, is_online: next });
     // The database refuses if the tanker is blocked or has no valid permit.
     const { data, error } = await supabase().rpc("driver_set_online", { p_online: next }).single<Tanker>();
     if (error) {
       setTanker({ ...tanker, is_online: !next });
       if (errorCode(error) === "company_suspended") setCompanySuspended(true);
-      showToast(errText(error));
+      if (errorCode(error) === "training_required") {
+        setTrainingRequired(true);
+        showToast(t("trainingNeeded"));
+      } else showToast(errText(error));
       refreshTanker(); // picks up a block NWS set meanwhile (shown in the blockers panel)
       return;
     }
     setTanker(data);
-  }, [tanker, job, shiftChecked, showToast, t, errText, refreshTanker]);
+    // A sensible moment to ask for push: new jobs and messages while on shift.
+    if (next) askPush().then((on) => (on ? undefined : askNotificationPermission())).catch(() => undefined);
+  }, [tanker, job, shiftChecked, training, showToast, t, errText, refreshTanker]);
 
   const submitShiftCheck = useCallback(
     async (items: Record<string, boolean>) => {
@@ -331,7 +423,9 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
 
   // ---------------------------------------------------------------- open jobs feed
   const refreshJobs = useCallback(() => {
-    const at = meRef.current ?? DEFAULT_CENTER;
+    // No real fix yet: don't list jobs from a made-up position (the first fix loads them).
+    const at = meRef.current;
+    if (!at) return;
     supabase()
       .rpc("open_requests_near", { p_lat: at.lat, p_lng: at.lng })
       .then(({ data, error }) => {
@@ -477,7 +571,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     const last = lastSent.current;
     if (last && last.lat === f.lat && last.lng === f.lng) return;
     lastSent.current = { lat: f.lat, lng: f.lng, at: now };
-    const { error } = await supabase().rpc("report_location", { p_lat: f.lat, p_lng: f.lng, p_accuracy_m: f.accuracy, p_recorded_at: new Date(f.at).toISOString() });
+    const { error } = await reportFix(f, fixSource.current);
     if (error) lastSent.current = null;
   }, []);
 
@@ -554,6 +648,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       if (!s) return;
       const m = Math.min(s.route.totalM, travelled((Date.now() - s.startedAt) / 1000));
       const pos = positionAt(s.route, m);
+      fixSource.current = "simulated";
       acceptFix({ ...pos, accuracy: 5 + Math.random() * 7, at: Date.now() });
       const leftKm = (s.route.totalM - m) / 1000;
       setSim((x) => (x ? { ...x, leftKm, status: leftKm <= 0 ? "done" : "running" } : x));
@@ -605,7 +700,8 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     if (!jobId) return;
     const startedAt = Date.now();
     const check = () => {
-      const hidden = document.visibilityState === "hidden";
+      // The native app keeps sharing in the background, so a hidden page isn't a problem there.
+      const hidden = document.visibilityState === "hidden" && !backgroundCapable();
       const sinceFix = Date.now() - Math.max(lastFixAt.current, startedAt);
       setTrackingIssue(deniedRef.current && !simRoute.current ? "denied" : hidden ? "hidden" : sinceFix > NO_FIX_MS ? "nofix" : null);
     };
@@ -672,6 +768,8 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
         savePrefs,
         unread,
         refreshUnread,
+        training,
+        submitLesson,
         toast: showToast,
       }}
     >

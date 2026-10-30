@@ -8,6 +8,7 @@ import { InvitationCards } from "@/components/driver/Invitations";
 import { pickOffer } from "@/components/driver/offer";
 import { BLOCKERS_ID, OnlineBlockers, useBlockerTitle, useOnlineBlockers } from "@/components/driver/OnlineBlockers";
 import { useNow } from "@/components/driver/useNow";
+import { LESSONS } from "@/components/driver/training";
 import { Icon } from "@/components/icons";
 import { LangToggle, useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
@@ -18,7 +19,7 @@ const PRE_CHECK = ["tyres_brakes_lights", "valves_sealed", "hatch_locked", "ppe"
 type Emergency = { on: boolean; zone: string | null; reason: string | null };
 
 export default function DriverHome() {
-  const { profile, tanker, refreshTanker, online, toggleOnline, shiftChecked, submitShiftCheck, job, legs, leg, today, openJobs, seenAt, unread, toast } = useDriver();
+  const { profile, tanker, refreshTanker, online, toggleOnline, shiftChecked, submitShiftCheck, job, legs, leg, today, openJobs, seenAt, unread, toast, training, hasFix, gpsError } = useDriver();
   const t = useT(DICT);
   const f = useFmt();
   const now = useNow(1_000);
@@ -123,6 +124,27 @@ export default function DriverHome() {
         </div>
       </div>
       {!online && !job && <OnlineBlockers blockers={blockers} onApplied={reloadPermits} checkHref="#precheck" />}
+      {/* A gentle reminder before going online (required only when NWS switches the rule on: then it's a blocker above). */}
+      {!online && !job && training.loaded && !training.complete && !training.required && (
+        <Link href="/driver/training" className="card">
+          <div className="row">
+            <div>
+              <h4>{t("trainRemindT", { n: f.d(LESSONS.filter((l) => training.done.includes(l.key)).length), m: f.d(LESSONS.length) })}</h4>
+              <p>{t("trainRemindS", { min: f.d(LESSONS.filter((l) => !training.done.includes(l.key)).reduce((s, l) => s + l.minutes, 0)) })}</p>
+            </div>
+            <span className="lk">{t("startTraining")}</span>
+          </div>
+        </Link>
+      )}
+
+      {online && !job && !hasFix && (
+        <div className="card" role="status">
+          <h4>
+            <Icon name="pin" size={16} /> {t("gpsWaitT")}
+          </h4>
+          <p>{gpsError ? t("noGpsJobs") : t("gettingGps")}</p>
+        </div>
+      )}
 
       {offer && (
         <Link href="/driver/jobs" className="card hl">

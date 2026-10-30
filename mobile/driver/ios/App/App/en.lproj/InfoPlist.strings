@@ -1,0 +1,7 @@
+"CFBundleDisplayName" = "Nama Driver";
+"NSCameraUsageDescription" = "Take proof-of-delivery photos and photos of your documents.";
+"NSPhotoLibraryUsageDescription" = "Choose proof-of-delivery and document photos from your library.";
+"NSPhotoLibraryAddUsageDescription" = "Save the photos you take in the app.";
+"NSLocationWhenInUseUsageDescription" = "Share your tanker's location with NWS and your customer while you're online.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "Keep sharing your location during a shift or a job while the app is in the background or the screen is off.";
+"NSUserNotificationsUsageDescription" = "Tell you about new jobs, messages and permit updates.";

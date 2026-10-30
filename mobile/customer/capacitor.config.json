@@ -6,5 +6,16 @@
     "allowMixedContent": false,
     "captureInput": true
   },
-  "plugins": {}
+  "ios": {
+    "contentInset": "automatic"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    }
+  }
 }

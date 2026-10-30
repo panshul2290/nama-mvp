@@ -1,10 +1,14 @@
-// Builds an Android app (debug APK) for the customer or driver app:
+// Builds the customer or driver app for Android (debug APK) or iOS (Xcode project):
 //   1. stages a copy of the Next.js app without the desktop portals and server-only
-//      routes, as a static export (output: 'export') — the APK contains the app;
-//   2. syncs it into the Capacitor Android project in mobile/<app>/;
-//   3. runs Gradle (assembleDebug) and copies the APK to dist/.
-// Usage: node --env-file-if-exists=.env.local scripts/build-mobile.mjs customer|driver [--no-gradle]
-// Needs JAVA_HOME (JDK 21) and ANDROID_HOME, or the defaults under ~/android-build.
+//      routes, as a static export (output: 'export') — the app contains it;
+//   2. syncs it into the Capacitor project in mobile/<app>/ (android/ or ios/) and patches the
+//      native files a regenerated project would lose (permissions, Info.plist, AppDelegate);
+//   3. Android: runs Gradle (assembleDebug) and copies the APK to dist/.
+//      iOS: stops after `cap sync ios`; build and sign on a Mac (docs/ios.md).
+// Usage: node --env-file-if-exists=.env.local scripts/build-mobile.mjs customer|driver [android|ios] [--no-gradle] [--no-export]
+// Android needs JAVA_HOME (JDK 21) and ANDROID_HOME, or the defaults under ~/android-build.
+// Push (docs/push.md): Firebase's google-services.json in mobile/<app>/ enables Android push;
+// NAMA_IOS_PUSH=1 once the iOS app has the Push Notifications capability.
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -15,14 +19,23 @@ const APPS = {
   driver: { id: "om.nama.tanker.driver", name: "Nama Driver", drop: ["app/customer"] },
 };
 const app = process.argv[2];
+const platform = process.argv.includes("ios") ? "ios" : "android";
 if (!APPS[app]) {
-  console.error("Usage: build-mobile.mjs customer|driver [--no-gradle]");
+  console.error("Usage: build-mobile.mjs customer|driver [android|ios] [--no-gradle] [--no-export]");
   process.exit(1);
 }
 const gradle = !process.argv.includes("--no-gradle");
+// --no-export: reuse mobile/<app>/www from the last build (e.g. to generate the iOS project on Windows).
+const exportWeb = !process.argv.includes("--no-export");
 const root = resolve(".");
 const stage = join(root, ".mobile", app);
 const project = join(root, "mobile", app);
+// Firebase files live next to the native projects (gitignored), so a regenerated android/ or
+// ios/ folder gets them back on the next build.
+const googleServices = join(project, "google-services.json");
+const googleServicesPlist = join(project, "GoogleService-Info.plist");
+const pushAndroid = existsSync(googleServices);
+const pushIos = process.env.NAMA_IOS_PUSH === "1";
 
 const run = (cmd, args, opts = {}) => {
   console.log(`> ${cmd} ${args.join(" ")}`);
@@ -30,7 +43,8 @@ const run = (cmd, args, opts = {}) => {
   if (r.status !== 0) throw new Error(`${cmd} ${args[0] ?? ""} failed (exit ${r.status})`);
 };
 
-// ---- 1. stage and export ------------------------------------------------------
+// ---- 1. stage and export (block body left unindented: it writes file templates verbatim) ----
+if (exportWeb) {
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 for (const f of ["app", "components", "lib", "public", "tsconfig.json", "package.json", "next-env.d.ts"]) {
@@ -100,14 +114,27 @@ const nextConfig: NextConfig = { output: "export", trailingSlash: true, images: 
 export default nextConfig;
 `,
 );
-const env = { ...process.env, NEXT_PUBLIC_APP_TARGET: app, NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE ?? "true", NEXT_TELEMETRY_DISABLED: "1" };
+const env = {
+  ...process.env,
+  NEXT_PUBLIC_APP_TARGET: app,
+  NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE ?? "true",
+  // lib/push.ts registers for push only where it is configured; elsewhere it logs once and skips
+  // (register() without Firebase would crash the Android app).
+  NEXT_PUBLIC_PUSH_ANDROID: String(pushAndroid),
+  NEXT_PUBLIC_PUSH_IOS: String(pushIos),
+  NEXT_TELEMETRY_DISABLED: "1",
+};
+if (!pushAndroid) console.log(`(push) no ${googleServices}: the Android app is built without push (docs/push.md)`);
 // Webpack follows the node_modules junction; Turbopack refuses files outside the staging root.
 run("npx", ["next", "build", "--webpack"], { cwd: stage, env });
+}
 
 // ---- 2. Capacitor -----------------------------------------------------------------
 mkdirSync(project, { recursive: true });
-rmSync(join(project, "www"), { recursive: true, force: true });
-cpSync(join(stage, "out"), join(project, "www"), { recursive: true });
+if (exportWeb) {
+  rmSync(join(project, "www"), { recursive: true, force: true });
+  cpSync(join(stage, "out"), join(project, "www"), { recursive: true });
+} else if (!existsSync(join(project, "www"))) throw new Error(`--no-export needs a previous build in ${join(project, "www")}`);
 writeFileSync(
   join(project, "capacitor.config.json"),
   JSON.stringify(
@@ -115,8 +142,11 @@ writeFileSync(
       appId: APPS[app].id,
       appName: APPS[app].name,
       webDir: "www",
-      android: { allowMixedContent: false, captureInput: true },
-      plugins: {},
+      // Driver: the legacy bridge keeps background location updates flowing past ~5 minutes
+      // (@capacitor-community/background-geolocation README).
+      android: { allowMixedContent: false, captureInput: true, ...(app === "driver" ? { useLegacyBridge: true } : {}) },
+      ios: { contentInset: "automatic" },
+      plugins: { PushNotifications: { presentationOptions: ["badge", "sound", "alert"] } },
     },
     null,
     2,
@@ -128,9 +158,22 @@ const rootPkg = JSON.parse(readFileSync("package.json", "utf8"));
 const deps = { ...rootPkg.dependencies, ...rootPkg.devDependencies };
 const capDeps = Object.fromEntries(Object.entries(deps).filter(([k]) => k.startsWith("@capacitor")));
 writeFileSync(join(project, "package.json"), JSON.stringify({ name: `nama-${app}-android`, private: true, dependencies: capDeps }, null, 2) + "\n");
+if (platform === "ios") {
+  // Capacitor 8 generates iOS projects with Swift Package Manager: no CocoaPods needed to create
+  // or sync them, but building and signing needs Xcode on a Mac (docs/ios.md).
+  if (!existsSync(join(project, "ios"))) run("npx", ["cap", "add", "ios", "--packagemanager", "SPM"], { cwd: project });
+  run("npx", ["cap", "sync", "ios"], { cwd: project });
+  patchIos(join(project, "ios", "App", "App"));
+  console.log(`\niOS project: ${join(project, "ios", "App")} — open it in Xcode on a Mac to build and sign (docs/ios.md).`);
+  process.exit(0);
+}
 if (!existsSync(join(project, "android"))) run("npx", ["cap", "add", "android"], { cwd: project });
 run("npx", ["cap", "sync", "android"], { cwd: project });
 patchManifest(join(project, "android", "app", "src", "main", "AndroidManifest.xml"));
+// app/build.gradle applies the google-services plugin only when this file is there.
+const gsTarget = join(project, "android", "app", "google-services.json");
+if (pushAndroid) cpSync(googleServices, gsTarget);
+else rmSync(gsTarget, { force: true });
 
 // ---- 3. Gradle --------------------------------------------------------------------
 if (gradle) {
@@ -146,6 +189,105 @@ if (gradle) {
   const outApk = join("dist", `nama-${app}-debug.apk`);
   cpSync(apk, outApk);
   console.log(`\nAPK: ${resolve(outApk)}`);
+}
+
+// iOS: usage descriptions (English in Info.plist and en.lproj, Arabic in ar.lproj/InfoPlist.strings),
+// background modes (location for the driver's shift, remote notifications) and the AppDelegate
+// hooks @capacitor/push-notifications needs. Re-applied on every iOS build.
+function patchIos(dir) {
+  const driver = app === "driver";
+  const TEXT = {
+    NSCameraUsageDescription: driver
+      ? ["Take proof-of-delivery photos and photos of your documents.", "لالتقاط صور إثبات التسليم وصور مستنداتك."]
+      : ["Take a photo of your ID card and of problems with a delivery.", "لالتقاط صورة لبطاقة هويتك وللمشكلات في التوصيل."],
+    NSPhotoLibraryUsageDescription: driver
+      ? ["Choose proof-of-delivery and document photos from your library.", "لاختيار صور إثبات التسليم والمستندات من مكتبتك."]
+      : ["Choose a photo of your ID card or of a delivery problem.", "لاختيار صورة لبطاقة هويتك أو لمشكلة في التوصيل."],
+    NSPhotoLibraryAddUsageDescription: ["Save the photos you take in the app.", "لحفظ الصور التي تلتقطها في التطبيق."],
+    NSLocationWhenInUseUsageDescription: driver
+      ? ["Share your tanker's location with NWS and your customer while you're online.", "لمشاركة موقع صهريجك مع نماء وعميلك أثناء اتصالك."]
+      : ["Find your delivery location on the map.", "لتحديد موقع التوصيل على الخريطة."],
+    NSLocationAlwaysAndWhenInUseUsageDescription: driver
+      ? ["Keep sharing your location during a shift or a job while the app is in the background or the screen is off.", "لمواصلة مشاركة موقعك خلال المناوبة أو المهمة والتطبيق في الخلفية أو الشاشة مطفأة."]
+      : ["Find your delivery location on the map.", "لتحديد موقع التوصيل على الخريطة."],
+    NSUserNotificationsUsageDescription: driver
+      ? ["Tell you about new jobs, messages and permit updates.", "لإعلامك بالمهام الجديدة والرسائل وتحديثات التصاريح."]
+      : ["Tell you when your tanker is on the way, arrives and delivers.", "لإعلامك عندما يكون صهريجك في الطريق وعند وصوله وتسليمه."],
+  };
+  const NAME = { en: APPS[app].name, ar: driver ? "نماء للسائقين" : "نماء للصهاريج" };
+  const esc = (v) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+  const plistPath = join(dir, "Info.plist");
+  let plist = readFileSync(plistPath, "utf8");
+  const setKey = (key, value) => {
+    const old = new RegExp(`\\s*<key>${key}</key>\\s*(<string>[^<]*</string>|<array>[\\s\\S]*?</array>|<true/>|<false/>)`);
+    plist = plist.replace(old, "");
+    const end = plist.lastIndexOf("</dict>");
+    plist = `${plist.slice(0, end)}\t<key>${key}</key>\n\t${value}\n${plist.slice(end)}`;
+  };
+  for (const [k, [en]] of Object.entries(TEXT)) setKey(k, `<string>${esc(en)}</string>`);
+  setKey("CFBundleDisplayName", `<string>${esc(NAME.en)}</string>`);
+  setKey("CFBundleDevelopmentRegion", "<string>en</string>");
+  setKey("CFBundleLocalizations", "<array>\n\t\t<string>en</string>\n\t\t<string>ar</string>\n\t</array>");
+  const modes = ["remote-notification", ...(driver ? ["location"] : [])];
+  setKey("UIBackgroundModes", `<array>\n${modes.map((m) => `\t\t<string>${m}</string>`).join("\n")}\n\t</array>`);
+  writeFileSync(plistPath, plist);
+
+  for (const [lang, i] of [["en", 0], ["ar", 1]]) {
+    mkdirSync(join(dir, `${lang}.lproj`), { recursive: true });
+    const lines = [`"CFBundleDisplayName" = "${NAME[lang]}";`, ...Object.entries(TEXT).map(([k, v]) => `"${k}" = "${v[i].replace(/"/g, '\\"')}";`)];
+    writeFileSync(join(dir, `${lang}.lproj`, "InfoPlist.strings"), lines.join("\n") + "\n");
+  }
+
+  // Bundle the two InfoPlist.strings as one localized resource (a variant group in the Xcode project).
+  const pbxPath = join(dir, "..", "App.xcodeproj", "project.pbxproj");
+  if (existsSync(pbxPath)) {
+    let pbx = readFileSync(pbxPath, "utf8");
+    if (!pbx.includes("/* InfoPlist.strings */")) {
+      const ID = { group: "4E414D41000000000000A001", build: "4E414D41000000000000A002", en: "4E414D41000000000000A003", ar: "4E414D41000000000000A004" };
+      const add = (marker, text) => {
+        if (!pbx.includes(marker)) throw new Error(`project.pbxproj: "${marker}" not found`);
+        pbx = pbx.replace(marker, marker + text);
+      };
+      add("/* Begin PBXBuildFile section */\n", `\t\t${ID.build} /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = ${ID.group} /* InfoPlist.strings */; };\n`);
+      add(
+        "/* Begin PBXFileReference section */\n",
+        `\t\t${ID.en} /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };\n` +
+          `\t\t${ID.ar} /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/InfoPlist.strings; sourceTree = "<group>"; };\n`,
+      );
+      add(
+        "/* Begin PBXVariantGroup section */\n",
+        `\t\t${ID.group} /* InfoPlist.strings */ = {\n\t\t\tisa = PBXVariantGroup;\n\t\t\tchildren = (\n\t\t\t\t${ID.en} /* en */,\n\t\t\t\t${ID.ar} /* ar */,\n\t\t\t);\n\t\t\tname = InfoPlist.strings;\n\t\t\tsourceTree = "<group>";\n\t\t};\n`,
+      );
+      pbx = pbx.replace(/(\/\* App \*\/ = \{\s*isa = PBXGroup;\s*children = \(\n)/, `$1\t\t\t\t${ID.group} /* InfoPlist.strings */,\n`);
+      pbx = pbx.replace(/(\/\* Resources \*\/ = \{\s*isa = PBXResourcesBuildPhase;\s*buildActionMask = \d+;\s*files = \(\n)/, `$1\t\t\t\t${ID.build} /* InfoPlist.strings in Resources */,\n`);
+      if (!/knownRegions = \([^)]*\bar,/.test(pbx)) pbx = pbx.replace(/(knownRegions = \(\n)/, "$1\t\t\t\tar,\n");
+      writeFileSync(pbxPath, pbx);
+    }
+  }
+
+  // Push: hand the APNs token to @capacitor/push-notifications.
+  const delegatePath = join(dir, "AppDelegate.swift");
+  if (existsSync(delegatePath)) {
+    let swift = readFileSync(delegatePath, "utf8");
+    if (!swift.includes("capacitorDidRegisterForRemoteNotifications")) {
+      const end = swift.lastIndexOf("}");
+      swift = `${swift.slice(0, end).trimEnd()}
+
+    // @capacitor/push-notifications (added by scripts/build-mobile.mjs)
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+    }
+}
+`;
+      writeFileSync(delegatePath, swift);
+    }
+  }
+  if (existsSync(googleServicesPlist)) cpSync(googleServicesPlist, join(dir, "GoogleService-Info.plist"));
 }
 
 // Location (incl. background for the driver), camera and photos for proof of delivery

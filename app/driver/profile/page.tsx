@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
@@ -8,7 +9,8 @@ import { InvitationCards } from "@/components/driver/Invitations";
 import { permitState, usePermits } from "@/components/driver/permit";
 import { Sheet } from "@/components/driver/Sheet";
 import { useNow } from "@/components/driver/useNow";
-import { LangToggle, useT } from "@/lib/i18n";
+import { LESSONS } from "@/components/driver/training";
+import { LangToggle, useLang, useT } from "@/lib/i18n";
 import { initials } from "@/lib/format";
 import { SHIFT_KEYS, shiftHours, type Shift } from "@/lib/shifts";
 import { signOutApp } from "@/components/portal/session";
@@ -18,13 +20,13 @@ import type { Device, TankerDocument } from "@/lib/types";
 const DOC_KINDS = ["heavy_licence", "mulkiya", "tank_cleanliness", "rop_inspection", "insurance", "ivms_certificate", "water_test"] as const;
 type DocKind = (typeof DOC_KINDS)[number];
 type Avail = { weekday: number; available: boolean; shift: Shift };
-const TRAINING = ["train0", "train1", "train2", "train3"];
 const DAY = 86_400_000;
 
 export default function DriverProfile() {
   const router = useRouter();
-  const { profile, tanker, refreshTanker, prefs, savePrefs, toast } = useDriver();
+  const { profile, tanker, refreshTanker, training, toast } = useDriver();
   const t = useT(DICT);
+  const { lang } = useLang();
   const f = useFmt();
   const errText = useErrText();
   const now = useNow(60_000);
@@ -82,12 +84,6 @@ export default function DriverProfile() {
     setAvail((as) => [...as.filter((a) => a.weekday !== d), next]);
     const { error } = await supabase().rpc("set_availability", { p_weekday: d, p_available: next.available, p_shift: next.shift });
     if (error) toast(errText(error));
-  }
-
-  const watched = prefs.training ?? [];
-  async function watch(i: number) {
-    toast(t("trainingPlays"));
-    if (!watched.includes(i)) await savePrefs({ training: [...watched, i] });
   }
 
   async function signOut() {
@@ -226,12 +222,20 @@ export default function DriverProfile() {
         ))}
       <p className="mut small">{t("availNote", { day: f.d(shiftHours("day")), evening: f.d(shiftHours("evening")), night: f.d(shiftHours("night")) })}</p>
 
-      <h4 className="d-h4">{t("training")}</h4>
-      {TRAINING.map((k, i) => (
-        <button key={k} type="button" className="lrow" onClick={() => watch(i)}>
-          <span>{t(k)}</span>
-          {watched.includes(i) ? <span className="st ok">{t("watched")}</span> : <span className="st warn">{t("watch")}</span>}
-        </button>
+      <h4 className="d-h4" id="training">
+        {t("training")}
+      </h4>
+      <p className="mut small" style={{ margin: "0 0 4px" }}>
+        {training.complete ? t("trainingAll") : t("trainingProgress", { n: f.d(LESSONS.filter((l) => training.done.includes(l.key)).length), m: f.d(LESSONS.length) })}
+      </p>
+      {LESSONS.map((l) => (
+        <Link key={l.key} href={`/driver/training?lesson=${l.key}`} className="lrow">
+          <span>
+            {l.title[lang]}
+            <small>{t("trainingMin", { n: f.d(l.minutes) })}</small>
+          </span>
+          {training.done.includes(l.key) ? <span className="st ok">{t("trainingDone")}</span> : <span className="st warn">{t("trainingTodo")}</span>}
+        </Link>
       ))}
 
       <h4 className="d-h4">{t("language")}</h4>

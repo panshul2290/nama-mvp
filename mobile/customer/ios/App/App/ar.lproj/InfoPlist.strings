@@ -1,0 +1,7 @@
+"CFBundleDisplayName" = "نماء للصهاريج";
+"NSCameraUsageDescription" = "لالتقاط صورة لبطاقة هويتك وللمشكلات في التوصيل.";
+"NSPhotoLibraryUsageDescription" = "لاختيار صورة لبطاقة هويتك أو لمشكلة في التوصيل.";
+"NSPhotoLibraryAddUsageDescription" = "لحفظ الصور التي تلتقطها في التطبيق.";
+"NSLocationWhenInUseUsageDescription" = "لتحديد موقع التوصيل على الخريطة.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "لتحديد موقع التوصيل على الخريطة.";
+"NSUserNotificationsUsageDescription" = "لإعلامك عندما يكون صهريجك في الطريق وعند وصوله وتسليمه.";

@@ -135,3 +135,17 @@
 .d-last.new small { color: var(--link); }
 .d-notif .d-nt { flex: 1; min-width: 0; }
 .d-nicon { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--link); }
+
+/* Training (app/driver/training) */
+.tr-art { display: block; width: 100%; height: auto; margin: 4px 0 10px; }
+.tr-body p { margin: 0 0 10px; line-height: 1.5; }
+.tr-q { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 0 0 10px; }
+.tr-q legend { padding: 0 4px; }
+.tr-opt { display: flex; gap: 10px; align-items: flex-start; padding: 8px; border-radius: 8px; cursor: pointer; }
+.tr-opt input { margin-top: 3px; flex: none; }
+.tr-opt.on { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.tr-opt.ok { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.tr-opt.bad { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.tr-q:disabled .tr-opt { cursor: default; }
+.tr-q .okt { color: var(--ok); }
+.tr-q .badt { color: var(--bad); }

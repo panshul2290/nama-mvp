@@ -18,6 +18,7 @@ import { friendlyError } from "@/lib/errors";
 import { initials } from "@/lib/format";
 import { LangToggle, useT } from "@/lib/i18n";
 import { signOutApp } from "@/components/portal/session";
+import { askPush } from "@/lib/push";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Complaint, type DataRequest, type Profile, type Property } from "@/lib/types";
 
@@ -107,6 +108,8 @@ function Account() {
   }
 
   async function pref(p: Prefs) {
+    // Turning push on in the app asks the phone for permission (again, if refused before).
+    if (p.push) askPush(true).catch(() => undefined);
     const error = await setPref(p);
     if (error) toast.show(friendlyError(error));
   }

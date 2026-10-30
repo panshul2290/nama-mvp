@@ -1,0 +1,7 @@
+"CFBundleDisplayName" = "Nama Tanker";
+"NSCameraUsageDescription" = "Take a photo of your ID card and of problems with a delivery.";
+"NSPhotoLibraryUsageDescription" = "Choose a photo of your ID card or of a delivery problem.";
+"NSPhotoLibraryAddUsageDescription" = "Save the photos you take in the app.";
+"NSLocationWhenInUseUsageDescription" = "Find your delivery location on the map.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "Find your delivery location on the map.";
+"NSUserNotificationsUsageDescription" = "Tell you when your tanker is on the way, arrives and delivers.";

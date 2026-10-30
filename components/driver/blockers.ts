@@ -15,7 +15,9 @@ export type Blocker =
   | { kind: "permit_pending"; stage: number; stageKey: (typeof PERMIT_STAGES)[number]; info: string | null }
   | { kind: "permit_rejected"; reason: string | null }
   | { kind: "permit_expired"; expiredAt: string }
-  | { kind: "check" };
+  | { kind: "check" }
+  /** NWS requires the in-app training before going online (app_settings DRIVER_TRAINING_REQUIRED). */
+  | { kind: "training"; done: number; total: number };
 
 export function onlineBlockers(s: {
   blocked: boolean;
@@ -24,6 +26,8 @@ export function onlineBlockers(s: {
   /** null while the permits are loading (no permit blocker until known). */
   permit: PermitState | null;
   shiftChecked: boolean;
+  /** Set only when NWS requires the training: lessons passed out of the total. */
+  training?: { done: number; total: number } | null;
 }): Blocker[] {
   const out: Blocker[] = [];
   if (s.blocked) out.push({ kind: "blocked", reason: s.blockedReason?.trim() || null });
@@ -38,5 +42,6 @@ export function onlineBlockers(s: {
     else out.push({ kind: "permit_none", wrong: p.key === "wrong" });
   }
   if (!s.shiftChecked) out.push({ kind: "check" });
+  if (s.training && s.training.done < s.training.total) out.push({ kind: "training", ...s.training });
   return out;
 }

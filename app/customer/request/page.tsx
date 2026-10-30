@@ -19,6 +19,7 @@ import { errorCode, friendlyError } from "@/lib/errors";
 import { currentPosition, DEFAULT_CENTER, reverseGeocodeArea } from "@/lib/geo";
 import { ruleNumber, VOLUME_PRESETS, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
+import { inTestArea, useTestAreas } from "@/lib/testArea";
 import { ref, type LngLat, type Order } from "@/lib/types";
 
 const TYPES: ServiceType[] = ["DW", "WW", "TE"];
@@ -76,6 +77,19 @@ function RequestWizard() {
   const [area, setArea] = useState("");
   const areaTouched = useRef(false);
   const [address, setAddress] = useState("");
+
+  // Test zones: the device's own position, to warn when it and the delivery point are on
+  // different sides of a test zone (testers in India would never see an Oman order, and the other way round).
+  const testAreas = useTestAreas();
+  const [here, setHere] = useState<LngLat | null>(null);
+  useEffect(() => {
+    if (!testAreas.length) return;
+    let live = true;
+    currentPosition().then((p) => live && setHere(p));
+    return () => {
+      live = false;
+    };
+  }, [testAreas.length]);
 
   const prop = props && propChoice !== "pin" ? (props.find((p) => p.id === propChoice) ?? (propChoice === null ? props[0] : undefined)) : undefined;
   const pinMode = props !== null && !prop;
@@ -238,6 +252,20 @@ function RequestWizard() {
     }
     if (data.status === "cancelled" && data.payment_status === "failed") return setFailed(data);
     router.replace(`/customer/order?id=${data.id}`);
+  }
+
+  const dest = prop ? { lat: prop.lat, lng: prop.lng } : point;
+  const zoneMismatch = testAreas.length > 0 && here !== null ? (inTestArea(here, testAreas) === inTestArea(dest, testAreas) ? null : inTestArea(here, testAreas) ? "realDest" : "testDest") : null;
+  async function pickHere() {
+    if (!here) return;
+    areaTouched.current = true;
+    setPropChoice("pin");
+    setCenter(here);
+    setPoint(here);
+    const name = await reverseGeocodeArea(here);
+    setArea(name ?? "");
+    setAddress("");
+    if (!name) setStep(1); // the area name is needed: let the customer type it
   }
 
   const validGallons = Number.isInteger(gallons) && gallons >= 1 && gallons <= 20000;
@@ -528,6 +556,14 @@ function RequestWizard() {
                 sub={omannetCard ? `••${omannetCard.last4}` : t("omannetS")}
               />
             </div>
+            {zoneMismatch && (
+              <div className="banner" role="note">
+                {t(zoneMismatch === "realDest" ? "zoneRealDest" : "zoneTestDest")}{" "}
+                <button type="button" className="lk" onClick={pickHere}>
+                  {t("useHere")}
+                </button>
+              </div>
+            )}
             {walletShort && <div className="banner">{t("walletShort")}</div>}
             {error && (
               <div className="banner badb">

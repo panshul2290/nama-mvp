@@ -181,7 +181,7 @@ export default function JobsPage() {
         <>
           {tab === "open" && <h4 className="ch-sec">{offer ? t("otherJobs") : t("openJobs")}</h4>}
           {list.length === 0 ? (
-            <div className="empty">{!online || job ? t("jobsWhenOnline") : tab === "contracts" ? t("noContracts") : offer ? t("noOther") : t("noJobs")}</div>
+            <div className="empty">{!online || job ? t("jobsWhenOnline") : tab === "contracts" ? t("noContracts") : offer ? t("noOther") : tab === "open" && !hasFix ? t("gpsWaitT") : t("noJobs")}</div>
           ) : (
             list.map((r) => (
               <div key={r.id} className="dj-job">

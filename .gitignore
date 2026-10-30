@@ -66,3 +66,9 @@ next-env.d.ts
 /Logo/
 /NWS Tanker Platform Prototype.html
 /data-private/
+
+# Firebase / APNs app config for push (docs/push.md): kept out of the public repo
+/mobile/*/google-services.json
+/mobile/*/GoogleService-Info.plist
+/mobile/*/android/app/google-services.json
+/mobile/*/ios/App/App/GoogleService-Info.plist

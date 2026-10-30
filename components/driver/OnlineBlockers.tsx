@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
+import { LESSONS } from "./training";
 import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { onlineBlockers, PERMIT_STAGES, type Blocker } from "./blockers";
@@ -17,11 +18,12 @@ export const BLOCKERS_ID = "go-online-blockers";
 
 /** The tanker's permit state and what keeps the driver offline (empty: free to go online). */
 export function useOnlineBlockers() {
-  const { tanker, companySuspended, shiftChecked } = useDriver();
+  const { tanker, companySuspended, shiftChecked, training } = useDriver();
   const now = useNow(60_000);
   const { rows, reload } = usePermits(tanker.id);
   const permit = rows && now ? permitState(rows, tanker.service_type, now) : null;
-  const blockers = onlineBlockers({ blocked: Boolean(tanker.blocked), blockedReason: tanker.blocked_reason ?? null, companySuspended, permit, shiftChecked });
+  const req = training.required && training.loaded ? { done: LESSONS.filter((l) => training.done.includes(l.key)).length, total: LESSONS.length } : null;
+  const blockers = onlineBlockers({ blocked: Boolean(tanker.blocked), blockedReason: tanker.blocked_reason ?? null, companySuspended, permit, shiftChecked, training: req });
   return { permit, blockers, reloadPermits: reload };
 }
 
@@ -48,6 +50,8 @@ export function useBlockerTitle() {
           return t("blkExpiredT", { date: f.date(b.expiredAt) });
         case "check":
           return t("blkCheckT");
+        case "training":
+          return t("blkTrainingT", { n: f.d(b.done), m: f.d(b.total) });
       }
     },
     [t, f, tanker.service_type],
@@ -111,6 +115,7 @@ export function OnlineBlockers({ blockers, onApplied, checkHref }: { blockers: B
               )}
               {b.kind === "permit_expired" && t("blkExpiredS")}
               {b.kind === "check" && t("blkCheckS")}
+              {b.kind === "training" && t("blkTrainingS")}
             </span>
             {(b.kind === "permit_none" || b.kind === "permit_rejected" || b.kind === "permit_expired") && (
               <button
@@ -121,6 +126,11 @@ export function OnlineBlockers({ blockers, onApplied, checkHref }: { blockers: B
               >
                 {busy ? t("sending") : t(b.kind === "permit_none" ? "applyPermit" : b.kind === "permit_rejected" ? "resubmit" : "submitRenewal")}
               </button>
+            )}
+            {b.kind === "training" && (
+              <Link className="btn pri sm" style={{ marginTop: 6, display: "inline-block" }} href="/driver/training">
+                {t("startTraining")}
+              </Link>
             )}
             {b.kind === "check" && (
               <Link className="btn pri sm" style={{ marginTop: 6, display: "inline-block" }} href={checkHref}>

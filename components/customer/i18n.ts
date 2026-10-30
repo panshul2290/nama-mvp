@@ -453,6 +453,11 @@ export const CX: Dict = {
   updates: { en: "Updates", ar: "التحديثات" },
   reply: { en: "Add a reply", ar: "أضف رداً" },
 
+  // Test zone vs real address (request review step)
+  zoneRealDest: { en: "This address is in Oman — testers in India won’t see it. Use your current location to place a test order.", ar: "هذا العنوان في عُمان — لن يراه المختبرون في الهند. استخدم موقعك الحالي لإنشاء طلب تجريبي." },
+  zoneTestDest: { en: "This address is in the test zone — only testers will see it, not drivers in Oman. Use your current location for a real order.", ar: "هذا العنوان في منطقة الاختبار — سيراه المختبرون فقط وليس السائقين في عُمان. استخدم موقعك الحالي لطلب فعلي." },
+  useHere: { en: "Use my current location", ar: "استخدم موقعي الحالي" },
+
   // Smart recommendations (E11, lib/recommend.ts)
   recoT: { en: "Recommended for you", ar: "موصى به لك" },
   recoUse: { en: "Use this", ar: "استخدم هذا" },

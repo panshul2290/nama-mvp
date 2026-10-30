@@ -18,13 +18,13 @@
     "db:apply": "node --env-file-if-exists=.env.local scripts/apply-migration.mjs",
     "test:db:supabase": "tsx --env-file-if-exists=.env.local supabase/tests/run.ts supabase",
     "evidence": "node --env-file-if-exists=.env.local scripts/evidence.mjs",
-    "test:unit": "tsx tests/unit/tracking.test.ts && tsx tests/unit/privacy.test.ts && tsx tests/unit/phone.test.ts && tsx tests/unit/legs.test.ts && tsx tests/unit/apps.test.ts && tsx tests/unit/time.test.ts && tsx tests/unit/recommend.test.ts",
+    "test:unit": "tsx tests/unit/tracking.test.ts && tsx tests/unit/privacy.test.ts && tsx tests/unit/phone.test.ts && tsx tests/unit/legs.test.ts && tsx tests/unit/apps.test.ts && tsx tests/unit/time.test.ts && tsx tests/unit/recommend.test.ts && tsx tests/unit/training.test.ts",
     "verify:seed": "tsx scripts/verify-demo-seed.mts",
     "build:apk:customer": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs customer",
     "build:apk:driver": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs driver"
   },
   "dependencies": {
-    "@capacitor-community/background-geolocation": "1.2.26",
+    "@capacitor-community/background-geolocation": "1.3.1",
     "@capacitor/camera": "8.2.5",
     "@capacitor/core": "8.5.3",
     "@capacitor/push-notifications": "8.1.3",
