@@ -1,31 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { STAGE_LABEL, tankerPermit, useFleet } from "@/components/company/CompanyContext";
+import Link from "next/link";
+import { useCallback, useState } from "react";
+import { STAGE_LABEL, tankerPermit, useFleet, type FPermit } from "@/components/company/CompanyContext";
 import { TypeTag } from "@/components/OrderBits";
-import { St, daysUntil, fmtDate, useAction } from "@/components/portal/kit";
+import { Dialog, St, daysUntil, fmtDate, fmtDateTime, useAction, useLive } from "@/components/portal/kit";
 import { supabase } from "@/lib/supabase/client";
 import type { Inspection } from "@/lib/types";
 
 const STAGES = ["submitted", "documents", "inspection", "decision"] as const;
 
 export default function CompanyPermits() {
-  const fleet = useFleet("permits", ["inspections"]);
+  const fleet = useFleet("permits");
   const { busy, run } = useAction();
   const [inspections, setInspections] = useState<Inspection[]>([]);
+  const [answering, setAnswering] = useState<FPermit | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    supabase()
+  const loadInspections = useCallback(async () => {
+    const { data } = await supabase()
       .from("inspections")
       .select("id, tanker_id, permit_id, inspector_id, result, notes, checklist, scheduled_for, created_at")
       .order("created_at", { ascending: false })
-      .limit(50)
-      .then(({ data }) => !cancelled && setInspections((data ?? []) as Inspection[]));
-    return () => {
-      cancelled = true;
-    };
-  }, [fleet.permits.length]);
+      .limit(50);
+    setInspections((data ?? []) as Inspection[]);
+  }, []);
+  useLive("company-inspections", ["inspections"], loadInspections, 60_000);
 
   const plate = (id: string) => fleet.tankers.find((t) => t.id === id)?.plate ?? "—";
 
@@ -64,14 +63,20 @@ export default function CompanyPermits() {
                     <td>
                       {pending ? (
                         <>
-                          <St tone="act">{STAGE_LABEL[pending.stage] ?? pending.stage}</St>
+                          {pending.info_requested ? <St tone="warn">Info requested</St> : <St tone="act">{STAGE_LABEL[pending.stage] ?? pending.stage}</St>}
                           {pending.info_requested && <small className="docmeta">NWS asks: {pending.info_requested}</small>}
+                          {!pending.info_requested && pending.info_response && <small className="docmeta">You replied {fmtDate(pending.info_responded_at)}</small>}
                         </>
                       ) : (
                         <span className="mut">—</span>
                       )}
                     </td>
                     <td className="num">
+                      {pending?.info_requested ? (
+                        <button className="btn sm pri" onClick={() => setAnswering(pending)}>
+                          Reply to NWS
+                        </button>
+                      ) : (
                       <button
                         className={`btn sm ${p.tone === "bad" || p.tone === "warn" ? "pri" : ""}`}
                         disabled={!!pending || busy === t.id}
@@ -80,6 +85,7 @@ export default function CompanyPermits() {
                       >
                         {busy === t.id ? "Sending…" : p.valid && p.tone === "ok" ? "Apply for renewal" : p.text === "No permit" ? "Apply for permit" : "Apply for renewal"}
                       </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -135,7 +141,7 @@ export default function CompanyPermits() {
                     </td>
                     <td>
                       {p.status === "pending" ? (
-                        <St tone="act">In review</St>
+                        <St tone={p.info_requested ? "warn" : "act"}>{p.info_requested ? "Info requested" : "In review"}</St>
                       ) : p.status === "approved" ? (
                         <St tone={expired ? "bad" : "ok"}>{expired ? "Expired" : "Issued"}</St>
                       ) : p.status === "rejected" ? (
@@ -147,8 +153,9 @@ export default function CompanyPermits() {
                     <td>{p.status === "approved" || p.status === "expired" ? fmtDate(p.expires_at) : "—"}</td>
                     <td style={{ maxWidth: 320 }}>
                       {p.info_requested && <b style={{ color: "var(--warn)" }}>Information requested: {p.info_requested}</b>}
+                      {!p.info_requested && p.info_response && <small className="docmeta">Your reply ({fmtDateTime(p.info_responded_at)}): {p.info_response}</small>}
                       {p.reason && <small className="docmeta">{p.reason}</small>}
-                      {!p.info_requested && !p.reason && <span className="mut">—</span>}
+                      {!p.info_requested && !p.reason && !p.info_response && <span className="mut">—</span>}
                     </td>
                   </tr>
                 );
@@ -164,9 +171,21 @@ export default function CompanyPermits() {
           </table>
         </div>
         <p className="note">
-          Stages: submitted → document check → inspection → decision. When NWS requests information, upload the missing document in Compliance; the permits team is notified automatically.
+          Stages: submitted → document check → inspection → decision. When NWS asks for information, upload any document it needs in <Link className="lk" href="/company/compliance">Compliance</Link>, then use “Reply to NWS” so the permits team sees your answer. You get a notification at each decision.
         </p>
       </div>
+
+      {answering && (
+        <ReplyDialog
+          permit={answering}
+          plate={plate(answering.tanker_id)}
+          onClose={() => setAnswering(null)}
+          onDone={() => {
+            setAnswering(null);
+            fleet.reload();
+          }}
+        />
+      )}
 
       {inspections.length > 0 && (
         <div className="panel">
@@ -198,5 +217,34 @@ export default function CompanyPermits() {
         </div>
       )}
     </>
+  );
+}
+
+/** Answer NWS's information request (permit_respond, 0023): clears the request and shows the answer to the permits team. */
+function ReplyDialog({ permit, plate, onClose, onDone }: { permit: FPermit; plate: string; onClose: () => void; onDone: () => void }) {
+  const { busy, run } = useAction();
+  const [text, setText] = useState("");
+  return (
+    <Dialog title={`Reply to NWS — ${permit.permit_no}`} body={`NWS asks about ${plate}: “${permit.info_requested}”`} onClose={onClose}>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          await run("reply", () => supabase().rpc("permit_respond", { p_permit_id: permit.id, p_note: text.trim() }), "Reply sent to the NWS permits team", onDone);
+        }}
+      >
+        <div className="fld">
+          <label htmlFor="pr-reply">Your answer</label>
+          <textarea id="pr-reply" className="in" rows={4} maxLength={1000} required minLength={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. The new insurance policy is uploaded in Compliance." autoFocus />
+        </div>
+        <div className="btns" style={{ justifyContent: "flex-end" }}>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn pri" disabled={busy === "reply" || text.trim().length < 3}>
+            {busy === "reply" ? "Sending…" : "Send reply"}
+          </button>
+        </div>
+      </form>
+    </Dialog>
   );
 }

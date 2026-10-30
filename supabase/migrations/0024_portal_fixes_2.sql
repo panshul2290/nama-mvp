@@ -73,3 +73,25 @@ begin
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $$;
+
+-- ===========================================================================
+-- Company portal: a rejected document keeps NWS's reason, so the owner sees why
+-- ===========================================================================
+alter table public.tanker_documents add column review_note text check (char_length(review_note) <= 500);
+
+create or replace function public.staff_review_document(p_document_id uuid, p_approve boolean, p_reason text default null)
+returns public.tanker_documents
+language plpgsql security definer set search_path = public
+as $$
+declare b public.tanker_documents; a public.tanker_documents; r text;
+begin
+  perform public.require_staff(array['permit_officer', 'inspector']::public.staff_role[]);
+  r := case when p_approve then nullif(btrim(coalesce(p_reason, '')), '') else public.require_reason(p_reason) end;
+  select * into b from public.tanker_documents where id = p_document_id for update;
+  if not found then raise exception 'not_found'; end if;
+  update public.tanker_documents set status = case when p_approve then 'valid' else 'rejected' end,
+                                     review_note = case when p_approve then null else left(r, 500) end
+   where id = b.id returning * into a;
+  perform public.write_audit('document.' || case when p_approve then 'approve' else 'reject' end, 'document', b.id::text, to_jsonb(b), to_jsonb(a), r);
+  return a;
+end $$;

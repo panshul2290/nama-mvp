@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DOC_KINDS, DOC_LABEL, currentDoc, useCompany, useFleet } from "@/components/company/CompanyContext";
+import { DOC_KINDS, DOC_LABEL, currentDoc, rejectedDoc, useCompany, useFleet } from "@/components/company/CompanyContext";
 import { Dialog, St, daysUntil, fmtDate, fmtShort, useAction } from "@/components/portal/kit";
 import { supabase } from "@/lib/supabase/client";
 import type { TankerDocument } from "@/lib/types";
 
 type Target = { kind: string; tankerId?: string; driverId?: string; label: string };
 
-function cell(doc: TankerDocument | null): [string, "ok" | "warn" | "bad" | "act" | ""] {
+function cell(doc: TankerDocument | null, rejected: TankerDocument | null = null): [string, "ok" | "warn" | "bad" | "act" | ""] {
+  // The newest upload was rejected: the owner must upload again, whatever older document is on file.
+  if (rejected) return ["Rejected — re-upload", "bad"];
   if (!doc) return ["Missing", "bad"];
   const n = daysUntil(doc.valid_to);
   if (n < 0) return ["Expired", "bad"];
@@ -68,17 +70,19 @@ export default function CompanyCompliance() {
                         </td>
                       );
                     const doc = currentDoc(fleet.docs, d.kind, { tanker: t.id });
-                    const [s, tone] = cell(doc);
+                    const rej = rejectedDoc(fleet.docs, d.kind, { tanker: t.id });
+                    const [s, tone] = cell(doc, rej);
                     const lab = d.kind === "water_test" ? tests[t.id] : undefined;
                     return (
                       <td key={d.kind}>
                         <button
                           className="cellbtn"
-                          title={doc ? `${doc.ref_no || "No reference"} · valid to ${fmtDate(doc.valid_to)}` : `Upload ${d.label}`}
+                          title={rej ? `Rejected by NWS${rej.review_note ? `: ${rej.review_note}` : ""}. Upload a corrected document.` : doc ? `${doc.ref_no || "No reference"} · valid to ${fmtDate(doc.valid_to)}` : `Upload ${d.label}`}
                           onClick={() => setTarget({ kind: d.kind, tankerId: t.id, label: `${d.label} · ${t.plate}` })}
                         >
                           <St tone={tone}>{s}</St>
                         </button>
+                        {rej?.review_note && <small className="docmeta" style={{ color: "var(--bad)" }}>{rej.review_note}</small>}
                         {lab && <small className="docmeta">Lab {lab.passed ? "pass" : "FAIL"} · {fmtShort(lab.tested_at)}</small>}
                       </td>
                     );
@@ -114,7 +118,8 @@ export default function CompanyCompliance() {
             <tbody>
               {fleet.drivers.map((d) => {
                 const doc = currentDoc(fleet.docs, "heavy_licence", { driver: d.id });
-                const [s, tone] = cell(doc);
+                const rej = rejectedDoc(fleet.docs, "heavy_licence", { driver: d.id });
+                const [s, tone] = cell(doc, rej);
                 return (
                   <tr key={d.id}>
                     <td>{d.full_name}</td>

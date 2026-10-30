@@ -69,7 +69,16 @@ export type FTanker = {
 };
 export type FDriver = { id: string; full_name: string; phone: string | null; role: string; created_at: string };
 export type FAssignment = { id: string; tanker_id: string; driver_id: string; assigned_at: string; unassigned_at: string | null };
-export type FPermit = Permit & { tanker_id: string; stage: "submitted" | "documents" | "inspection" | "decision"; info_requested: string | null; reason: string | null; created_at: string };
+export type FPermit = Permit & {
+  tanker_id: string; stage: "submitted" | "documents" | "inspection" | "decision"; info_requested: string | null; reason: string | null; created_at: string;
+  info_response: string | null; info_responded_at: string | null;
+};
+/** A contract with who it is for (RLS: owners read the customer, organisation and site of their own contracts). */
+export type FContract = Contract & {
+  customer: { full_name: string } | null; org: { name: string } | null; property: { label: string; area: string } | null;
+};
+export const contractCustomer = (c: FContract) => c.org?.name ?? (c.customer?.full_name || (c.org_id ? "Business account" : "Household"));
+export const contractSite = (c: FContract) => (c.property ? [c.property.label, c.property.area].filter(Boolean).join(" · ") : "");
 export type FOrder = {
   id: string; order_no: number; status: string; service_type: ServiceType; gallons: number; area: string; tanker_id: string | null; driver_id: string | null;
   driver_name: string | null; tanker_plate: string | null; created_at: string; released_at: string | null; accepted_at: string | null;
@@ -86,7 +95,7 @@ export type Fleet = {
   devices: Device[];
   docs: TankerDocument[];
   alerts: Alert[];
-  contracts: Contract[];
+  contracts: FContract[];
   loaded: boolean;
 };
 
@@ -104,11 +113,11 @@ export function useFleet(key: string, extraTables: string[] = []) {
       db.from("tankers").select("id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_seen_at, location_age_s, created_at").eq("company_id", company.id).order("plate"),
       db.from("profiles").select("id, full_name, phone, role, created_at").eq("company_id", company.id).eq("role", "driver").order("full_name"),
       db.from("tanker_assignments").select("id, tanker_id, driver_id, assigned_at, unassigned_at").is("unassigned_at", null),
-      db.from("permits").select("id, tanker_id, permit_no, type, status, issued_at, expires_at, stage, info_requested, reason, created_at").order("created_at", { ascending: false }),
+      db.from("permits").select("id, tanker_id, permit_no, type, status, issued_at, expires_at, stage, info_requested, info_response, info_responded_at, reason, created_at").order("created_at", { ascending: false }),
       db.from("devices").select("id, tanker_id, firmware, sensors, installed_at"),
-      db.from("tanker_documents").select("id, tanker_id, driver_id, kind, ref_no, valid_to, file_path, status, uploaded_at").order("valid_to", { ascending: false }),
+      db.from("tanker_documents").select("id, tanker_id, driver_id, kind, ref_no, valid_to, file_path, status, uploaded_at, review_note").order("valid_to", { ascending: false }),
       db.from("alerts").select("id, tanker_id, order_id, type, severity, message, lat, lng, state, created_at, acted_at, action_note").neq("state", "resolved").order("created_at", { ascending: false }).limit(50),
-      db.from("contracts").select("*").eq("company_id", company.id).order("created_at", { ascending: false }),
+      db.from("contracts").select("*, customer:profiles(full_name), org:organizations(name), property:properties(label, area)").eq("company_id", company.id).order("created_at", { ascending: false }),
     ]);
     // A failed query keeps what was loaded before instead of showing an empty fleet.
     const failed = [t, d, a, p, dv, doc, al, c].find((r) => r.error)?.error;
@@ -121,7 +130,7 @@ export function useFleet(key: string, extraTables: string[] = []) {
       devices: dv.error ? prev.devices : ((dv.data ?? []) as Device[]),
       docs: doc.error ? prev.docs : ((doc.data ?? []) as TankerDocument[]),
       alerts: al.error ? prev.alerts : ((al.data ?? []) as Alert[]),
-      contracts: c.error ? prev.contracts : ((c.data ?? []) as Contract[]),
+      contracts: c.error ? prev.contracts : ((c.data ?? []) as unknown as FContract[]),
       loaded: true,
     }));
   }, [company.id, issue]);
@@ -144,8 +153,9 @@ export function tankerPermit(t: FTanker, permits: FPermit[]) {
   return permitSummary({ service_type: t.service_type, permits: permits.filter((p) => p.tanker_id === t.id) });
 }
 
-/** One-word fleet status, as in the prototype's Tankers table. */
-export function tankerStatus(t: FTanker, permits: FPermit[]): [string, "ok" | "warn" | "bad" | ""] {
+/** One-word fleet status, as in the prototype's Tankers table. A suspended company's tankers can't work. */
+export function tankerStatus(t: FTanker, permits: FPermit[], suspended = false): [string, "ok" | "warn" | "bad" | ""] {
+  if (suspended) return ["Company suspended", "bad"];
   if (t.blocked) return ["Blocked", "bad"];
   const p = tankerPermit(t, permits);
   if (!p.valid) return [p.text === "Pending review" ? "Pending permit" : "No valid permit", p.text === "Pending review" ? "warn" : "bad"];
@@ -161,6 +171,15 @@ export const DOC_KINDS = [
   { kind: "water_test", label: "Water test" },
 ] as const;
 export const DOC_LABEL: Record<string, string> = { ...Object.fromEntries(DOC_KINDS.map((d) => [d.kind, d.label])), heavy_licence: "Heavy vehicle licence" };
+
+/**
+ * A rejected upload that is newer than the document that counts (so the owner sees "Rejected — re-upload"
+ * with NWS's reason instead of the older document silently taking its place).
+ */
+export function rejectedDoc(docs: TankerDocument[], kind: string, by: { tanker?: string; driver?: string }) {
+  const mine = docs.filter((d) => d.kind === kind && (by.tanker ? d.tanker_id === by.tanker : d.driver_id === by.driver)).sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
+  return mine[0]?.status === "rejected" ? mine[0] : null;
+}
 
 /** The document that counts for a tanker/driver and kind: newest not-rejected one. */
 export function currentDoc(docs: TankerDocument[], kind: string, by: { tanker?: string; driver?: string }) {
@@ -192,6 +211,34 @@ const capped = (what: string, shown: number, total: number | null, days: number)
   total != null && total > shown
     ? { tone: "info", text: `Showing the latest ${shown.toLocaleString("en-GB")} of ${total.toLocaleString("en-GB")} ${what} from the last ${days} days — totals on this page cover only those.` }
     : null;
+
+/**
+ * Deliveries generated from the company's accepted contracts that no driver has taken yet
+ * (RLS: orders_owner_contract, 0023). They are offered first to the company's tankers.
+ */
+export function useContractDeliveries(key: string) {
+  const [orders, setOrders] = useState<FOrder[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const issue = useIssue(`contract-orders-${key}`);
+  const load = useCallback(async () => {
+    const { data, error } = await supabase()
+      .from("orders")
+      .select(ORDER_COLS)
+      .not("contract_id", "is", null)
+      .is("tanker_id", null)
+      .in("status", ["scheduled", "requested"])
+      .order("slot_start", { ascending: true })
+      .limit(200);
+    if (error) issue(loadFailed("contract deliveries", error.message));
+    else {
+      issue(null);
+      setOrders((data ?? []) as FOrder[]);
+    }
+    setLoaded(true);
+  }, [issue]);
+  useLive(`contract-orders-${key}`, ["orders", "contracts"], load, 60_000);
+  return { orders, loaded };
+}
 
 /** Jobs served by the company's tankers since `days` ago (RLS: orders_owner). */
 export function useCompanyOrders(key: string, days = 30) {

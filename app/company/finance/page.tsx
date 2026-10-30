@@ -31,14 +31,14 @@ export default function CompanyFinance() {
   const { company, reloadCompany } = useCompany();
   const fleet = useFleet("finance");
   const { tx } = useCompanyTx("finance", 90);
-  const [penalties, setPenalties] = useState<(Penalty & { label: string })[]>([]);
+  const [penalties, setPenalties] = useState<(Penalty & { label: string; order?: { order_no: number } | null })[]>([]);
   const [topup, setTopup] = useState(false);
   const [dispute, setDispute] = useState<(Penalty & { label: string }) | null>(null);
 
   const loadPenalties = useCallback(async () => {
     const db = supabase();
     const [p, r] = await Promise.all([
-      db.from("penalties").select("*").eq("company_id", company.id).order("created_at", { ascending: false }).limit(100),
+      db.from("penalties").select("*, order:orders(order_no)").eq("company_id", company.id).order("created_at", { ascending: false }).limit(100),
       db.from("penalty_rules").select("code, label"),
     ]);
     const labels = Object.fromEntries((r.data ?? []).map((x: { code: string; label: string }) => [x.code, x.label]));
@@ -179,6 +179,7 @@ export default function CompanyFinance() {
                     <td className="tk-plate">{plate(p.tanker_id) || "—"}</td>
                     <td style={{ maxWidth: 300 }}>
                       {p.reason}
+                      {p.order && <small className="docmeta">Order {ref.order(p.order.order_no)}</small>}
                       {p.dispute_text && <small className="docmeta">Your dispute: {p.dispute_text}</small>}
                     </td>
                     <td>{fmtDate(p.created_at)}</td>
@@ -301,7 +302,7 @@ function Dispute({ penalty, onClose, onDone }: { penalty: Penalty & { label: str
   const { busy, run } = useAction();
   const [text, setText] = useState("");
   return (
-    <Dialog title={`Dispute ${ref.penalty(penalty.penalty_no)}`} body={`${penalty.label} — ${omr(penalty.amount)}. NWS reviews your explanation and evidence; the amount is refunded if the penalty is cancelled.`} onClose={onClose}>
+    <Dialog title={`Dispute ${ref.penalty(penalty.penalty_no)}`} body={`${penalty.label} — ${omr(penalty.amount)}. NWS reviews your explanation (describe any evidence, such as IVMS logs or photos, and how to get it); the amount is refunded if the penalty is cancelled.`} onClose={onClose}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();

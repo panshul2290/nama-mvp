@@ -4,6 +4,7 @@ import { useState } from "react";
 import { currentDoc, tankerOf, useCompany, useCompanyOrders, useFleet } from "@/components/company/CompanyContext";
 import { isOnTime } from "@/lib/sla";
 import { Dialog, St, daysUntil, fmtDate, useAction } from "@/components/portal/kit";
+import { SERVICE_SHORT } from "@/components/OrderBits";
 import { useSentInvitations } from "@/components/useInvitations";
 import { formatPhone } from "@/lib/phone";
 import { supabase } from "@/lib/supabase/client";
@@ -71,7 +72,7 @@ export default function CompanyDrivers() {
                         const other = fleet.assignments.find((a) => a.tanker_id === t.id && a.driver_id !== d.id);
                         return (
                           <option key={t.id} value={t.id}>
-                            {t.plate} · {t.service_type}
+                            {t.plate} · {SERVICE_SHORT[t.service_type]}
                             {other ? ` (replaces ${fleet.drivers.find((x) => x.id === other.driver_id)?.full_name ?? "driver"})` : ""}
                           </option>
                         );
@@ -130,6 +131,28 @@ export default function CompanyDrivers() {
                         Revoke
                       </button>
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {sent.recent.length > 0 && (
+        <>
+          <h2 style={{ paddingTop: 12 }}>
+            Recent answers <small>last 14 days</small>
+          </h2>
+          <div className="tblwrap">
+            <table>
+              <tbody>
+                {sent.recent.map((i) => (
+                  <tr key={i.id}>
+                    <td dir="ltr">{i.phone ? formatPhone(i.phone) : i.email}</td>
+                    <td>
+                      <St tone={i.status === "accepted" ? "ok" : "bad"}>{i.status === "accepted" ? "Joined your company" : "Declined"}</St>
+                    </td>
+                    <td>{fmtDate(i.decided_at)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -39,4 +39,18 @@ export async function portal2Suite(t: Target, r: Reporter) {
   const cs = await one<{ customers: number; sharing: number }>(VW.id, "select * from staff_consent_stats()");
   r.check("consent stats count customers and those sharing usage data", cs.customers >= 1 && cs.sharing >= 1 && cs.sharing <= cs.customers, cs);
   await r.denies("customers can't read consent stats", () => one(C1.id, "select * from staff_consent_stats()"), "not_staff");
+
+  // ---- company portal: a rejected document keeps the reason --------------------------------------
+  const PO = await mkStaff("p2-po", "permit_officer");
+  const OW = await t.createUser("p2-ow", { role: "owner" as never, full_name: "Test P2 Owner" });
+  const comp = await one<Row>(OW.id, "select * from owner_register_company('TST P2 Owner Co', $1, '+968 9000 0002', 'Bank Muscat', 'OM12 TEST 0002')", [`TSTR${t.runId.slice(-5)}`]);
+  await one(AD.id, "select staff_company_action($1, 'activate', 'TEST documents checked')", [comp.id]);
+  const tk = await one<{ id: string }>(OW.id, "select * from owner_register_tanker($1, 'DW', 4000)", [`TSTP2${t.runId.slice(-4)}`]);
+  const [doc] = await t.admin<{ id: string }>("insert into tanker_documents (tanker_id, kind, ref_no, valid_to, status) values ($1, 'insurance', 'TEST', current_date + 200, 'pending_review') returning id", [tk.id]);
+  await r.denies("rejecting a document needs a reason", () => one(PO.id, "select * from staff_review_document($1, false, null)", [doc.id]), "reason_required");
+  await one(PO.id, "select * from staff_review_document($1, false, 'TEST policy number unreadable')", [doc.id]);
+  const seen = await one<{ status: string; review_note: string | null }>(OW.id, "select status, review_note from tanker_documents where id = $1", [doc.id]);
+  r.check("the owner sees the rejection and NWS's reason", seen?.status === "rejected" && seen.review_note === "TEST policy number unreadable", seen);
+  const ok = await one<{ status: string; review_note: string | null }>(PO.id, "select * from staff_review_document($1, true, null)", [doc.id]);
+  r.check("approving clears the reason", ok.status === "valid" && ok.review_note === null, ok);
 }

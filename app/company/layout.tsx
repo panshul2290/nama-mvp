@@ -4,6 +4,7 @@ import "./company.css";
 import { useCallback, useEffect, useState } from "react";
 import { CompanyIssues, CompanyProvider, type OwnerCompany } from "@/components/company/CompanyContext";
 import { RegisterCompany } from "@/components/company/RegisterCompany";
+import { useLive } from "@/components/portal/kit";
 import { PortalLoading, PortalShell, usePortalProfile, type PortalTab } from "@/components/portal/PortalShell";
 import { supabase } from "@/lib/supabase/client";
 
@@ -41,6 +42,13 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
     const t = setTimeout(loadCompany, 0);
     return () => clearTimeout(t);
   }, [profile, loadCompany]);
+  // A new contract offer (or a decision) updates the badge on "Jobs and contracts".
+  const loadOffers = useCallback(async () => {
+    if (!company) return;
+    const { count } = await supabase().from("contracts").select("id", { count: "exact", head: true }).eq("status", "pending_owner");
+    setOffers(count ?? 0);
+  }, [company]);
+  useLive("company-offers", ["contracts"], loadOffers, 60_000);
 
   if (!profile || company === undefined) return <PortalLoading />;
   const who = `Signed in as ${profile.full_name || "owner"}${company ? ` · ${company.name}` : ""}`;

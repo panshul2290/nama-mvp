@@ -220,7 +220,12 @@ export type PenaltyRule = { code: string; label: string; party: "driver" | "cust
 export type Notification = { id: number; user_id: string; event: string; channels: string[]; title: string; body: string; order_id: string | null; created_at: string; read_at: string | null };
 export type NotificationTemplate = { event: string; label: string; audience: string; title_en: string; body_en: string; title_ar: string; body_ar: string; push: boolean; sms: boolean; whatsapp: boolean };
 export type Invoice = { id: string; invoice_no: number; org_id: string; period_start: string; period_end: string; orders: number; subtotal: string; vat: string; total: string; status: "issued" | "paid" | "overdue"; issued_at: string; due_at: string; paid_at: string | null };
-export type TankerDocument = { id: string; tanker_id: string | null; driver_id: string | null; kind: string; ref_no: string; valid_to: string; file_path: string | null; status: "valid" | "pending_review" | "rejected"; uploaded_at: string };
+export type TankerDocument = {
+  id: string; tanker_id: string | null; driver_id: string | null; kind: string; ref_no: string; valid_to: string; file_path: string | null;
+  status: "valid" | "pending_review" | "rejected"; uploaded_at: string;
+  /** NWS's reason when the document was rejected (0024). */
+  review_note?: string | null;
+};
 export type WaterTest = { id: string; tanker_id: string; cert_no: string; tested_at: string; chlorine: string; turbidity: string; tds: number; ph: string; ecoli: string; coliforms: string; passed: boolean };
 export type Device = { id: string; tanker_id: string | null; firmware: string; sensors: Record<string, boolean>; installed_at: string };
 export type Incident = { id: string; inc_no: number; priority: "P1" | "P2" | "P3" | "P4"; title: string; system: string; state: "open" | "acknowledged" | "resolved"; owner: string; notes: string; opened_at: string; acknowledged_at: string | null; resolved_at: string | null };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { driverOf, tankerPermit, tankerStatus, useFleet } from "@/components/company/CompanyContext";
+import { driverOf, tankerPermit, tankerStatus, useCompany, useFleet } from "@/components/company/CompanyContext";
 import { TypeTag } from "@/components/OrderBits";
 import { Dialog, St, fmtDate, useAction } from "@/components/portal/kit";
 import { agoText } from "@/lib/gps";
@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase/client";
 
 export default function CompanyTankers() {
   const fleet = useFleet("tankers");
+  const { company } = useCompany();
   const [adding, setAdding] = useState(false);
 
   return (
@@ -40,7 +41,7 @@ export default function CompanyTankers() {
             {fleet.tankers.map((t) => {
               const p = tankerPermit(t, fleet.permits);
               const dev = fleet.devices.find((d) => d.tanker_id === t.id);
-              const [s, tone] = tankerStatus(t, fleet.permits);
+              const [s, tone] = tankerStatus(t, fleet.permits, company.status === "suspended");
               const open = fleet.alerts.filter((a) => a.tanker_id === t.id && a.state === "open");
               return (
                 <tr key={t.id}>
@@ -96,16 +97,22 @@ function RegisterTanker({ onClose, onDone }: { onClose: () => void; onDone: () =
   const [plate, setPlate] = useState("");
   const [type, setType] = useState<ServiceType>("DW");
   const [cap, setCap] = useState(5000);
+  const [apply, setApply] = useState(true);
 
   return (
-    <Dialog title="Register tanker" body="An IVMS device is provisioned automatically. Apply for an NWS permit from the Permits tab once the documents are uploaded." onClose={onClose}>
+    <Dialog title="Register tanker" body="An IVMS device is provisioned automatically. NWS checks the documents you upload in Compliance before it inspects the tanker." onClose={onClose}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
           await run(
             "add",
-            () => supabase().rpc("owner_register_tanker", { p_plate: plate.trim(), p_service_type: type, p_capacity_gal: cap }),
-            `${plate.trim().toUpperCase()} registered`,
+            // Register, then (prototype: "Register and apply for permit") send the permit application.
+            async () => {
+              const reg = await supabase().rpc("owner_register_tanker", { p_plate: plate.trim(), p_service_type: type, p_capacity_gal: cap });
+              if (reg.error || !apply) return reg;
+              return supabase().rpc("apply_permit", { p_tanker_id: (reg.data as { id: string }).id });
+            },
+            `${plate.trim().toUpperCase()} registered${apply ? " — permit application sent to NWS" : ""}`,
             () => {
               onDone();
               onClose();
@@ -131,12 +138,15 @@ function RegisterTanker({ onClose, onDone }: { onClose: () => void; onDone: () =
           <label htmlFor="tkC">Tank capacity (gallons)</label>
           <input id="tkC" className="in" type="number" min={100} max={20000} step={100} required value={cap} onChange={(e) => setCap(Number(e.target.value))} />
         </div>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, margin: "0 0 12px" }}>
+          <input type="checkbox" checked={apply} onChange={(e) => setApply(e.target.checked)} /> Apply for the NWS permit now
+        </label>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
           <button className="btn pri" disabled={busy === "add"}>
-            {busy === "add" ? "Registering…" : "Register tanker"}
+            {busy === "add" ? "Registering…" : apply ? "Register and apply" : "Register tanker"}
           </button>
         </div>
       </form>

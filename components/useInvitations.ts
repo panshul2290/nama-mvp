@@ -64,29 +64,44 @@ export function useMyInvitations(kind: Invitation["kind"], enabled = true) {
   return { invitations: items, respond, reload: load };
 }
 
-/** The inviter's pending invitations (company drivers or organisation members), with revoke. */
+/**
+ * The inviter's pending invitations (company drivers or organisation members), with revoke, plus
+ * the ones accepted or declined in the last 14 days (`recent`) so the inviter sees the outcome.
+ * Updates arrive live (invitations is in the realtime publication) with a 60 s poll as a fallback.
+ */
 export function useSentInvitations(kind: Invitation["kind"], ownerId: string | null | undefined) {
   const [items, setItems] = useState<(Invitation & { expired: boolean })[]>([]);
+  const [recent, setRecent] = useState<Invitation[]>([]);
   const load = useCallback(async () => {
     if (!ownerId) return;
+    const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
     const { data } = await supabase()
       .from("invitations")
       .select("*")
       .eq("kind", kind)
       .eq(kind === "driver" ? "company_id" : "org_id", ownerId)
-      .eq("status", "pending")
+      .or(`status.eq.pending,and(status.in.(accepted,declined),decided_at.gte.${since})`)
       .order("created_at", { ascending: false });
+    const rows = (data ?? []) as Invitation[];
     // An expired invitation still blocks a new one to the same number or email until it is revoked.
     const now = Date.now();
-    setItems(((data ?? []) as Invitation[]).map((i) => ({ ...i, expired: Date.parse(i.expires_at) < now })));
+    setItems(rows.filter((i) => i.status === "pending").map((i) => ({ ...i, expired: Date.parse(i.expires_at) < now })));
+    setRecent(rows.filter((i) => i.status !== "pending"));
   }, [kind, ownerId]);
   useEffect(() => {
+    if (!ownerId) return;
+    const db = supabase();
     const first = setTimeout(load, 0);
     const timer = setInterval(load, 60_000);
+    const ch = db
+      .channel(`sent-invitations-${kind}-${ownerId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "invitations", filter: `${kind === "driver" ? "company_id" : "org_id"}=eq.${ownerId}` }, () => void load())
+      .subscribe();
     return () => {
       clearTimeout(first);
       clearInterval(timer);
+      db.removeChannel(ch);
     };
-  }, [load]);
-  return { invitations: items, reload: load };
+  }, [kind, ownerId, load]);
+  return { invitations: items, recent, reload: load };
 }
