@@ -203,7 +203,13 @@ export type Contract = {
 export type WalletTx = { id: number; customer_id: string; kind: string; amount: string; order_id: string | null; memo: string; created_at: string };
 export type CompanyTx = { id: number; company_id: string; driver_id: string | null; tanker_id: string | null; bucket: "earnings" | "fill_credit"; kind: string; amount: string; order_id: string | null; memo: string; created_at: string };
 export type Payment = { id: string; order_id: string; customer_id: string | null; org_id: string | null; method: PayMethod; amount: string; wallet_amount: string; card_amount: string; card_last4: string | null; status: PaymentStatus; gateway_ref: string | null; failure_reason: string | null; refunded_amount: string; created_at: string; captured_at: string | null };
-export type Pod = { order_id: string; kind: "delivery" | "collection"; photo_path: string | null; photo_hash: string | null; meter_gal: number; signature_svg: string | null; no_signature: boolean; left_at_tank: boolean; lat: number | null; lng: number | null; created_at: string; status: "accepted" | "rejected" };
+export type Pod = {
+  order_id: string; kind: "delivery" | "collection"; photo_path: string | null; photo_hash: string | null; meter_gal: number; signature_svg: string | null;
+  no_signature: boolean; left_at_tank: boolean; lat: number | null; lng: number | null; created_at: string; status: "accepted" | "rejected";
+  // Location evidence (0024): the submit fix and the photo's fix, each with accuracy, time and distance from the delivery point.
+  accuracy_m?: number | null; fix_at?: string | null; location_source?: "device" | "tanker" | null; distance_m?: number | null;
+  photo_lat?: number | null; photo_lng?: number | null; photo_accuracy_m?: number | null; photo_at?: string | null; photo_distance_m?: number | null;
+};
 export type Complaint = {
   id: string; case_no: number; order_id: string | null; customer_id: string | null; category: string; description: string; photo_path: string | null;
   channel: "app" | "call_centre" | "business"; genesys_id: string | null; state: "new" | "assigned" | "escalated" | "resolved"; owner_team: string | null;

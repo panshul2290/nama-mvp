@@ -47,7 +47,8 @@ export default function BusinessDashboard() {
   const ms = monthStart().getTime();
   const month = orders.filter((o) => Date.parse(o.created_at) >= ms && o.status !== "cancelled");
   const delivered = month.filter((o) => o.status === "delivered");
-  const spend = month.reduce((s, o) => s + Number(o.total), 0);
+  // Delivered this month (what will be invoiced), net of short-delivery credits.
+  const spend = delivered.reduce((s, o) => s + Number(o.total) - Number(o.short_credit ?? 0), 0);
   const used = Number(org.credit_used);
   const limit = Number(org.credit_limit);
   const pct = limit > 0 ? Math.round((used / limit) * 100) : 0;
@@ -78,9 +79,9 @@ export default function BusinessDashboard() {
           { label: "Sites", value: loaded ? sites.length : "…" },
           { label: "Active contracts", value: loaded ? activeContracts : "…" },
           { label: "Deliveries this month", value: loaded ? delivered.length : "…", sub: `${month.length - delivered.length} more booked or on the way` },
-          { label: "Spend this month", value: omr(spend), sub: "Incl. VAT, on account" },
+          { label: "Spend this month", value: omr(spend), sub: "Delivered, incl. VAT, on account" },
           {
-            label: `Credit used of ${omr(limit)}`,
+            label: limit > 0 ? `Credit used of ${omr(limit)}` : "Credit used",
             value: limit > 0 ? `${pct}%` : "—",
             sub: limit > 0 ? `${omr(used)} outstanding` : "Credit limit set by NWS on activation",
             tone: pct >= 90 ? "bad" : pct >= 70 ? "warn" : undefined,

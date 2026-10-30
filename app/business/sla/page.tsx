@@ -38,7 +38,8 @@ export default function ServiceLevels() {
         .eq("org_id", org.id).eq("status", "delivered").gte("delivered_at", since)
         .order("delivered_at", { ascending: false }).limit(ROW_CAP),
       db.from("properties").select("id, label, address, area, lat, lng, tank_gal, created_at").eq("org_id", org.id).order("label"),
-      db.from("complaints").select("id", { count: "exact", head: true }).gte("created_at", new Date(Date.now() - 90 * 86_400_000).toISOString()),
+      // Org admins see every complaint on the organisation's orders (complaints_org, 0023); others see their own.
+      db.from("complaints").select("id, order:orders!inner(org_id)", { count: "exact", head: true }).eq("order.org_id", org.id).gte("created_at", since),
     ]);
     const failed = o.error ?? p.error;
     setError(failed ? failed.message : null);
@@ -108,7 +109,7 @@ export default function ServiceLevels() {
           { label: "Delivered within window", value: total ? `${((onTime / total) * 100).toFixed(1)}%` : "—", sub: `${total} deliveries`, tone: total && onTime / total < 0.9 ? "warn" : "ok" },
           { label: "Average delay when late", value: late.length ? `${avg(late)} min` : "—", sub: `${late.length} late deliveries` },
           { label: "Volume variance", value: fmtVar(variance(all)), sub: "Flow meter vs ordered gallons" },
-          { label: "Complaints this quarter", value: complaints },
+          { label: "Complaints", value: complaints, sub: PERIODS.find((p) => p[0] === days)?.[1].toLowerCase() },
         ]}
       />
       <div className="panel">

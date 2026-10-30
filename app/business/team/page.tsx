@@ -18,18 +18,25 @@ const ACCESS: Record<OrgRole, string> = {
 export default function BusinessTeam() {
   const { org, isAdmin, profile } = useBiz();
   const [members, setMembers] = useState<Member[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const sent = useSentInvitations("org_member", isAdmin ? org.id : null);
   const { busy, run } = useAction();
 
   const load = useCallback(async () => {
-    const { data } = await supabase().from("profiles").select("id, full_name, phone, org_role, created_at").eq("org_id", org.id).order("created_at");
-    setMembers((data ?? []) as Member[]);
+    const { data, error } = await supabase().from("profiles").select("id, full_name, phone, org_role, created_at").eq("org_id", org.id).order("created_at");
+    setLoadError(error?.message ?? null);
+    if (!error) setMembers((data ?? []) as Member[]);
   }, [org.id]);
   useLive("biz-team", ["profiles"], load, 120_000);
 
   return (
     <>
+      {loadError && (
+        <div className="banner badb" role="alert">
+          Couldn’t load this page: {loadError}. It retries automatically.
+        </div>
+      )}
       <div className="panel">
         <div className="toolbar">
           <span className="mut" style={{ fontSize: 13 }}>
@@ -61,7 +68,7 @@ export default function BusinessTeam() {
                   </td>
                   <td>{m.org_role ? ORG_ROLE_LABEL[m.org_role] : "—"}</td>
                   <td className="mut">{m.org_role ? ACCESS[m.org_role] : ""}</td>
-                  <td>{m.phone || "—"}</td>
+                  <td dir="ltr">{m.phone ? formatPhone(m.phone) : "—"}</td>
                   <td>{fmtDate(m.created_at)}</td>
                 </tr>
               ))}
@@ -103,7 +110,7 @@ export default function BusinessTeam() {
             </div>
           </>
         )}
-        <p className="note">Site managers order and track for your sites. Finance sees invoices and statements, not ordering. Only account admins approve orders above the approval limit.</p>
+        <p className="note">Site managers order and track for your sites. Finance sees orders, invoices and statements, but doesn’t order. Only account admins approve orders above the approval limit.</p>
       </div>
       {open && <InviteDialog onClose={() => setOpen(false)} onDone={sent.reload} />}
     </>

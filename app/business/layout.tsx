@@ -53,6 +53,8 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
   }
 
   const role = org.my_role ?? profile.org_role;
+  // Finance (prototype: "Invoices only") sees billing, orders to check them, and service levels.
+  const financeHides = ["/business/sites", "/business/contracts", "/business/team"];
   const tabs: PortalTab[] = [
     { href: "/business", label: "Dashboard" },
     { href: "/business/orders", label: "Orders", badge: role === "admin" ? pending : 0 },
@@ -61,7 +63,7 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
     { href: "/business/invoices", label: "Invoices" },
     { href: "/business/team", label: "Team" },
     { href: "/business/sla", label: "Service levels" },
-  ];
+  ].filter((t) => role !== "finance" || !financeHides.includes(t.href));
   const banner =
     org.status === "pending" ? (
       <div className="banner">

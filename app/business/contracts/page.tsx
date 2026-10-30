@@ -19,6 +19,7 @@ export default function BusinessContracts() {
   const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [ending, setEnding] = useState<Contract | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { busy, run } = useAction();
 
   const load = useCallback(async () => {
@@ -27,6 +28,8 @@ export default function BusinessContracts() {
       db.from("contracts").select("*").eq("org_id", org.id).order("created_at", { ascending: false }),
       db.from("properties").select("id, label, address, area, lat, lng, tank_gal, created_at").eq("org_id", org.id).order("label"),
     ]);
+    setLoadError(c.error?.message ?? p.error?.message ?? null);
+    if (c.error) return setLoaded(true); // keep what is on screen
     const list = (c.data ?? []) as Contract[];
     setContracts(list);
     setSites((p.data ?? []) as BizProperty[]);
@@ -45,6 +48,11 @@ export default function BusinessContracts() {
 
   return (
     <>
+      {loadError && (
+        <div className="banner badb" role="alert">
+          Couldn’t load this page: {loadError}. It retries automatically.
+        </div>
+      )}
       <div className="panel">
         <div className="toolbar">
           <span className="mut" style={{ fontSize: 13 }}>
@@ -274,7 +282,7 @@ function NewContract({ sites, companies, onClose, onSaved }: { sites: BizPropert
           </div>
         </div>
         <p className="mut" style={{ fontSize: 13, margin: "0 0 12px" }}>
-          {perMonth != null ? `About OMR ${n3(perMonth)} a month before the plan discount on the delivery fee.` : "Priced from the NWS tariff when the offer is created."}
+          {perMonth != null ? `About OMR ${n3(perMonth)} a month at the standard tariff. The plan discount on the delivery fee is applied when the offer is created, so the contract shows a lower monthly figure.` : "Priced from the NWS tariff when the offer is created."}
         </p>
         {!companies.length && <div className="banner">No tanker company is taking contracts right now.</div>}
         <div className="btns" style={{ justifyContent: "flex-end" }}>

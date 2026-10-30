@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBiz, type BizProperty } from "@/components/business/BizContext";
 import { Map as PinMap } from "@/components/Map";
 import { Dialog, fmtShort, gal, useAction, useLive } from "@/components/portal/kit";
@@ -8,7 +8,7 @@ import { DEFAULT_CENTER } from "@/lib/geo";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type LngLat } from "@/lib/types";
 
-type SiteStats = { contract: string | null; last: string | null; deliveries: number };
+type SiteStats = { contract: string | null; last: string | null; deliveries: number; first: string | null };
 
 export default function BusinessSites() {
   const { org, canOrder } = useBiz();
@@ -17,6 +17,7 @@ export default function BusinessSites() {
   const [loaded, setLoaded] = useState(false);
   const [edit, setEdit] = useState<BizProperty | "new" | null>(null);
   const [del, setDel] = useState<BizProperty | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { busy, run } = useAction();
 
   const load = useCallback(async () => {
@@ -26,14 +27,17 @@ export default function BusinessSites() {
       db.from("contracts").select("property_id, contract_no, status").eq("org_id", org.id).in("status", ["pending_owner", "active", "paused"]),
       db.from("orders").select("property_id, delivered_at").eq("org_id", org.id).eq("status", "delivered").order("delivered_at", { ascending: false }).limit(1000),
     ]);
+    setLoadError(p.error?.message ?? o.error?.message ?? null);
+    if (p.error) return setLoaded(true); // keep what is on screen
     const s: Record<string, SiteStats> = {};
-    for (const x of (p.data ?? []) as BizProperty[]) s[x.id] = { contract: null, last: null, deliveries: 0 };
+    for (const x of (p.data ?? []) as BizProperty[]) s[x.id] = { contract: null, last: null, deliveries: 0, first: null };
     for (const k of (c.data ?? []) as { property_id: string; contract_no: number }[]) if (s[k.property_id]) s[k.property_id].contract = ref.contract(k.contract_no);
     for (const r of (o.data ?? []) as { property_id: string | null; delivered_at: string | null }[]) {
       const t = r.property_id ? s[r.property_id] : null;
       if (!t) continue;
       t.deliveries += 1;
       t.last ??= r.delivered_at;
+      t.first = r.delivered_at; // newest first, so the last one seen is the oldest
     }
     setSites((p.data ?? []) as BizProperty[]);
     setStats(s);
@@ -44,6 +48,11 @@ export default function BusinessSites() {
 
   return (
     <>
+      {loadError && (
+        <div className="banner badb" role="alert">
+          Couldn’t load this page: {loadError}. It retries automatically.
+        </div>
+      )}
       <div className="panel">
         <div className="toolbar">
           <span className="mut" style={{ fontSize: 13 }}>
@@ -64,6 +73,8 @@ export default function BusinessSites() {
                 <th className="num">Tank (gal)</th>
                 <th className="num">Deliveries</th>
                 <th>Last delivery</th>
+                <th>Usual interval</th>
+                <th>Next refill (predicted)</th>
                 <th>Contract</th>
                 <th />
               </tr>
@@ -79,6 +90,17 @@ export default function BusinessSites() {
                   <td className="num">{gal(s.tank_gal)}</td>
                   <td className="num">{stats[s.id]?.deliveries ?? 0}</td>
                   <td>{fmtShort(stats[s.id]?.last)}</td>
+                  {(() => {
+                    // Average days between deliveries; the next refill is expected one interval after the last.
+                    const st = stats[s.id];
+                    const days = st && st.deliveries > 1 && st.first && st.last ? (Date.parse(st.last) - Date.parse(st.first)) / 86_400_000 / (st.deliveries - 1) : null;
+                    return (
+                      <>
+                        <td>{days ? `Every ~${Math.max(1, Math.round(days))} days` : <span className="mut">—</span>}</td>
+                        <td>{days && st?.last ? fmtShort(new Date(Date.parse(st.last) + days * 86_400_000).toISOString()) : <span className="mut">—</span>}</td>
+                      </>
+                    );
+                  })()}
                   <td>{stats[s.id]?.contract ?? <span className="mut">—</span>}</td>
                   <td>
                     {canOrder && (
@@ -96,7 +118,7 @@ export default function BusinessSites() {
               ))}
               {loaded && !sites.length && (
                 <tr>
-                  <td className="empty" colSpan={7}>
+                  <td className="empty" colSpan={9}>
                     No sites yet. Add your hotel, compound, farm or office to start ordering.
                   </td>
                 </tr>
@@ -108,7 +130,7 @@ export default function BusinessSites() {
       </div>
       {edit && <SiteDialog site={edit === "new" ? null : edit} onClose={() => setEdit(null)} onSaved={load} />}
       {del && (
-        <Dialog title={`Delete ${del.label}?`} body="Past orders keep their address. This can’t be undone." onClose={() => setDel(null)}>
+        <Dialog title={`Delete ${del.label}?`} body="Past orders keep their address, but the site’s ended or declined contracts are deleted with it. This can’t be undone." onClose={() => setDel(null)}>
           <div className="btns" style={{ justifyContent: "flex-end" }}>
             <button className="btn" onClick={() => setDel(null)}>
               Cancel
@@ -141,6 +163,15 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
   const center = useMemo(() => (site ? { lat: site.lat, lng: site.lng } : DEFAULT_CENTER), [site]);
   const pick = useMemo(() => ({ value: point, onChange: setPoint }), [point]);
   const { busy, run } = useAction();
+  // save_property accepts any pin, but orders to a pin outside every zone are refused: warn early.
+  const [outside, setOutside] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const { data, error } = await supabase().rpc("zone_at", { p_lat: point.lat, p_lng: point.lng });
+      setOutside(!error && !(data as { id: string | null } | null)?.id);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [point]);
 
   return (
     <Dialog title={site ? `Edit ${site.label}` : "Add site"} onClose={onClose} wide>
@@ -173,6 +204,11 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
         <p className="mut" style={{ fontSize: 12.5, margin: "-4px 0 12px" }}>
           Pin: {point.lat.toFixed(5)}, {point.lng.toFixed(5)}
         </p>
+        {outside && (
+          <div className="banner" role="status">
+            This pin is outside the NWS service area — orders to it will be refused. Move the pin to the delivery point.
+          </div>
+        )}
         <div className="form">
           <div className="fld">
             <label htmlFor="sLabel">Site name</label>

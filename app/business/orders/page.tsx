@@ -31,6 +31,7 @@ export default function BusinessOrders() {
   const [filter, setFilter] = useState<Filter>("all");
   const [loaded, setLoaded] = useState(false);
   const [decline, setDecline] = useState<BizOrder | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { busy, run } = useAction();
 
   const load = useCallback(async () => {
@@ -39,6 +40,8 @@ export default function BusinessOrders() {
       db.from("orders").select(ORDER_COLS).eq("org_id", org.id).order("created_at", { ascending: false }).limit(300),
       db.from("properties").select("id, label, address, area, lat, lng, tank_gal, created_at").eq("org_id", org.id).order("label"),
     ]);
+    setLoadError(o.error?.message ?? p.error?.message ?? null);
+    if (o.error) return setLoaded(true); // keep what is on screen
     const list = (o.data ?? []) as BizOrder[];
     setOrders(list);
     setSites((p.data ?? []) as BizProperty[]);
@@ -72,8 +75,13 @@ export default function BusinessOrders() {
 
   return (
     <>
+      {loadError && (
+        <div className="banner badb" role="alert">
+          Couldn’t load this page: {loadError}. It retries automatically.
+        </div>
+      )}
       {role === "finance" ? (
-        <div className="banner info">Finance users see orders and invoices. Ask an account admin or site manager to place orders.</div>
+        <div className="banner info">Finance users see orders (with proof of delivery) and invoices. Ask an account admin or site manager to place orders.</div>
       ) : canOrder ? (
         <BulkOrder sites={sites} onPlaced={load} />
       ) : null}
@@ -151,7 +159,11 @@ export default function BusinessOrders() {
                   const l = locs.find((x) => x.order_id === o.id) ?? null;
                   return (
                     <tr key={o.id}>
-                      <td>{ref.order(o.order_no)}</td>
+                      <td>
+                        <Link className="lk" href={`/business/orders/${o.id}`}>
+                          {ref.order(o.order_no)}
+                        </Link>
+                      </td>
                       <td>{siteName(o.property_id)}</td>
                       <td>
                         <b>{o.tanker_plate ?? t?.plate ?? "—"}</b>
@@ -202,7 +214,9 @@ export default function BusinessOrders() {
               {shown.map((o) => (
                 <tr key={o.id}>
                   <td>
-                    {ref.order(o.order_no)}
+                    <Link className="lk" href={`/business/orders/${o.id}`}>
+                      {ref.order(o.order_no)}
+                    </Link>
                     <small className="stack">{o.po_number ?? (o.contract_id ? "Contract delivery" : fmtDateTime(o.created_at))}</small>
                   </td>
                   <td>{siteName(o.property_id)}</td>
@@ -231,7 +245,7 @@ export default function BusinessOrders() {
         </div>
       </div>
 
-      {decline && <DeclineDialog order={decline} onClose={() => setDecline(null)} onConfirm={(r) => decide(decline, false, r).then(() => setDecline(null))} />}
+      {decline && <DeclineDialog order={decline} onClose={() => setDecline(null)} onConfirm={(r) => decide(decline, false, r).then((ok) => ok && setDecline(null))} />}
     </>
   );
 }
@@ -280,7 +294,12 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
   const [po, setPo] = useState("");
   const [note, setNote] = useState("");
   const [unit, setUnit] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const { busy, run } = useAction();
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
   const siteId = site || sites[0]?.id || "";
   const slot = useMemo(() => slotFor(date, win), [date, win]);
 
@@ -298,6 +317,13 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
 
   const total = unit != null ? unit * count : null;
   const needsApproval = !isAdmin && total != null && total > Number(org.approval_limit);
+  // The database refuses orders on an inactive account or past the credit limit; say so before submitting.
+  const left = Number(org.credit_limit) - Number(org.credit_used);
+  const blocked =
+    org.status !== "active" ? "The account isn’t active yet — NWS sets the credit limit when it approves it." : org.paused ? "Ordering is paused on this account." : Number(org.credit_limit) <= 0 ? "No credit limit is set yet — contact NWS finance." : null;
+  const overLimit = !blocked && total != null && total > left;
+  // A window that has already ended today can't be booked.
+  const passed = (w: WindowKey) => Date.parse(slotFor(date, w).end) <= now;
 
   if (!sites.length) {
     return (
@@ -388,8 +414,9 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
             <label htmlFor="bWin">Window</label>
             <select id="bWin" className="in" value={win} onChange={(e) => setWin(e.target.value as WindowKey)}>
               {(Object.keys(WINDOWS) as WindowKey[]).map((w) => (
-                <option key={w} value={w}>
+                <option key={w} value={w} disabled={passed(w)}>
                   {WINDOWS[w].label}
+                  {passed(w) ? " (passed)" : ""}
                 </option>
               ))}
             </select>
@@ -413,8 +440,11 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
               </>
             )}
             {needsApproval && <span className="st warn" style={{ marginLeft: 8 }}>Needs admin approval</span>}
+            {!blocked && <small className="stack">Credit left on the account: {omr(Math.max(0, left))}</small>}
+            {blocked && <small className="stack" style={{ color: "var(--bad)" }}>{blocked}</small>}
+            {overLimit && <small className="stack" style={{ color: "var(--bad)" }}>This is more than the credit left. Pay an invoice or ask NWS to raise the limit.</small>}
           </div>
-          <button className="btn pri" disabled={busy === "order" || !siteId}>
+          <button className="btn pri" disabled={busy === "order" || !siteId || !!blocked || overLimit || passed(win)}>
             {busy === "order" ? "Placing…" : `Place order on account (Net ${org.terms_days})`}
           </button>
         </div>

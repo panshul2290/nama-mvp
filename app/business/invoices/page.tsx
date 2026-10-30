@@ -12,6 +12,7 @@ export default function BusinessInvoices() {
   const [uninvoiced, setUninvoiced] = useState({ n: 0, total: 0 });
   const [loaded, setLoaded] = useState(false);
   const [now, setNow] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { busy, run } = useAction();
 
   const load = useCallback(async () => {
@@ -20,6 +21,8 @@ export default function BusinessInvoices() {
       db.from("invoices").select("*").eq("org_id", org.id).order("issued_at", { ascending: false }),
       db.from("orders").select("total").eq("org_id", org.id).eq("status", "delivered").eq("is_test", false).is("invoice_id", null),
     ]);
+    setLoadError(i.error?.message ?? o.error?.message ?? null);
+    if (i.error) return setLoaded(true); // keep what is on screen
     setInvoices((i.data ?? []) as Invoice[]);
     const rows = (o.data ?? []) as { total: string }[];
     setUninvoiced({ n: rows.length, total: rows.reduce((s, r) => s + Number(r.total), 0) });
@@ -38,6 +41,11 @@ export default function BusinessInvoices() {
 
   return (
     <>
+      {loadError && (
+        <div className="banner badb" role="alert">
+          Couldn’t load this page: {loadError}. It retries automatically.
+        </div>
+      )}
       <Kpis
         items={[
           { label: "Outstanding invoices", value: omr(unpaid.reduce((s, i) => s + Number(i.total), 0)), sub: `${unpaid.length} unpaid`, tone: unpaid.length ? "warn" : "ok" },

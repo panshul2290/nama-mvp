@@ -30,6 +30,7 @@ body:has(.inv-page) { background: #eef2f3; }
 .inv-lines th { text-align: left; background: #f2f5f5; color: #3c5157; font-weight: 700; padding: 8px; border-bottom: 1px solid #d5dfe1; white-space: nowrap; }
 .inv-lines td { padding: 7px 8px; border-bottom: 1px solid #e6ecee; }
 .inv-lines .r { text-align: right; font-variant-numeric: tabular-nums; }
+.inv-lines tr.credit td { color: #8a5a00; font-style: italic; }
 .inv-totals { margin: 16px 0 0 auto; width: min(320px, 100%); font-variant-numeric: tabular-nums; }
 .inv-totals div { display: flex; justify-content: space-between; padding: 4px 0; }
 .inv-totals .grand { border-top: 2px solid #0e2329; margin-top: 6px; padding-top: 8px; font-size: 16px; }
