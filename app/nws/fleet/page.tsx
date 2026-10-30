@@ -11,6 +11,7 @@ import { permitSummary, type FleetTanker } from "@/components/nws/fleetData";
 import { ago, downloadTable, ExportButtons, Kpi, one, pct, St, Tabs, useNow, useRealtime, useRpc, SERVICE_NAME, HOUR } from "@/components/nws/ops";
 import type { TableFormat } from "@/lib/csv";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { GeoFilter, useGeo } from "@/components/nws/register/geo";
 import { STATUS_TEXT } from "@/components/OrderBits";
 import { Loading } from "@/components/Shell";
 import { orderNo } from "@/lib/format";
@@ -31,6 +32,7 @@ type WaterTest = { cert_no: string; tested_at: string; passed: boolean };
 type Device = { id: string; firmware: string; sensors: Record<string, boolean>; installed_at: string };
 type Row = FleetTanker & {
   company_id: string | null;
+  governorate_code: string | null; in_register: boolean; capacity_known: boolean;
   last_lat: number | null; last_lng: number | null; last_fix_at: string | null; last_accuracy_m: number | null; last_fix_source: string | null;
   company: { name: string } | { name: string }[] | null;
   water_tests: WaterTest[];
@@ -69,6 +71,9 @@ function Fleet() {
   const [tab, setTab] = useState<Tab>("tankers");
   const [rows, setRows] = useState<Row[] | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
+  const [registerCount, setRegisterCount] = useState<number | null>(null);
+  const [geoF, setGeoF] = useState({ cluster: "", governorate: "" });
+  const geo = useGeo();
   const [freeDrivers, setFreeDrivers] = useState<{ id: string; full_name: string; company_id: string | null }[]>([]);
   const [dlg, setDlg] = useState<Dialog>(null);
   const [driverPick, setDriverPick] = useState("");
@@ -85,17 +90,22 @@ function Fleet() {
 
   const load = useCallback(async () => {
     const db = supabase();
-    const [t, d, a, s] = await Promise.all([
+    // Tankers registered on the platform only: the NWS register (~11,000 offline tankers with
+    // no driver) is listed, paged, under Permits → Register.
+    const [t, d, a, s, rc] = await Promise.all([
       db
         .from("tankers")
         .select(
-          "id, plate, service_type, capacity_gal, company_id, is_online, blocked, blocked_reason, blocked_at, location_age_s, last_lat, last_lng, last_fix_at, last_accuracy_m, last_fix_source, company:companies(name), water_tests(cert_no, tested_at, passed), device:devices(id, firmware, sensors, installed_at), assignments:tanker_assignments(id, driver_id, assigned_at, unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
+          "id, plate, service_type, capacity_gal, capacity_known, governorate_code, in_register, company_id, is_online, blocked, blocked_reason, blocked_at, location_age_s, last_lat, last_lng, last_fix_at, last_accuracy_m, last_fix_source, company:companies(name), water_tests(cert_no, tested_at, passed), device:devices(id, firmware, sensors, installed_at), assignments:tanker_assignments(id, driver_id, assigned_at, unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
         )
+        .eq("on_platform", true)
         .order("plate"),
       db.from("profiles").select("id, full_name, company_id").eq("role", "driver").order("full_name"),
       db.from("tanker_assignments").select("driver_id").is("unassigned_at", null),
       db.from("sites").select("id, code, kind, name, lat, lng, radius_m").eq("active", true).eq("is_test", false),
+      db.from("tankers").select("id", { count: "exact", head: true }).eq("in_register", true),
     ]);
+    setRegisterCount(rc.count ?? null);
     setRows((t.data ?? []) as unknown as Row[]);
     setSites((s.data ?? []) as Site[]);
     const busy = new Set((a.data ?? []).map((x) => x.driver_id));
@@ -164,7 +174,11 @@ function Fleet() {
 
   const active = (t: FleetTanker) => t.assignments.find((a) => !a.unassigned_at) ?? null;
   const all = useMemo(() => rows ?? [], [rows]);
+  const inGeo = (t: Row) =>
+    (!geoF.governorate || t.governorate_code === geoF.governorate) &&
+    (!geoF.cluster || (geoF.cluster === "none" ? !geo.clusterOf(t.governorate_code) : geo.clusterOf(t.governorate_code) === geoF.cluster));
   const list = all.filter((t) => {
+    if (!inGeo(t)) return false;
     if (filter === "expired" ? permitSummary(t).valid : filter !== "all" && t.service_type !== filter) return false;
     const s = q.trim().toLowerCase();
     return !s || t.plate.toLowerCase().includes(s) || (one(t.company)?.name ?? "").toLowerCase().includes(s) || (active(t)?.driver?.full_name ?? "").toLowerCase().includes(s);
@@ -184,11 +198,12 @@ function Fleet() {
 
   function exportTankers(fmt: TableFormat) {
     downloadTable("fleet-register", [
-      ["Plate", "Service", "Capacity (gal)", "Owner", "Driver", "Permit", "Water test", "IVMS device", "Accuracy (m)", "Last fix", "Status"],
+      ["Plate", "Service", "Capacity (gal)", "Governorate", "Cluster", "In NWS register", "Owner", "Driver", "Permit", "Water test", "IVMS device", "Accuracy (m)", "Last fix", "Status"],
       ...list.map((t) => {
         const w = latestTest(t);
         return [
-          t.plate, SERVICE_NAME[t.service_type], t.capacity_gal, one(t.company)?.name ?? "", active(t)?.driver?.full_name ?? "", permitSummary(t).text,
+          t.plate, SERVICE_NAME[t.service_type], t.capacity_known ? t.capacity_gal : "unknown", t.governorate_code ? geo.govName(t.governorate_code) : "",
+          t.governorate_code ? geo.clusterName(geo.clusterOf(t.governorate_code)) : "", t.in_register ? "yes" : "no", one(t.company)?.name ?? "", active(t)?.driver?.full_name ?? "", permitSummary(t).text,
           w ? `${w.cert_no} ${w.tested_at} ${w.passed ? "passed" : "failed"}` : "", one(t.device)?.id ?? "", t.last_accuracy_m?.toFixed(1) ?? "", t.last_fix_at ?? "",
           t.blocked ? "Suspended" : "Active",
         ];
@@ -205,12 +220,14 @@ function Fleet() {
     ], fmt);
   }
 
+  // Chip counts follow the cluster / governorate filter.
+  const here = all.filter(inGeo);
   const counts = {
-    all: all.length,
-    DW: all.filter((t) => t.service_type === "DW").length,
-    WW: all.filter((t) => t.service_type === "WW").length,
-    TE: all.filter((t) => t.service_type === "TE").length,
-    expired: all.filter((t) => !permitSummary(t).valid).length,
+    all: here.length,
+    DW: here.filter((t) => t.service_type === "DW").length,
+    WW: here.filter((t) => t.service_type === "WW").length,
+    TE: here.filter((t) => t.service_type === "TE").length,
+    expired: here.filter((t) => !permitSummary(t).valid).length,
   };
   const devices = all.filter((t) => one(t.device));
   const reporting = devices.filter((t) => {
@@ -224,7 +241,7 @@ function Fleet() {
       <div className="vhead">
         <div>
           <h1>Fleet</h1>
-          <p>Every registered tanker with its permit, water-quality and IVMS status, plus trip logs and route history. Operators can suspend a tanker and override driver assignment.</p>
+          <p>Every tanker registered on the platform with its permit, water-quality and IVMS status, plus trip logs and route history. Operators can suspend a tanker and override driver assignment. Tankers in the NWS register that aren’t on the platform yet are under Permits → Register.</p>
         </div>
       </div>
       <Tabs<Tab>
@@ -240,7 +257,8 @@ function Fleet() {
       {tab === "tankers" && (
         <>
           <div className="okpis">
-            <Kpi label="Tankers" value={counts.all} sub={`${all.filter((t) => t.is_online).length} online now`} tone="ok" />
+            <Kpi label="Registered on platform" value={all.length} sub={`${all.filter((t) => t.is_online).length} online now`} tone="ok" />
+            <Kpi label="In NWS register" value={registerCount == null ? "…" : registerCount.toLocaleString()} sub={<Link className="lk" href="/nws/permits?tab=reg">{all.filter((t) => t.in_register).length} of them on the platform · open the register</Link>} />
             <Kpi label="Suspended" value={all.filter((t) => t.blocked).length} sub="blocked by an operator" tone={all.some((t) => t.blocked) ? "bad" : ""} />
             <Kpi label="No valid permit" value={counts.expired} sub="can’t go online or take jobs" tone={counts.expired ? "warn" : ""} />
             <Kpi label="Unassigned" value={all.filter((t) => !active(t)).length} sub="no driver on the tanker" />
@@ -264,6 +282,7 @@ function Fleet() {
                 ))}
               </div>
               <div className="filters">
+                <GeoFilter geo={geo} cluster={geoF.cluster} governorate={geoF.governorate} onChange={setGeoF} />
                 <input className="in" placeholder="Plate, owner or driver" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search tankers" style={{ width: 200 }} />
                 <ExportButtons onExport={exportTankers} disabled={!list.length} />
               </div>
@@ -275,6 +294,7 @@ function Fleet() {
                   <tr>
                     <th>Plate</th>
                     <th>Owner</th>
+                    <th>Governorate</th>
                     <th>Driver</th>
                     <th>Service</th>
                     <th>Permit</th>
@@ -287,10 +307,10 @@ function Fleet() {
                 </thead>
                 <tbody>
                   {!rows && (
-                    <tr><td colSpan={10} className="empty">Loading…</td></tr>
+                    <tr><td colSpan={11} className="empty">Loading…</td></tr>
                   )}
                   {rows && list.length === 0 && (
-                    <tr><td colSpan={10} className="empty">No tankers match.</td></tr>
+                    <tr><td colSpan={11} className="empty">No tankers match.</td></tr>
                   )}
                   {list.map((t) => {
                     const a = active(t);
@@ -302,9 +322,13 @@ function Fleet() {
                       <tr key={t.id} className={`click ${sel === t.id ? "sel" : ""}`} onClick={() => setSel(sel === t.id ? null : t.id)}>
                         <td className={`stripe ${t.service_type}`}>
                           <b>{t.plate}</b>
-                          <small style={{ display: "block" }}>{t.capacity_gal.toLocaleString()} gal</small>
+                          <small style={{ display: "block" }}>{t.capacity_known ? `${t.capacity_gal.toLocaleString()} gal` : "capacity unknown"}</small>
                         </td>
                         <td>{one(t.company)?.name ?? <span className="mut">Independent</span>}</td>
+                        <td>
+                          {t.governorate_code ? geo.govName(t.governorate_code) : <span className="mut">Not set</span>}
+                          {t.governorate_code && <small style={{ display: "block" }}>{geo.clusterName(geo.clusterOf(t.governorate_code))}</small>}
+                        </td>
                         <td>{a?.driver?.full_name ?? <span className="mut">Unassigned</span>}</td>
                         <td><span className={`tag ${t.service_type}`}>{SERVICE_NAME[t.service_type]}</span></td>
                         <td><St tone={p.tone}>{p.text}</St></td>

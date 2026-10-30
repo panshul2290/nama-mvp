@@ -5,12 +5,13 @@ import { Chips, PageHead, Tabs, useRun } from "@/components/nws/admin/ui";
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { supabase } from "@/lib/supabase/client";
 import Builder from "./_tabs/Builder";
+import Clusters from "./_tabs/Clusters";
 import Consumption from "./_tabs/Consumption";
 import { loadRef, RANGES, type Ref } from "./_tabs/data";
 import Feedback from "./_tabs/Feedback";
 import Operations from "./_tabs/Operations";
 
-type Tab = "ops" | "cons" | "fb" | "build";
+type Tab = "ops" | "clu" | "cons" | "fb" | "build";
 
 export default function ReportsPage() {
   const { staff } = useStaff();
@@ -36,7 +37,7 @@ export default function ReportsPage() {
           </button>
         )}
       </PageHead>
-      <Tabs<Tab> tabs={[["ops", "Operations"], ["cons", "Consumption and refill"], ["fb", "Feedback"], ["build", "Report builder"]]} value={tab} onChange={setTab} />
+      <Tabs<Tab> tabs={[["ops", "Operations"], ["clu", "Clusters"], ["cons", "Consumption and refill"], ["fb", "Feedback"], ["build", "Report builder"]]} value={tab} onChange={setTab} />
       {tab !== "build" && (
         <div className="rangebar">
           <Chips items={RANGES.map(([v, l]) => [v, l] as [string, string])} value={range} onChange={setRange} />
@@ -49,6 +50,8 @@ export default function ReportsPage() {
         <Builder refData={refData} />
       ) : tab === "ops" ? (
         <Operations key={`o${tick}`} days={days} />
+      ) : tab === "clu" ? (
+        <Clusters key={`k${tick}`} days={days} />
       ) : tab === "cons" ? (
         <Consumption key={`c${tick}`} days={days} />
       ) : (

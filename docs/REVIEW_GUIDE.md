@@ -20,7 +20,7 @@ built to prototype parity with `prototype.html`. If the bid is won it becomes th
   - Signed-in users only ever `SELECT`, filtered by row-level security (RLS).
   - **Every write is a `SECURITY DEFINER` RPC** that checks the caller's role and the allowed transition;
     staff RPCs check the staff sub-role and write exactly one `audit_log` row (append-only).
-- **Database:** `supabase/migrations/0001…0014` (0026–0029: notification delivery, dynamic pricing, auto-dispatch, driver filling credit, SLA in SQL, per-site business access, privacy enforcement, field encryption (`docs/security/field-encryption.md`), incident matrix, IVMS feed, integration API `/api/v1` (`docs/api/openapi.yaml`) and webhooks, server-side reports) (0009–0014 are the full platform: payments/wallet/ledgers,
+- **Database:** `supabase/migrations/0001…0014` (0026–0029: notification delivery, dynamic pricing, auto-dispatch, driver filling credit, SLA in SQL, per-site business access, privacy enforcement, field encryption (`docs/security/field-encryption.md`), incident matrix, IVMS feed, integration API `/api/v1` (`docs/api/openapi.yaml`) and webhooks, server-side reports; 0031–0033: clusters and governorates, the NWS tanker register import (registry owners, import batches, claiming by verified mobile number), the permit campaign and throttled SMS invitations) (0009–0014 are the full platform: payments/wallet/ledgers,
   trip legs + proof of delivery, complaints, alerts, penalties, companies, contracts, B2B, notifications,
   settings). Reference data: `0013`. Demo data: `supabase/seed/demo.sql`.
 - **Pricing:** every tariff figure is a row in `pricing_rules` with a status (confirmed / pending NWS

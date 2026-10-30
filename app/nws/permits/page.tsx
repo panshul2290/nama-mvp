@@ -1,9 +1,15 @@
 "use client";
 
 import "../ops.css";
+import "../admin.css";
+import "../register.css";
 import { useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { DAY, Kpi, Modal, n3, one, St, Tabs, useNow, useRealtime, useRpc, useSignedUrl, SERVICE_NAME } from "@/components/nws/ops";
+import { fetchPaged } from "@/components/nws/admin/ui";
+import { DAY, Modal, n3, one, St, Tabs, useNow, useRealtime, useRpc, useSignedUrl, SERVICE_NAME } from "@/components/nws/ops";
+import { Campaign } from "@/components/nws/register/Campaign";
+import { useGeo } from "@/components/nws/register/geo";
+import { RegisterPanel } from "@/components/nws/register/RegisterPanel";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { Loading } from "@/components/Shell";
 import { friendlyError } from "@/lib/errors";
@@ -50,7 +56,7 @@ type Inspection = {
   inspector: { full_name: string } | { full_name: string }[] | null;
 };
 type Company = { id: string; name: string; cr_no: string; phone: string | null; rating: number; since: string; status: "pending" | "active" | "suspended" };
-type Tab = "reg" | "apps" | "exp" | "viol" | "insp" | "co";
+type Tab = "reg" | "camp" | "apps" | "exp" | "viol" | "insp" | "co";
 type Dlg =
   | { k: "reject" | "resubmit" | "info" | "pass" | "fail" | "issue" | "schedule" }
   | { k: "doc_reject"; id: string }
@@ -107,7 +113,7 @@ function Permits() {
 
   const [tab, setTab] = useState<Tab>(() => {
     const t = params.get("tab");
-    return t === "reg" || t === "exp" || t === "viol" || t === "insp" || t === "co" ? t : "apps";
+    return t === "reg" || t === "camp" || t === "exp" || t === "viol" || t === "insp" || t === "co" ? t : "apps";
   });
   const [rows, setRows] = useState<PermitRow[] | null>(null);
   const [tankers, setTankers] = useState<TankerRef[]>([]);
@@ -127,7 +133,9 @@ function Permits() {
   const [missingDocs, setMissingDocs] = useState<string[] | null>(null);
   const [checklist, setChecklist] = useState<Checklist>(ALL_OK);
   const [kind, setKind] = useState<"all" | "renewal" | "new">("all");
-  const [regFilter, setRegFilter] = useState<"all" | ServiceType | "exp">("all");
+  const [appQ, setAppQ] = useState("");
+  const [regTotal, setRegTotal] = useState<number | null>(null);
+  const geo = useGeo();
   const [creating, setCreating] = useState(false);
   const [newExpiry, setNewExpiry] = useState("");
   const [form, setForm] = useState(() => ({ tanker: "", permit_no: "", type: "DW" as ServiceType, issued: isoDay(new Date()), expires: isoDay(new Date(Date.now() + 365 * DAY)) }));
@@ -136,14 +144,20 @@ function Permits() {
 
   const load = useCallback(async () => {
     const db = supabase();
-    const [p, t, pe, r, i, c] = await Promise.all([
-      db
-        .from("permits")
-        .select(
-          "id, permit_no, type, issued_at, expires_at, status, effective_status, stage, info_requested, info_response, info_responded_at, reminded_at, reviewed_at, reason, created_at, applied_by, tanker:tankers(id, plate, service_type, capacity_gal, company:companies(name)), reviewer:profiles!permits_reviewed_by_fkey(full_name)",
-        )
-        .order("created_at", { ascending: false }),
-      db.from("tankers").select("id, plate, service_type, capacity_gal, company_id, company:companies(name)").order("plate"),
+    // Permits page through PostgREST's 1,000-row limit (register imports add ~900 applications).
+    // Only tankers on the platform are listed for the forms; the register (~11,000) is paged
+    // in the database (Register tab).
+    const [p, t, pe, r, i, c, rc] = await Promise.all([
+      fetchPaged<PermitRow>((a, b) =>
+        db
+          .from("permits")
+          .select(
+            "id, permit_no, type, issued_at, expires_at, status, effective_status, stage, info_requested, info_response, info_responded_at, reminded_at, reviewed_at, reason, created_at, applied_by, tanker:tankers(id, plate, service_type, capacity_gal, company:companies(name)), reviewer:profiles!permits_reviewed_by_fkey(full_name)",
+          )
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(a, b), 20000),
+      db.from("tankers").select("id, plate, service_type, capacity_gal, company_id, company:companies(name)").eq("on_platform", true).order("plate"),
       db
         .from("penalties")
         .select("id, penalty_no, rule_code, amount, reason, evidence, state, dispute_text, created_at, tanker:tankers(plate), company:companies(name), order:orders(order_no), rule:penalty_rules(label, party)")
@@ -156,8 +170,10 @@ function Permits() {
         .order("created_at", { ascending: false })
         .limit(200),
       db.from("companies").select("id, name, cr_no, phone, rating, since, status, created_at").order("name"),
+      db.from("tankers").select("id", { count: "exact", head: true }).or("on_platform.eq.true,in_register.eq.true"),
     ]);
-    const list = (p.data ?? []) as unknown as PermitRow[];
+    const list = p.rows;
+    setRegTotal(rc.count ?? null);
     setRows(list);
     setTankers((t.data ?? []) as unknown as (TankerRef & { company_id: string | null })[]);
     // Tanker enforcement only: customer and business penalties (late cancel, overdue) live elsewhere.
@@ -220,16 +236,29 @@ function Permits() {
 
   const daysLeft = useCallback((iso: string) => Math.ceil((Date.parse(iso) - now) / DAY), [now]);
   // A renewal is an application for a tanker that already had an approved permit.
+  // Earliest approved permit per tanker, so each check is O(1) (the list can hold thousands of permits).
+  const firstApproved = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const x of rows ?? []) {
+      const tid = one(x.tanker)?.id;
+      if (tid && x.status === "approved" && (!m.has(tid) || x.created_at < m.get(tid)!)) m.set(tid, x.created_at);
+    }
+    return m;
+  }, [rows]);
   const isRenewal = useCallback(
-    (p: PermitRow) => (rows ?? []).some((x) => x.id !== p.id && one(x.tanker)?.id === one(p.tanker)?.id && x.status === "approved" && x.created_at < p.created_at),
-    [rows],
+    (p: PermitRow) => {
+      const first = firstApproved.get(one(p.tanker)?.id ?? "");
+      return !!first && first < p.created_at;
+    },
+    [firstApproved],
   );
   const apps = useMemo(
     () =>
       (rows ?? [])
         .filter((p) => (appFilter === "pending" ? p.status === "pending" : appFilter === "all" ? true : p.effective_status === appFilter))
-        .filter((p) => kind === "all" || (kind === "renewal") === isRenewal(p)),
-    [rows, appFilter, kind, isRenewal],
+        .filter((p) => kind === "all" || (kind === "renewal") === isRenewal(p))
+        .filter((p) => !appQ.trim() || p.permit_no.toLowerCase().includes(appQ.trim().toLowerCase()) || (one(p.tanker)?.plate ?? "").toLowerCase().includes(appQ.trim().toLowerCase())),
+    [rows, appFilter, kind, isRenewal, appQ],
   );
   const pending = (rows ?? []).filter((p) => p.status === "pending");
   // Latest approved permit per tanker only (a renewed tanker drops off), with any renewal in review.
@@ -337,7 +366,8 @@ function Permits() {
         value={tab}
         onChange={setTab}
         tabs={[
-          ["reg", "Register", tankers.length],
+          ["reg", "Register", regTotal ?? undefined],
+          ["camp", "Campaign"],
           ["apps", "Applications", pending.length],
           ["exp", "Expiring", expiring.length],
           ["viol", "Violations", openPen.length],
@@ -416,6 +446,7 @@ function Permits() {
                   </button>
                 ))}
               </div>
+              <input className="in" placeholder="Plate or permit number" aria-label="Search applications" value={appQ} onChange={(e) => setAppQ(e.target.value)} style={{ margin: "0 0 8px" }} />
               {!rows && <div className="empty">Loading…</div>}
               {loadErr && <div className="banner badb">Couldn’t load permits: {loadErr}</div>}
               {rows && !loadErr && params.get("tanker") && !rows.some((x) => one(x.tanker)?.id === params.get("tanker")) && (
@@ -630,20 +661,20 @@ function Permits() {
       )}
 
       {tab === "reg" && (
-        <Register
-          tankers={tankers}
-          latest={latestApproved}
-          pendingFor={(tid) => pending.find((x) => one(x.tanker)?.id === tid) ?? null}
-          now={now}
-          filter={regFilter}
-          setFilter={setRegFilter}
+        <RegisterPanel
+          geo={geo}
+          canImport={officer}
+          onTotal={setRegTotal}
           onOpen={(id) => {
             setSel(id);
             setAppFilter("all");
+            setAppQ("");
             setTab("apps");
           }}
         />
       )}
+
+      {tab === "camp" && <Campaign geo={geo} />}
 
       {tab === "exp" && (
         <div className="panel">
@@ -1024,100 +1055,6 @@ function Permits() {
           />
         </Modal>
       )}
-    </>
-  );
-}
-
-/**
- * The permit register (new prototype, Permits → Register): every tanker with its current permit and
- * what that means on the platform. A tanker without a valid permit can't take jobs or fill.
- */
-function Register({
-  tankers, latest, pendingFor, now, filter, setFilter, onOpen,
-}: {
-  tankers: TankerRef[];
-  latest: Map<string, PermitRow>;
-  pendingFor: (tankerId: string) => PermitRow | null;
-  now: number;
-  filter: "all" | ServiceType | "exp";
-  setFilter: (f: "all" | ServiceType | "exp") => void;
-  onOpen: (permitId: string) => void;
-}) {
-  const state = (t: TankerRef): [string, string] => {
-    const p = latest.get(t.id);
-    if (!p) return ["No permit", "bad"];
-    // A permit for another service type doesn't count (permit_auto_checks says the same).
-    if (p.type !== t.service_type) return ["Wrong type", "bad"];
-    const left = Date.parse(p.expires_at) - now;
-    return left < 0 ? ["Expired", "bad"] : left < 30 * DAY ? ["Expiring", "warn"] : ["Valid", "ok"];
-  };
-  const rows = tankers.filter((t) => (filter === "all" ? true : filter === "exp" ? state(t)[0] !== "Valid" : t.service_type === filter));
-  const count = (s: string) => tankers.filter((t) => state(t)[0] === s).length;
-  return (
-    <>
-      <div className="okpis">
-        <Kpi label="Valid permits" value={count("Valid")} sub="can take jobs and fill" tone="ok" />
-        <Kpi label="Expiring in 30 days" value={count("Expiring")} sub="owners get reminders" tone={count("Expiring") ? "warn" : ""} />
-        <Kpi label="Blocked" value={tankers.length - count("Valid") - count("Expiring")} sub="no valid permit for the tanker's type" tone="bad" />
-        <Kpi label="Applications in review" value={tankers.filter((t) => pendingFor(t.id)).length} sub="new permits and renewals" />
-      </div>
-      <div className="panel">
-        <div className="toolbar">
-          <div className="chips">
-            {(
-              [
-                ["all", "All tankers"],
-                ["DW", "Drinking water"],
-                ["WW", "Wastewater"],
-                ["TE", "Treated effluent"],
-                ["exp", "Expiring or blocked"],
-              ] as const
-            ).map(([k, l]) => (
-              <button key={k} className={`chip ${filter === k ? "on" : ""}`} onClick={() => setFilter(k)}>
-                {l}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="tblwrap" style={{ maxHeight: 520, overflowY: "auto" }}>
-          <table>
-            <thead>
-              <tr><th>Tanker</th><th>Type</th><th>Owner</th><th>Permit no.</th><th>Valid until</th><th>Status</th><th>Effect on this platform</th><th></th></tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && <tr><td colSpan={8} className="empty">No tankers match.</td></tr>}
-              {rows.map((t) => {
-                const p = latest.get(t.id);
-                const [s, tone] = state(t);
-                const app = pendingFor(t.id);
-                const ok = s === "Valid" || s === "Expiring";
-                return (
-                  <tr key={t.id}>
-                    <td style={{ whiteSpace: "nowrap" }}>{t.plate}</td>
-                    <td><span className={`tag ${t.service_type}`}>{SERVICE_NAME[t.service_type]}</span></td>
-                    <td>{one(t.company)?.name ?? "Independent"}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{p?.permit_no ?? "—"}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{p ? fmtDate(p.expires_at) : "—"}</td>
-                    <td>
-                      <St tone={tone}>{s}</St>
-                      {app && <small style={{ display: "block" }}>{app.permit_no} in review</small>}
-                    </td>
-                    <td>{ok ? "Can take jobs and fill" : <span style={{ color: "var(--bad)" }}>Blocked from jobs and filling</span>}</td>
-                    <td>
-                      {(p || app) && (
-                        <button className="btn sm" onClick={() => onOpen((app ?? p)!.id)}>
-                          {app ? "Review application" : "View permit"}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="note">The platform enforces the register: a tanker without a valid permit for its service type can’t accept jobs or go online, and NWS stations refuse to fill it.</p>
-      </div>
     </>
   );
 }

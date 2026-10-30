@@ -71,7 +71,7 @@ export default function IntegrationsPage() {
       db.from("webhook_deliveries").select("id, endpoint_id, event, status, attempts, response_status, response_body, signature, created_at, sent_at, next_attempt_at").order("id", { ascending: false }).limit(50).then(({ data }) => setDels((data ?? []) as Delivery[]));
     }
     db.from("devices").select("id, tanker_id, api_key_id, last_fix_at, active").order("id").then(({ data }) => setDevices((data ?? []) as Device[]));
-    db.from("tankers").select("id, plate, is_online, last_lat, last_lng, last_fix_at, last_fix_source, last_accuracy_m").order("plate").then(({ data }) => {
+    db.from("tankers").select("id, plate, is_online, last_lat, last_lng, last_fix_at, last_fix_source, last_accuracy_m").eq("on_platform", true).order("plate").then(({ data }) => {
       setNow(Date.now());
       setTankers((data ?? []) as Tanker[]);
     });
@@ -82,7 +82,7 @@ export default function IntegrationsPage() {
   // While simulations run and this page is open, tick them every 5 s (pg_cron also ticks each minute).
   useEffect(() => {
     if (!sims.length) return;
-    const t = setInterval(() => void supabase().rpc("staff_ivms_sim_tick").then(() => supabase().from("tankers").select("id, plate, is_online, last_lat, last_lng, last_fix_at, last_fix_source, last_accuracy_m").order("plate").then(({ data }) => setTankers((data ?? []) as Tanker[]))), 5000);
+    const t = setInterval(() => void supabase().rpc("staff_ivms_sim_tick").then(() => supabase().from("tankers").select("id, plate, is_online, last_lat, last_lng, last_fix_at, last_fix_source, last_accuracy_m").eq("on_platform", true).order("plate").then(({ data }) => setTankers((data ?? []) as Tanker[]))), 5000);
     return () => clearInterval(t);
   }, [sims.length]);
 

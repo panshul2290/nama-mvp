@@ -64,6 +64,7 @@ export default function LiveOperations() {
   const rpc = useRpc();
   const router = useRouter();
   const [tankers, setTankers] = useState<LiveTanker[]>([]);
+  const [registerCount, setRegisterCount] = useState<number | null>(null);
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [today, setToday] = useState<LiveOrder[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -89,12 +90,15 @@ export default function LiveOperations() {
   const load = useCallback(async () => {
     const db = supabase();
     const day = startOfDay(Date.now());
-    const [t, o, d, a, e, oa] = await Promise.all([
+    // Tankers on the platform only: the NWS register adds ~11,000 offline tankers with no
+    // driver, counted separately below (Permits → Register lists them).
+    const [t, o, d, a, e, oa, rc] = await Promise.all([
       db
         .from("tankers")
         .select(
           "id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_fix_at, last_accuracy_m, last_fix_source, location_age_s, company:companies(name), assignments:tanker_assignments(unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
         )
+        .eq("on_platform", true)
         .order("plate"),
       db.from("orders").select(ORDER_COLS).in("status", ACTIVE).order("created_at", { ascending: false }),
       // Today's KPIs leave out test-zone orders (0020).
@@ -102,7 +106,9 @@ export default function LiveOperations() {
       db.from("alerts").select("id, tanker_id, order_id, type, severity, message, lat, lng, state, created_at, action_note").order("created_at", { ascending: false }).limit(60),
       db.from("app_settings").select("value").eq("key", "EMERGENCY").maybeSingle(),
       db.from("alerts").select("id, lat, lng, severity").eq("state", "open").limit(5000),
+      db.from("tankers").select("id", { count: "exact", head: true }).eq("in_register", true),
     ]);
+    setRegisterCount(rc.count ?? null);
     setTankers((t.data ?? []) as unknown as LiveTanker[]);
     setOrders((o.data ?? []) as unknown as LiveOrder[]);
     setToday((d.data ?? []) as unknown as LiveOrder[]);
@@ -358,7 +364,7 @@ export default function LiveOperations() {
           <span>Tankers active</span>
           <b>{loaded ? online.length : "—"}</b>
           <small>
-            {tankers.length} registered · {online.filter(isStale).length} with stale GPS
+            {tankers.length} registered on platform{registerCount ? ` · ${registerCount.toLocaleString()} in NWS register` : ""} · {online.filter(isStale).length} with stale GPS
             {testOnline > 0 ? ` · ${testOnline} in test zone (not counted)` : ""}
           </small>
         </div>

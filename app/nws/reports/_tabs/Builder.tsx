@@ -76,7 +76,7 @@ async function load(ds: Dataset, days: number): Promise<{ raw: Raw | null; error
   }
   if (ds === "Fleet") {
     const [t, o] = await Promise.all([
-      fetchPaged<{ id: string; service_type: ServiceType; company_id: string | null; is_online: boolean; blocked: boolean }>((a, b) => db.from("tankers").select("id, service_type, company_id, is_online, blocked").order("id").range(a, b), ROW_CAP),
+      fetchPaged<{ id: string; service_type: ServiceType; company_id: string | null; is_online: boolean; blocked: boolean }>((a, b) => db.from("tankers").select("id, service_type, company_id, is_online, blocked").eq("on_platform", true).order("id").range(a, b), ROW_CAP),
       fetchPaged<{ tanker_id: string | null }>((a, b) => db.from("orders").select("tanker_id").eq("is_test", false).eq("status", "delivered").gte("delivered_at", from).order("delivered_at", { ascending: false }).order("id").range(a, b), ROW_CAP),
     ]);
     const trips = new Map<string, number>();

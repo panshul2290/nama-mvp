@@ -29,7 +29,9 @@ export async function loadRef(): Promise<Ref> {
   const db = supabase();
   const [z, t, c] = await Promise.all([
     db.from("zones").select("id, name"),
-    db.from("tankers").select("id, company_id"),
+    // Only tankers with a company matter here (an order's company); the register's ~11,000
+    // offline tankers have none, so they never exceed PostgREST's 1,000-row page.
+    db.from("tankers").select("id, company_id").not("company_id", "is", null).limit(10000),
     db.from("companies").select("id, name"),
   ]);
   return {

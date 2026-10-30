@@ -125,6 +125,15 @@ const MESSAGES: Record<string, string> = {
   api_unauthorized: "Invalid or revoked API key.",
   api_forbidden: "This API key doesn't have that permission.",
   api_rate_limited: "Too many requests for this API key — try again in a minute.",
+  // 0031–0033 (batch D: clusters, register import, permit campaign)
+  plate_in_register: "That plate is in the NWS tanker register under another owner's mobile number. Sign up with the number NWS has on file, or contact NWS permits.",
+  not_on_platform: "This tanker is in the NWS register but not registered on the platform, so it can't go online.",
+  chunk_too_large: "Send at most 500 rows per import call.",
+  invalid_import: "That import isn't valid (1 to 100,000 rows).",
+  invalid_cluster: "Choose a cluster.",
+  invalid_governorate: "Choose a governorate.",
+  invalid_invite: "Choose owners, an import or a filter to invite.",
+  too_many: "Too many at once — at most 500 per call.",
 };
 
 // Codes whose detail (after "code: ") is worth showing, e.g. which documents are missing.

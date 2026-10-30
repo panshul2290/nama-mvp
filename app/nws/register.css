@@ -1,0 +1,13 @@
+/* Register import, list and campaign (components/nws/register). */
+.nws .regmap { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 14px; }
+.nws .regsum { margin: 10px 0 4px; padding: 0; font-size: 13px; color: var(--muted); display: grid; gap: 4px; }
+.nws .regprog { height: 12px; background: var(--sunk); border-radius: 6px; overflow: hidden; margin: 12px 0 6px; }
+.nws .regprog > div { height: 100%; background: var(--accent); transition: width 0.3s ease; }
+.nws .regpager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 10px 16px; font-size: 13px; color: var(--muted); }
+.nws .funnel { display: grid; gap: 8px; padding: 8px 16px 16px; }
+.nws .funnel button { all: unset; cursor: pointer; display: grid; grid-template-columns: minmax(150px, 210px) 1fr 140px; gap: 12px; align-items: center; font-size: 13.5px; padding: 3px 4px; border-radius: 6px; }
+.nws .funnel button:hover, .nws .funnel button.on { background: var(--sunk); }
+.nws .funnel button:focus-visible { outline: 2px solid var(--accent); }
+.nws .funnel .track { height: 14px; background: var(--sunk); border-radius: 4px; overflow: hidden; }
+.nws .funnel .fill { height: 100%; background: var(--accent); border-radius: 4px; }
+.nws .funnel .num small { color: var(--muted); margin-inline-start: 6px; }
