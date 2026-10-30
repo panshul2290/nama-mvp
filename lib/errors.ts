@@ -106,7 +106,13 @@ const MESSAGES: Record<string, string> = {
   invalid_email: "That email doesn’t look right.",
   invitation_expired: "This invitation has expired. Ask for a new one.",
   no_penalty_rule_for_alert: "The penalty framework has no rule for this alert type. Issue a penalty from Permits → Violations instead.",
+  documents_incomplete: "The document check can't be completed — these required documents aren't approved and in date:",
+  separation_of_duties: "You recorded the passed inspection for this application, so another permit officer has to approve it.",
+  driver_other_company: "That driver belongs to a different company (or none). Assign a driver of the tanker's own company.",
 };
+
+// Codes whose detail (after "code: ") is worth showing, e.g. which documents are missing.
+const WITH_DETAIL = new Set(["documents_incomplete"]);
 
 export function errorCode(error: { message?: string } | null | undefined): string | null {
   if (!error?.message) return null;
@@ -115,5 +121,9 @@ export function errorCode(error: { message?: string } | null | undefined): strin
 
 export function friendlyError(error: { message?: string } | null | undefined): string {
   const code = errorCode(error);
+  if (code && WITH_DETAIL.has(code)) {
+    const detail = error?.message?.split(`${code}:`)[1]?.trim();
+    return detail ? `${MESSAGES[code]} ${detail}.` : MESSAGES[code];
+  }
   return code ? MESSAGES[code] : (error?.message ?? "Something went wrong.");
 }

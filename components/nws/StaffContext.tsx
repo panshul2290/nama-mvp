@@ -25,7 +25,8 @@ export function StaffProvider({ staff, children }: { staff: Staff; children: Rea
     setTimeout(() => setMsg((m) => (m?.text === text ? null : m)), 4000);
   }, []);
   // UI hint only: the database enforces the sub-role in every staff RPC.
-  const can = useCallback((...roles: StaffRole[]) => roles.includes(staff.staff_role), [staff.staff_role]);
+  // Super admin passes every role check, as require_staff does (0023).
+  const can = useCallback((...roles: StaffRole[]) => staff.staff_role === "admin" || roles.includes(staff.staff_role), [staff.staff_role]);
   return (
     <Ctx value={{ staff, can, toast }}>
       {children}

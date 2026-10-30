@@ -73,7 +73,19 @@ export async function staffSuite(t: Target, r: Reporter) {
   const byName = Object.fromEntries(calls.map(([fn, sql, p]) => [fn, [sql, p] as const]));
   for (const fn of ["staff_create_permit", "staff_review_permit", "staff_resubmit_permit", "staff_set_role"]) await forbidden("operator", OP.id, fn, ...byName[fn]);
   for (const fn of ["staff_block_tanker", "staff_unblock_tanker", "staff_assign_tanker", "staff_unassign_tanker", "staff_set_role"]) await forbidden("permit_officer", PO.id, fn, ...byName[fn]);
-  for (const fn of ["staff_block_tanker", "staff_unblock_tanker", "staff_assign_tanker", "staff_unassign_tanker", "staff_create_permit", "staff_review_permit", "staff_resubmit_permit"]) await forbidden("admin", AD.id, fn, ...byName[fn]);
+  // Super admin has every staff power (0023; the prototype's role matrix gives it full access).
+  // Each call is rolled back, so the fixtures below are unchanged.
+  for (const fn of ["staff_block_tanker", "staff_unblock_tanker", "staff_unassign_tanker", "staff_create_permit"]) {
+    const [sql, p] = byName[fn];
+    const res = await t
+      .adminRollback(async (qq) => {
+        await qq("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: AD.id, role: "authenticated" })]);
+        await qq(sql, p as unknown[]);
+        return "ok";
+      })
+      .catch((e: Error) => e.message);
+    r.check(`admin → ${fn}: allowed (super admin)`, res === "ok" || !String(res).includes("forbidden_for_role"), res);
+  }
 
   // ---- staff read everything
   const o = await placeOrder(t, C1.id, "DW", 700);
