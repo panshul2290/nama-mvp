@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
+import { FillCredit } from "@/components/driver/FillCredit";
 import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
 import { useNow } from "@/components/driver/useNow";
 import { useT } from "@/lib/i18n";
@@ -168,6 +169,8 @@ export default function EarningsPage() {
           </div>
         </div>
       </div>
+
+      <FillCredit />
 
       <div className="card">
         <h4>{t("performance")}</h4>

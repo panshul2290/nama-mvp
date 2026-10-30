@@ -7,6 +7,7 @@ import { createContext, use, useCallback, useEffect, useMemo, useRef, useState }
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { DICT, muscatDay, useErrText } from "@/components/driver/i18n";
 import { legIndex, tripLegs, type Leg } from "@/components/driver/legs";
+import type { OfferRow } from "@/components/driver/offer";
 import { LESSONS } from "@/components/driver/training";
 import { useProfile } from "@/components/useProfile";
 import { useToast } from "@/components/useToast";
@@ -22,7 +23,7 @@ import { buildDemoRoute, DEMO_MODE, positionAt, travelled, type SimRoute } from 
 import { supabase } from "@/lib/supabase/client";
 import { muscatDayStart } from "@/lib/sla";
 import { MAX_ACCURACY_M, MOVING_INTERVAL_MS, shouldSend, usable, type Fix, type Sent } from "@/lib/tracking";
-import type { LngLat, Notification, OpenRequest, Order, OrderLocation, Profile, Site, Tanker } from "@/lib/types";
+import type { LngLat, Notification, Order, OrderLocation, Profile, Site, Tanker } from "@/lib/types";
 
 const PING_MS = MOVING_INTERVAL_MS; // decide every 10 s; shouldSend() applies the 15 m / 30 s rule
 /** If no new fix has arrived for this long, ask for one (some phones go quiet when stationary). */
@@ -84,12 +85,16 @@ type DriverState = {
   /** Runs a trip-step RPC on the current job; resolves to the updated order, or null on error (already shown). */
   jobAction: (fn: JobFn, params?: Record<string, unknown>) => Promise<Order | null>;
   reportIssue: (kind: IssueKind, note: string) => Promise<boolean>;
+  /** confirm_fill was refused for lack of filling credit (independent drivers): show the top-up link. */
+  fillShort: boolean;
   acting: boolean;
   /** Open requests for this tanker (live while online and free), minus declined ones. */
-  openJobs: OpenRequest[];
+  openJobs: OfferRow[];
   /** When each open job was first seen on this device (drives the 60 s offer). */
   seenAt: Record<string, number>;
   declineJob: (id: string) => void;
+  /** Pass on a job the server offered to this tanker (decline_offer): it goes to the next tanker. */
+  passOffer: (id: string) => Promise<void>;
   me: LngLat | null;
   getPosition: () => LngLat | null;
   /**
@@ -137,13 +142,14 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   const [finished, setFinished] = useState<Order | null>(null);
   const [ready, setReady] = useState(false);
   const [acting, setActing] = useState(false);
+  const [fillShort, setFillShort] = useState(false);
   const [today, setToday] = useState({ earned: 0, jobs: 0 });
   const [shiftChecked, setShiftChecked] = useState(false);
   const [companySuspended, setCompanySuspended] = useState(false);
   const [sites, setSites] = useState<Site[]>([]);
   const [prefs, setPrefs] = useState<Prefs>({});
   const [unread, setUnread] = useState(0);
-  const [openJobs, setOpenJobs] = useState<OpenRequest[]>([]);
+  const [openJobs, setOpenJobs] = useState<OfferRow[]>([]);
   const [seenAt, setSeenAt] = useState<Record<string, number>>({});
   const [declined, setDeclined] = useState<string[]>([]);
   const [trainingRows, setTrainingRows] = useState<{ done: string[]; source: "db" | "prefs"; loaded: boolean }>({ done: [], source: "db", loaded: false });
@@ -430,7 +436,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       .rpc("open_requests_near", { p_lat: at.lat, p_lng: at.lng })
       .then(({ data, error }) => {
         if (error) return;
-        const rows = (data ?? []) as OpenRequest[];
+        const rows = (data ?? []) as OfferRow[];
         setOpenJobs(rows);
         setSeenAt((s) => {
           const now = Date.now();
@@ -480,12 +486,23 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     [savePrefs, prefs.declined],
   );
 
+  const passOffer = useCallback(
+    async (id: string) => {
+      const { error } = await supabase().rpc("decline_offer", { p_order_id: id });
+      if (error && !isMissing(error)) showToast(errText(error));
+      // Either way it leaves this phone's list (counted like a decline).
+      declineJob(id);
+      refreshJobs();
+    },
+    [declineJob, refreshJobs, showToast, errText],
+  );
+
   const acceptJob = useCallback(
     async (orderId: string) => {
       if (!profile) return { message: "not_a_driver" };
       const { error } = await supabase().rpc("accept_order", { p_order_id: orderId }).single<Order>();
       if (error) {
-        setOpenJobs((rs) => rs.filter((r) => r.id !== orderId || !/already_taken|not_eligible/.test(error.message)));
+        setOpenJobs((rs) => rs.filter((r) => r.id !== orderId || !/already_taken|not_eligible|offered_to_another_tanker/.test(error.message)));
         if (errorCode(error) === "company_suspended") setCompanySuspended(true);
         return error;
       }
@@ -585,9 +602,11 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
         .single<Order>();
       setActing(false);
       if (error) {
+        if (fn === "confirm_fill" && errorCode(error) === "insufficient_fill_credit") setFillShort(true);
         showToast(errText(error));
         return null;
       }
+      if (fn === "confirm_fill") setFillShort(false);
       if (data.status === "delivered") finish(data);
       else setJob((j) => (j ? { ...j, order: data } : j));
       return data;
@@ -748,10 +767,12 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
         acceptJob,
         jobAction,
         reportIssue,
+        fillShort,
         acting,
         openJobs: shownJobs,
         seenAt,
         declineJob,
+        passOffer,
         me,
         getPosition,
         locate,

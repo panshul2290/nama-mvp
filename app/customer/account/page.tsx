@@ -18,7 +18,7 @@ import { friendlyError } from "@/lib/errors";
 import { initials } from "@/lib/format";
 import { LangToggle, useT } from "@/lib/i18n";
 import { signOutApp } from "@/components/portal/session";
-import { askPush } from "@/lib/push";
+import { askPush, unregisterPush } from "@/lib/push";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Complaint, type DataRequest, type Profile, type Property } from "@/lib/types";
 
@@ -27,6 +27,8 @@ const CHANNELS: [keyof Prefs, string][] = [
   ["push", "push"],
   ["sms", "sms"],
   ["whatsapp", "wa"],
+  ["email", "emailCh"],
+  ["reminders", "remind"],
   ["promotions", "mkt"],
 ];
 
@@ -107,6 +109,25 @@ function Account() {
     loadDsr();
   }
 
+  // Data export (0027): my_data_export(request) returns the JSON once NWS has prepared it.
+  const [exporting, setExporting] = useState<string | null>(null);
+  async function downloadExport(d: DataRequest) {
+    setExporting(d.id);
+    const { data, error } = await supabase().rpc("my_data_export", { p_request_id: d.id });
+    setExporting(null);
+    if (error) return toast.show(friendlyError(error));
+    if (!data) return toast.show(t("dsrExpired"));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nama-my-data-${ref.dataRequest(d.ref_no)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
   async function pref(p: Prefs) {
     // Turning push on in the app asks the phone for permission (again, if refused before).
     if (p.push) askPush(true).catch(() => undefined);
@@ -115,6 +136,7 @@ function Account() {
   }
 
   async function signOut() {
+    await unregisterPush(); // this phone stops getting this account's pushes
     await signOutApp("customer");
     router.replace("/login?app=customer");
   }
@@ -153,7 +175,14 @@ function Account() {
           {me?.id_verified ? (
             <div className="vf">
               <Icon name="shield" />
-              {ti(me.id_type ?? "civil_id")} · {ti("simulated")}
+              {ti(me.id_type ?? "civil_id")}
+              {me.id_no ? (
+                <>
+                  {" "}
+                  <bdi dir="ltr">{me.id_no}</bdi>
+                </>
+              ) : null}{" "}
+              · {ti("simulated")}
             </div>
           ) : (
             <button className="cta sec" style={{ margin: 0 }} onClick={() => setSheet("id")}>
@@ -199,7 +228,9 @@ function Account() {
           </div>
         ))}
 
-        <h4 className="cx-h">{t("privacy")}</h4>
+        <h4 className="cx-h" id="data">
+          {t("privacy")}
+        </h4>
         <div className="lrow">
           <span>{t("share")}</span>
           <Toggle on={Boolean(prefs?.share_usage)} disabled={!prefs} label={t("share")} onChange={(v) => pref({ share_usage: v })} />
@@ -224,7 +255,14 @@ function Account() {
               {ref.dataRequest(d.ref_no)} · {t(`dsr_${d.kind}`)}
               <small>{dshort(d.created_at, lang)}</small>
             </span>
-            <span className={`st ${d.state === "completed" ? "ok" : d.state === "rejected" ? "bad" : "warn"}`}>{t(`dsrSt_${d.state}`)}</span>
+            <span className="btns">
+              {d.kind === "access" && d.state === "completed" && (
+                <button className="btn sm" disabled={exporting === d.id} onClick={() => downloadExport(d)}>
+                  <Icon name="download" size={14} /> {exporting === d.id ? t("dsrPreparing") : t("dsrDownload")}
+                </button>
+              )}
+              <span className={`st ${d.state === "completed" ? "ok" : d.state === "rejected" ? "bad" : "warn"}`}>{t(`dsrSt_${d.state}`)}</span>
+            </span>
           </div>
         ))}
 

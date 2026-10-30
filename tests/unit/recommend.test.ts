@@ -1,6 +1,7 @@
 // Unit tests for smart recommendations (lib/recommend.ts) and the household SLA reading
 // (lib/orderSla.ts).  npm run test:unit
 import { appSla, readSla, slaSummary } from "../../lib/orderSla";
+import { feeFactorList, pickOffer } from "../../components/driver/offer";
 import { pushRoute } from "../../lib/pushRoute";
 import { contractFrequency, fitPreset, GAL_PER_PERSON_DAY, recommend } from "../../lib/recommend";
 
@@ -69,6 +70,21 @@ eq("driver: a new job opens Jobs", pushRoute("driver", { event: "new_job" }), "/
 eq("driver: a message opens the trip", pushRoute("driver", { order_id: "x", event: "new_message" }), "/driver/trip");
 eq("an explicit route for the same app is used", pushRoute("driver", { route: "/driver/profile#permit" }), "/driver/profile#permit");
 eq("a route into another app is ignored", pushRoute("customer", { route: "/nws/orders" }), "/customer/inbox");
+eq("driver: an auto-dispatch offer opens Jobs", pushRoute("driver", { order_id: "x", event: "job_offered" }), "/driver/jobs");
+eq("driver: low filling credit opens the top-up", pushRoute("driver", { event: "fill_credit_low" }), "/driver/earnings#fill");
+eq("customer: a data export opens Account → Privacy", pushRoute("customer", { event: "data_export_ready" }), "/customer/account#data");
+
+console.log("## UNIT driver offers");
+{
+  const now = Date.parse("2026-10-30T10:00:00Z");
+  const row = (id: string, extra: object = {}) => ({ id, order_no: 1, service_type: "DW" as const, gallons: 1000, area: "A", distance_km: 1, driver_earnings: "1", earnings_status: null, created_at: "2026-10-30T09:59:00Z", ...extra });
+  const server = pickOffer([row("a"), row("b", { offer_expires_at: "2026-10-30T10:00:25Z" })], { a: now - 1000, b: now - 1000 }, now);
+  eq("a server offer to this tanker comes first, with its own countdown", [server?.job.id, server?.left, server?.server], ["b", 25, true]);
+  const local = pickOffer([row("a")], { a: now - 10_000 }, now);
+  eq("without one, the 60 s local offer", [local?.job.id, local?.left, local?.server], ["a", 50, false]);
+  eq("an expired server offer isn't shown as an offer", pickOffer([row("b", { offer_expires_at: "2026-10-30T09:59:00Z" })], { b: now - 1000 }, now), null);
+  eq("fee factors: only those that change the fee", feeFactorList({ distance_mult: 1.15, demand_mult: 1, peak_mult: "1.2" }), [["distance", 1.15], ["peak", 1.2]]);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

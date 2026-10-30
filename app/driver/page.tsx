@@ -150,7 +150,7 @@ export default function DriverHome() {
         <Link href="/driver/jobs" className="card hl">
           <div className="row">
             <h4>
-              {t("newJob")} · {f.order(offer.job.order_no)}
+              {offer.server ? t("offeredT") : t("newJob")} · {f.order(offer.job.order_no)}
             </h4>
             <span className="st warn">{t("secs", { n: f.d(offer.left) })}</span>
           </div>

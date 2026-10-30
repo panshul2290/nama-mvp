@@ -14,6 +14,7 @@ const CONFIGURED: Record<Platform, boolean> = {
   ios: process.env.NEXT_PUBLIC_PUSH_IOS === "true",
 };
 const ASKED_KEY = "nama.push.asked";
+const TOKEN_KEY = "nama.push.token";
 
 let logged = false;
 const logOnce = (msg: string) => {
@@ -56,6 +57,11 @@ export async function startPush(app: "customer" | "driver", open: (route: string
   handles.push(
     await PushNotifications.addListener("registration", async (t) => {
       // register_push_token(p_token, p_platform, p_app) (0026).
+      try {
+        localStorage.setItem(TOKEN_KEY, t.value);
+      } catch {
+        /* storage unavailable */
+      }
       const { error } = await supabase().rpc("register_push_token", { p_token: t.value, p_platform: platform(), p_app: app });
       if (error && isMissing(error)) logOnce("register_push_token isn't in this database yet; token not stored");
       else if (error) console.warn("[push] token not stored:", error.message);
@@ -108,4 +114,28 @@ export async function askNotificationPermission(): Promise<void> {
   const { PushNotifications } = await import("@capacitor/push-notifications");
   const perm = await PushNotifications.checkPermissions();
   if (perm.receive === "prompt" || perm.receive === "prompt-with-rationale") await PushNotifications.requestPermissions();
+}
+
+/**
+ * Before signing out: revoke this device's token (unregister_push_token, 0026), so the next
+ * account on the phone doesn't get the previous one's notifications. Never throws.
+ */
+export async function unregisterPush(): Promise<void> {
+  // The next sign-in on this phone starts push again (and registers the token for that account).
+  started = false;
+  await Promise.all(handles.splice(0).map((h) => h.remove().catch(() => undefined)));
+  let token: string | null = null;
+  try {
+    token = localStorage.getItem(TOKEN_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+  if (!token) return;
+  try {
+    const { error } = await supabase().rpc("unregister_push_token", { p_token: token });
+    if (error && !isMissing(error)) console.warn("[push] token not revoked:", error.message);
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* offline: the server revokes stale tokens when a send fails */
+  }
 }

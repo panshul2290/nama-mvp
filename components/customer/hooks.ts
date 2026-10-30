@@ -60,10 +60,14 @@ export type Prefs = {
   promotions?: boolean;
   share_usage?: boolean;
   autopay?: boolean;
+  /** Reminders (refill, documents): on unless switched off (0026). */
+  reminders?: boolean;
+  /** Notifications by email as well: off unless switched on (0026). */
+  email?: boolean;
   /** People living at each property (property id, or "pin"), for the size and frequency suggestion. */
   household?: Record<string, number>;
 };
-export const PREF_DEFAULTS: Required<Prefs> = { push: true, sms: true, whatsapp: false, promotions: false, share_usage: false, autopay: false, household: {} };
+export const PREF_DEFAULTS: Required<Prefs> = { push: true, sms: true, whatsapp: false, promotions: false, share_usage: false, autopay: false, reminders: true, email: false, household: {} };
 
 /** profiles.prefs: merged with defaults; set() writes the whole object back. */
 export function usePrefs(userId: string) {

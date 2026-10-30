@@ -140,3 +140,5 @@ a.cta { text-decoration: none; }
 }
 .sla-line { margin: 0 0 10px; }
 .done-hero .st { margin-inline-start: auto; align-self: center; }
+.ff { margin-top: 10px; font-size: 13px; }
+.ff summary { cursor: pointer; color: var(--link); font-weight: 600; margin-bottom: 4px; }

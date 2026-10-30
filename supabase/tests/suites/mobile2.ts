@@ -62,6 +62,15 @@ export async function mobile2Suite(t: Target, r: Reporter) {
   await t.as(w.D1.id, "select report_location(23.6001, 58.2001, 7, $1::timestamptz, 'phone')", [at]);
   const [fix] = await t.admin<{ source: string | null; accuracy_m: number }>("select source, accuracy_m from gps_fixes where tanker_id = $1 order by recorded_at desc limit 1", [w.tk.D1]);
   r.check("a fix sent from the driver app is stored with its accuracy and source 'phone'", fix?.source === "phone" && Number(fix.accuracy_m) === 7, fix);
+  const [tk1] = await t.admin<{ last_fix_source: string | null }>("select last_fix_source from tankers where id = $1", [w.tk.D1]);
+  r.check("the tanker's last fix source is 'phone'", tk1?.last_fix_source === "phone", tk1);
+  await t.as(w.D1.id, "select report_location(23.6002, 58.2002, 6, $1::timestamptz, 'simulated')", [new Date(Date.now() + 2000).toISOString()]);
+  const [fix2] = await t.admin<{ source: string | null }>("select source from gps_fixes where tanker_id = $1 order by recorded_at desc limit 1", [w.tk.D1]);
+  const [tk2] = await t.admin<{ last_fix_source: string | null }>("select last_fix_source from tankers where id = $1", [w.tk.D1]);
+  r.check("a simulated fix is tagged 'simulated' on the fix and as the tanker's last fix source", fix2?.source === "simulated" && tk2?.last_fix_source === "simulated", { fix2, tk2 });
+  await t.as(w.D1.id, "select report_location(23.6003, 58.2003, 6, $1::timestamptz, 'phone')", [new Date(Date.now() + 3000).toISOString()]);
+  const [tk3] = await t.admin<{ last_fix_source: string | null }>("select last_fix_source from tankers where id = $1", [w.tk.D1]);
+  r.check("a phone fix after it sets the last fix source back to 'phone'", tk3?.last_fix_source === "phone", tk3);
   await r.denies("an unknown source is refused", () => t.as(w.D1.id, "select report_location(23.6, 58.2, 7, now(), 'satellite')"), "invalid_source");
   await r.denies("the 5-argument form keeps the accuracy rule", () => t.as(w.D1.id, "select report_location(23.6, 58.2, 500, now(), 'phone')"), "inaccurate_fix");
   const [priv] = await t.admin<{ anon: boolean; authed: boolean }>(

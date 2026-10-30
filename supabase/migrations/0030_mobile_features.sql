@@ -228,7 +228,9 @@ create trigger tankers_training_guard before insert or update of is_online on pu
 -- C1 — where each GPS fix came from
 -- ===========================================================================
 alter table public.gps_fixes add column source text check (source is null or source in ('phone', 'simulated', 'ivms'));
-
+-- The phone path (0028: report_location → record_fix(…, 'phone')) plus the fix's real source:
+-- the stored fix and tankers.last_fix_source say 'phone' or 'simulated'. When the tanker is on a
+-- live IVMS feed, 0028 keeps the IVMS position and nothing is stored or tagged here.
 create function public.report_location(
   p_lat         double precision,
   p_lng         double precision,
@@ -243,7 +245,9 @@ begin
   if p_source is null or p_source not in ('phone', 'simulated') then raise exception 'invalid_source'; end if;
   perform public.report_location(p_lat, p_lng, p_accuracy_m, p_recorded_at);
   update public.gps_fixes set source = p_source
-   where tanker_id = public.my_tanker_id() and recorded_at = p_recorded_at and source is null;
+   where tanker_id = public.my_tanker_id() and recorded_at = p_recorded_at and (source is null or source = 'phone');
+  update public.tankers set last_fix_source = p_source
+   where id = public.my_tanker_id() and last_fix_at = p_recorded_at and last_fix_source = 'phone';
 end $$;
 
 -- ===========================================================================

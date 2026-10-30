@@ -384,7 +384,12 @@ export const CX: Dict = {
   push: { en: "Push notifications", ar: "إشعارات التطبيق" },
   sms: { en: "SMS", ar: "رسائل نصية" },
   wa: { en: "WhatsApp", ar: "واتساب" },
-  mkt: { en: "Promotions and offers", ar: "العروض والخصومات" },
+  mkt: { en: "Promotions and offers (marketing consent)", ar: "العروض والخصومات (الموافقة على التسويق)" },
+  emailCh: { en: "Email", ar: "البريد الإلكتروني" },
+  remind: { en: "Refill and service reminders", ar: "تذكيرات إعادة التعبئة والخدمة" },
+  dsrDownload: { en: "Download", ar: "تنزيل" },
+  dsrPreparing: { en: "Preparing…", ar: "جارٍ التحضير…" },
+  dsrExpired: { en: "This export has expired. Request a new copy.", ar: "انتهت صلاحية هذا الملف. اطلب نسخة جديدة." },
   privacy: { en: "Privacy", ar: "الخصوصية" },
   share: { en: "Share my usage data with NWS to improve service", ar: "مشاركة بيانات استهلاكي مع نماء لتحسين الخدمة" },
   dataReq: { en: "Your data", ar: "بياناتك" },
@@ -452,6 +457,18 @@ export const CX: Dict = {
   refundL: { en: "Refund", ar: "المبلغ المسترد" },
   updates: { en: "Updates", ar: "التحديثات" },
   reply: { en: "Add a reply", ar: "أضف رداً" },
+
+  // Delivery fee breakdown (quote_order factors, 0026)
+  ffT: { en: "How the delivery fee is worked out", ar: "كيف تُحسب رسوم التوصيل" },
+  ffBase: { en: "Base delivery fee", ar: "رسوم التوصيل الأساسية" },
+  ffPeak: { en: "Evening peak", ar: "ذروة المساء" },
+  ffPriority: { en: "Emergency", ar: "طارئ" },
+  ffDistance: { en: "Distance", ar: "المسافة" },
+  ffDistanceKm: { en: "Distance from the station ({km} km)", ar: "المسافة من المحطة ({km} كم)" },
+  ffDemand: { en: "Demand in your area", ar: "الطلب في منطقتك" },
+  ffNone: { en: "none", ar: "لا شيء" },
+  ffTotal: { en: "Fee multiplier", ar: "معامل الرسوم" },
+  ffNoPoint: { en: "Distance and demand are added once the delivery point is known.", ar: "تُضاف المسافة والطلب بعد تحديد نقطة التوصيل." },
 
   // Test zone vs real address (request review step)
   zoneRealDest: { en: "This address is in Oman — testers in India won’t see it. Use your current location to place a test order.", ar: "هذا العنوان في عُمان — لن يراه المختبرون في الهند. استخدم موقعك الحالي لإنشاء طلب تجريبي." },

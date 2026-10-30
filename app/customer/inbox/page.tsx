@@ -84,6 +84,11 @@ export default function InboxPage() {
                 )}
                 {body}
               </Link>
+            ) : n.event === "data_export_ready" ? (
+              // The export is downloaded from Account → Privacy (my_data_export).
+              <Link key={n.id} href="/customer/account#data" className="lrow nrow">
+                {body}
+              </Link>
             ) : (
               <div key={n.id} className="lrow nrow">
                 {body}

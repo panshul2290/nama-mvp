@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
 import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
 import { nearestSite } from "@/components/driver/legs";
-import { pickOffer } from "@/components/driver/offer";
+import { feeFactorList, pickOffer } from "@/components/driver/offer";
 import { BLOCKERS_ID, OnlineBlockers, useBlockerTitle, useOnlineBlockers } from "@/components/driver/OnlineBlockers";
 import { useNow } from "@/components/driver/useNow";
 import { Icon } from "@/components/icons";
@@ -19,13 +19,14 @@ type Scheduled = { id: string; order_no: number; service_type: OpenRequest["serv
 
 export default function JobsPage() {
   const router = useRouter();
-  const { tanker, online, toggleOnline, job, openJobs, seenAt, acceptJob, declineJob, hasFix, gpsError, sites, toast } = useDriver();
+  const { tanker, online, toggleOnline, job, openJobs, seenAt, acceptJob, declineJob, passOffer, hasFix, gpsError, sites, toast } = useDriver();
   const t = useT(DICT);
   const f = useFmt();
   const errText = useErrText();
   const now = useNow(1_000);
   const [tab, setTab] = useState<Tab>("open");
   const [accepting, setAccepting] = useState<string | null>(null);
+  const [passing, setPassing] = useState<string | null>(null);
   const [scheduled, setScheduled] = useState<Scheduled[] | null>(null);
   const { permit, blockers, reloadPermits } = useOnlineBlockers();
   const blockerTitle = useBlockerTitle();
@@ -129,16 +130,23 @@ export default function JobsPage() {
       {tab === "open" && offer && (
         <div className="d-offer">
           <div className="row">
-            <b className="nj">{t("newJob")}</b>
-            <span className="d-cdn">
+            <b className="nj">{offer.server ? t("offeredT") : t("newJob")}</b>
+            <span className="d-cdn" role="timer" aria-live="off">
               <Icon name="clock" />
-              {t("toAccept", { n: f.d(offer.left) })}
+              {offer.server ? t("secs", { n: f.d(offer.left) }) : t("toAccept", { n: f.d(offer.left) })}
             </span>
           </div>
           <div className="money">{f.omr(offer.job.driver_earnings)}</div>
           <small>
             {t("expectedTrip")} <RuleTag status={offer.job.earnings_status} />
           </small>
+          {feeFactorList(offer.job.fee_factors).length > 0 && (
+            <small className="d-block">
+              {feeFactorList(offer.job.fee_factors)
+                .map(([k, v]) => t(`ff_${k}`, { x: f.d(String(Math.round(v * 100) / 100)) }))
+                .join(" · ")}
+            </small>
+          )}
           <div className="d-rows">
             <div>
               <Icon name="pin" />
@@ -167,9 +175,23 @@ export default function JobsPage() {
             {tags(offer.job)}
           </div>
           <div className="d-btns">
-            <button className="cta sec" onClick={() => declineJob(offer.job.id)} disabled={accepting !== null}>
-              {t("decline")}
-            </button>
+            {offer.server ? (
+              <button
+                className="cta sec"
+                disabled={accepting !== null || passing !== null}
+                onClick={async () => {
+                  setPassing(offer.job.id);
+                  await passOffer(offer.job.id);
+                  setPassing(null);
+                }}
+              >
+                {passing === offer.job.id ? t("sending") : t("passOffer")}
+              </button>
+            ) : (
+              <button className="cta sec" onClick={() => declineJob(offer.job.id)} disabled={accepting !== null}>
+                {t("decline")}
+              </button>
+            )}
             <button className="cta" onClick={() => accept(offer.job.id)} disabled={busy}>
               {accepting === offer.job.id ? t("accepting") : t("acceptJob")}
             </button>

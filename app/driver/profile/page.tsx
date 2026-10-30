@@ -14,6 +14,7 @@ import { LangToggle, useLang, useT } from "@/lib/i18n";
 import { initials } from "@/lib/format";
 import { SHIFT_KEYS, shiftHours, type Shift } from "@/lib/shifts";
 import { signOutApp } from "@/components/portal/session";
+import { unregisterPush } from "@/lib/push";
 import { supabase } from "@/lib/supabase/client";
 import type { Device, TankerDocument } from "@/lib/types";
 
@@ -87,6 +88,7 @@ export default function DriverProfile() {
   }
 
   async function signOut() {
+    await unregisterPush(); // this phone stops getting this account's pushes
     await signOutApp("driver");
     router.replace("/login?app=driver");
   }

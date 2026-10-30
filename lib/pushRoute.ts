@@ -9,10 +9,12 @@ export function pushRoute(app: "customer" | "driver", d: PushData | null | undef
   if (d.route && d.route.startsWith(`/${app}`)) return d.route;
   const ev = d.event ?? d.kind ?? "";
   if (app === "customer") {
+    if (ev === "data_export_ready") return "/customer/account#data";
     if (d.order_id) return `/customer/order?id=${encodeURIComponent(d.order_id)}${ev === "new_message" ? "&chat=1" : ""}`;
     return "/customer/inbox";
   }
-  if (ev === "new_job" || ev === "job_offer") return "/driver/jobs";
+  if (ev === "new_job" || ev === "job_offer" || ev === "job_offered") return "/driver/jobs";
+  if (ev === "fill_credit_low" || ev === "insufficient_fill_credit") return "/driver/earnings#fill";
   if (d.order_id || ev === "new_message" || ev === "job_assigned") return "/driver/trip";
   return "/driver/notifications";
 }

@@ -67,6 +67,14 @@ export default function NotificationsPage() {
               </>
             );
             // A message on the job in progress opens its chat on the Trip screen.
+            // A job offer opens Jobs; low filling credit opens the top-up.
+            const href = n.event === "job_offered" ? "/driver/jobs" : n.event === "fill_credit_low" ? "/driver/earnings#fill" : null;
+            if (href)
+              return (
+                <Link key={n.id} href={href} className={`lrow d-notif ${n.read_at ? "" : "unread"}`}>
+                  {inner}
+                </Link>
+              );
             return msg && n.order_id && n.order_id === job?.order.id ? (
               <Link key={n.id} href="/driver/trip" className={`lrow d-notif ${n.read_at ? "" : "unread"}`} onClick={() => requestOpen(n.order_id as string)}>
                 {inner}

@@ -8,6 +8,7 @@ import { useCx } from "@/components/customer/i18n";
 import { gal, omr3 } from "@/components/customer/fmt";
 import { useNow, useOnline, usePaymentMethods, usePrefs, useProperties, useWallet, type PayMethodRow } from "@/components/customer/hooks";
 import { householdKey, recoFor, RecoCard } from "@/components/customer/Reco";
+import { FeeFactors, type Factors } from "@/components/customer/FeeFactors";
 import { PropertySheet } from "@/components/customer/PropertySheet";
 import { slotOptions } from "@/components/customer/slots";
 import { Bill, quoteToBill, SvcTag, Toggle } from "@/components/customer/ui";
@@ -18,6 +19,7 @@ import { usePricingRules } from "@/components/usePricingRules";
 import { errorCode, friendlyError } from "@/lib/errors";
 import { currentPosition, DEFAULT_CENTER, reverseGeocodeArea } from "@/lib/geo";
 import { ruleNumber, VOLUME_PRESETS, type ServiceType } from "@/lib/pricing";
+import { isMissing } from "@/lib/rpcCompat";
 import { supabase } from "@/lib/supabase/client";
 import { inTestArea, useTestAreas } from "@/lib/testArea";
 import { ref, type LngLat, type Order } from "@/lib/types";
@@ -151,16 +153,17 @@ function RequestWizard() {
 
   // Live quote on the review step (peak, priority and promotion included).
   const slotStart = slot?.start ?? null;
+  // The delivery point goes into the quote, so it has the same distance and demand factors as the order (0026).
+  const destLat = prop ? prop.lat : point.lat;
+  const destLng = prop ? prop.lng : point.lng;
   const quoteArgs = useMemo(
-    () => ({ p_service_type: type, p_gallons: gallons, p_slot_start: slotStart, p_emergency: emergency, p_promo_code: promo }),
-    [type, gallons, slotStart, emergency, promo],
+    () => ({ p_service_type: type, p_gallons: gallons, p_slot_start: slotStart, p_emergency: emergency, p_promo_code: promo, p_lat: destLat, p_lng: destLng }),
+    [type, gallons, slotStart, emergency, promo, destLat, destLng],
   );
   useEffect(() => {
     if (step !== 4) return;
     let live = true;
-    supabase()
-      .rpc("quote_order", quoteArgs)
-      .then(({ data, error }) => {
+    quoteOrder(quoteArgs).then(({ data, error }) => {
         if (!live) return;
         if (error) {
           if (errorCode(error) === "invalid_promo") {
@@ -170,7 +173,7 @@ function RequestWizard() {
           return;
         }
         setQuote(data as Record<string, unknown>);
-      });
+    });
     return () => {
       live = false;
     };
@@ -183,7 +186,7 @@ function RequestWizard() {
       setPromoMsg(null);
       return;
     }
-    const { data, error } = await supabase().rpc("quote_order", { ...quoteArgs, p_promo_code: code });
+    const { data, error } = await quoteOrder({ ...quoteArgs, p_promo_code: code });
     if (error) return setPromoMsg({ ok: false, text: errorCode(error) === "invalid_promo" ? t("promoBad") : friendlyError(error) });
     setPromo(code);
     setQuote(data as Record<string, unknown>);
@@ -254,7 +257,7 @@ function RequestWizard() {
     router.replace(`/customer/order?id=${data.id}`);
   }
 
-  const dest = prop ? { lat: prop.lat, lng: prop.lng } : point;
+  const dest = { lat: destLat, lng: destLng };
   const zoneMismatch = testAreas.length > 0 && here !== null ? (inTestArea(here, testAreas) === inTestArea(dest, testAreas) ? null : inTestArea(here, testAreas) ? "realDest" : "testDest") : null;
   async function pickHere() {
     if (!here) return;
@@ -519,6 +522,7 @@ function RequestWizard() {
 
             <div className="rq-card pad">
               {quote ? <Bill bill={{ ...quoteToBill(quote, promo), vatPct }} gallons={gallons} /> : <div className="empty">{t("pricing")}</div>}
+              {quote && <FeeFactors factors={quote.factors as Factors | undefined} />}
               {quote && quote.total_status !== "confirmed" && <p className="mut small" style={{ margin: "8px 0 0" }}>{t("taggedNote")}</p>}
               <div className="promo">
                 <input
@@ -627,6 +631,16 @@ function RequestWizard() {
       )}
     </>
   );
+}
+
+/** quote_order with the delivery point; the older signature (before 0026) without it. */
+async function quoteOrder(args: Record<string, unknown>) {
+  const res = await supabase().rpc("quote_order", args);
+  if (!res.error || !isMissing(res.error)) return res;
+  const { p_lat: _lat, p_lng: _lng, ...old } = args;
+  void _lat;
+  void _lng;
+  return supabase().rpc("quote_order", old);
 }
 
 function PayRow({ on, onPick, title, sub }: { on: boolean; onPick: () => void; title: string; sub: string }) {

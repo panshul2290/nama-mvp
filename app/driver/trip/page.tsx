@@ -68,7 +68,7 @@ function NoTrip({ finished }: { finished: Order | null }) {
 }
 
 function Trip() {
-  const { job, legs, leg, me, jobAction, acting, wakeLock, demoMode, sim, startSimulation, stopSimulation, toast } = useDriver();
+  const { job, legs, leg, me, jobAction, acting, wakeLock, demoMode, sim, startSimulation, stopSimulation, toast, fillShort } = useDriver();
   const t = useT(DICT);
   const f = useFmt();
   const [pod, setPod] = useState(false);
@@ -110,6 +110,14 @@ function Trip() {
 
   if (!cur) return null;
   const last = chat?.msgs.at(-1) ?? null;
+  const fillBanner = fillShort && !o.filled_at && (
+    <div className="banner badb" role="alert">
+      <b>{t("fcShortT")}</b> {t("fcShortS")}{" "}
+      <Link className="lk" href="/driver/earnings#fill">
+        {t("fcTopupLink")}
+      </Link>
+    </div>
+  );
   const chatLabels: ChatLabels = {
     title: job!.customer?.full_name || t("customer"),
     subtitle: t("chatCustSub", { order: f.order(o.order_no) }),
@@ -182,6 +190,7 @@ function Trip() {
         <h3 className="tj-t">{titles[cur.kind]}</h3>
         <small className="mut">{arrived ? t("atDeliveryPoint") : inside ? t("insideNote") : etaText}</small>
 
+        {cur.kind === "fill" && fillBanner}
         {o.is_test && cur.kind !== "cust" && (
           <div className="banner okb" style={{ marginTop: 12 }}>
             {t("testNote")}

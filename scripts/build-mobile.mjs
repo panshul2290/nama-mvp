@@ -51,8 +51,8 @@ for (const f of ["app", "components", "lib", "public", "tsconfig.json", "package
   if (existsSync(f)) cpSync(f, join(stage, f), { recursive: true });
 }
 symlinkSync(join(root, "node_modules"), join(stage, "node_modules"), "junction");
-// Desktop portals, the email-link callback (a route handler) and the session proxy can't be exported.
-for (const p of ["app/nws", "app/company", "app/business", "app/auth", ...APPS[app].drop]) rmSync(join(stage, p), { recursive: true, force: true });
+// Desktop portals, route handlers (the email-link callback, the /api/v1 integration API) and the session proxy can't be exported.
+for (const p of ["app/nws", "app/company", "app/business", "app/auth", "app/api", "lib/api", ...APPS[app].drop]) rmSync(join(stage, p), { recursive: true, force: true });
 
 // The app opens on its own home: signed-in users go to their screens, others to sign-in.
 // The APK is one app (NEXT_PUBLIC_APP_TARGET): lib/supabase/client.ts keeps its session
