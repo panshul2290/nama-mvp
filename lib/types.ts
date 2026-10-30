@@ -209,6 +209,7 @@ export type Pod = {
   // Location evidence (0024): the submit fix and the photo's fix, each with accuracy, time and distance from the delivery point.
   accuracy_m?: number | null; fix_at?: string | null; location_source?: "device" | "tanker" | null; distance_m?: number | null;
   photo_lat?: number | null; photo_lng?: number | null; photo_accuracy_m?: number | null; photo_at?: string | null; photo_distance_m?: number | null;
+  photo_source?: "camera" | "gallery" | null;
 };
 export type Complaint = {
   id: string; case_no: number; order_id: string | null; customer_id: string | null; category: string; description: string; photo_path: string | null;

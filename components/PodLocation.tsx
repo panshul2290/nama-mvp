@@ -13,7 +13,7 @@ const time = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTi
 export function PodLocation({ pod, site }: { pod: Pod; site?: { lat: number; lng: number } | null }) {
   const c = podCheck(pod);
   const rows: [string, number | null | undefined, number | null | undefined, number | null | undefined, string | null | undefined, number | null][] = [
-    ["Photo taken", pod.photo_lat, pod.photo_lng, pod.photo_accuracy_m, pod.photo_at, c.photoDistance],
+    [pod.photo_source === "gallery" ? "Photo added (from the phone’s gallery, not taken live)" : "Photo taken", pod.photo_lat, pod.photo_lng, pod.photo_accuracy_m, pod.photo_at, c.photoDistance],
     [c.source === "tanker" ? "Submitted (tanker’s last GPS fix — no phone fix)" : "Submitted", pod.lat, pod.lng, pod.accuracy_m, pod.fix_at ?? pod.created_at, c.distance],
   ];
   const any = rows.some((r) => r[1] != null && r[2] != null);

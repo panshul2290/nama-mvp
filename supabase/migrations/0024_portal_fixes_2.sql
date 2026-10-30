@@ -95,3 +95,112 @@ begin
   perform public.write_audit('document.' || case when p_approve then 'approve' else 'reject' end, 'document', b.id::text, to_jsonb(b), to_jsonb(a), r);
   return a;
 end $$;
+
+-- ===========================================================================
+-- Proof of delivery: where the photo was taken and where the proof was submitted
+-- ===========================================================================
+-- The driver app records the device's GPS fix (position, accuracy, time) when the photo is taken
+-- and again on submit. Without a device fix the submit position falls back to the tanker's last
+-- reported fix, as before (location_source says which). The distance from the delivery point is
+-- computed here, so every screen shows the same figure.
+alter table public.pods
+  add column accuracy_m       real check (accuracy_m >= 0),
+  add column fix_at           timestamptz,
+  add column location_source  text check (location_source in ('device', 'tanker')),
+  add column distance_m       integer check (distance_m >= 0),
+  add column photo_lat        double precision check (photo_lat between -90 and 90),
+  add column photo_lng        double precision check (photo_lng between -180 and 180),
+  add column photo_accuracy_m real check (photo_accuracy_m >= 0),
+  add column photo_at         timestamptz,
+  add column photo_distance_m integer check (photo_distance_m >= 0),
+  -- 'camera' (taken live in the app) or 'gallery' (chosen from the phone's photos: weaker evidence).
+  add column photo_source     text check (photo_source in ('camera', 'gallery'));
+
+-- Great-circle distance in metres (null when either point is missing).
+create function public.distance_m(a_lat double precision, a_lng double precision, b_lat double precision, b_lng double precision)
+returns integer
+language sql immutable set search_path = public
+as $$
+  select case when a_lat is null or a_lng is null or b_lat is null or b_lng is null then null else
+    round(2 * 6371000 * asin(least(1, sqrt(power(sin(radians(b_lat - a_lat) / 2), 2)
+                                           + cos(radians(a_lat)) * cos(radians(b_lat)) * power(sin(radians(b_lng - a_lng) / 2), 2)))))::int end
+$$;
+
+-- A device fix is both coordinates or neither, on the globe, with a sane accuracy and not from the future.
+create function public.pod_fix_ok(p_lat double precision, p_lng double precision, p_accuracy double precision, p_at timestamptz)
+returns boolean
+language sql stable set search_path = public
+as $$
+  select (p_lat is null and p_lng is null)
+      or (p_lat is not null and p_lng is not null and p_lat between -90 and 90 and p_lng between -180 and 180
+          and (p_accuracy is null or p_accuracy between 0 and 100000)
+          and (p_at is null or p_at <= now() + interval '5 minutes'))
+$$;
+
+drop function public.submit_pod(uuid, integer, text, text, text, boolean, boolean, double precision, double precision);
+create function public.submit_pod(p_order_id uuid, p_meter_gal integer, p_photo_path text default null, p_photo_hash text default null,
+                                  p_signature_svg text default null, p_no_signature boolean default false, p_left_at_tank boolean default false,
+                                  p_lat double precision default null, p_lng double precision default null,
+                                  p_accuracy_m double precision default null, p_fix_at timestamptz default null,
+                                  p_photo_lat double precision default null, p_photo_lng double precision default null,
+                                  p_photo_accuracy_m double precision default null, p_photo_at timestamptz default null,
+                                  p_photo_source text default null)
+returns public.orders
+language plpgsql security definer set search_path = public
+as $$
+declare o public.orders; t public.tankers; credit numeric; dest public.order_locations; dev boolean;
+begin
+  t := public.my_tanker();
+  select * into o from public.orders where id = p_order_id and driver_id = auth.uid() for update;
+  if not found then raise exception 'not_found'; end if;
+  if o.status <> 'arrived' then raise exception 'invalid_transition'; end if;
+  if p_meter_gal is null or p_meter_gal < 0 or p_meter_gal > 20000 then raise exception 'invalid_meter'; end if;
+  if coalesce(p_signature_svg, '') = '' and not coalesce(p_no_signature, false) then raise exception 'signature_required'; end if;
+  if not public.evidence_object_ok(p_photo_path) then raise exception 'photo_required'; end if;
+  if not public.pod_fix_ok(p_lat, p_lng, p_accuracy_m, p_fix_at) or not public.pod_fix_ok(p_photo_lat, p_photo_lng, p_photo_accuracy_m, p_photo_at) then
+    raise exception 'invalid_pod_location';
+  end if;
+  if p_photo_source is not null and p_photo_source not in ('camera', 'gallery') then raise exception 'invalid_value'; end if;
+  dev := p_lat is not null;
+  select * into dest from public.order_locations where order_id = o.id;
+  insert into public.pods (order_id, kind, photo_path, photo_hash, meter_gal, signature_svg, no_signature, left_at_tank, lat, lng,
+                           accuracy_m, fix_at, location_source, distance_m, photo_lat, photo_lng, photo_accuracy_m, photo_at, photo_distance_m, photo_source)
+  values (o.id, case when o.service_type = 'WW' then 'collection' else 'delivery' end, p_photo_path, p_photo_hash, p_meter_gal,
+          nullif(p_signature_svg, ''), coalesce(p_no_signature, false), coalesce(p_left_at_tank, false),
+          case when dev then p_lat else t.last_lat end, case when dev then p_lng else t.last_lng end,
+          case when dev then p_accuracy_m end,
+          case when dev then coalesce(p_fix_at, now()) else t.last_seen_at end,
+          case when dev then 'device' when t.last_lat is not null then 'tanker' end,
+          public.distance_m(case when dev then p_lat else t.last_lat end, case when dev then p_lng else t.last_lng end, dest.lat, dest.lng),
+          p_photo_lat, p_photo_lng, case when p_photo_lat is not null then p_photo_accuracy_m end, case when p_photo_lat is not null then p_photo_at end,
+          public.distance_m(p_photo_lat, p_photo_lng, dest.lat, dest.lng), p_photo_source);
+  if o.service_type = 'WW' then
+    update public.orders set status = 'collected', collected_at = now() where id = o.id returning * into o;
+  else
+    update public.orders set status = 'delivered', delivered_at = now() where id = o.id returning * into o;
+    perform public.settle_order(o.id);
+    select * into o from public.orders where id = o.id;
+  end if;
+  if o.service_type <> 'WW' and p_meter_gal < o.gallons * 0.95 then
+    perform public.issue_penalty('short_volume', o.id, o.tanker_id,
+      format('Delivered %s of %s gal (%s%% short)', p_meter_gal, o.gallons, round((1 - p_meter_gal::numeric / o.gallons) * 100)), 'Flow meter reading on proof of delivery');
+    perform public.raise_alert(o.tanker_id, o.id, 'Short volume', 'med', format('TO-%s: %s of %s gal delivered', o.order_no, p_meter_gal, o.gallons),
+                               t.last_lat, t.last_lng, 'short:' || o.id);
+    -- Pro-rata share of the order for the missing volume.
+    credit := round(o.total * (1 - p_meter_gal::numeric / o.gallons), 3);
+    if o.billing = 'account' then
+      update public.orders set short_credit = credit where id = o.id returning * into o;
+    else
+      perform public.refund_to_wallet(o.id, credit, 'refund', format('Short delivery TO-%s: %s of %s gal', o.order_no, p_meter_gal, o.gallons));
+      update public.orders set short_credit = credit where id = o.id returning * into o;
+    end if;
+  end if;
+  return o;
+end $$;
+
+revoke execute on function public.submit_pod(uuid, integer, text, text, text, boolean, boolean, double precision, double precision,
+                                             double precision, timestamptz, double precision, double precision, double precision, timestamptz, text) from public, anon;
+grant execute on function public.submit_pod(uuid, integer, text, text, text, boolean, boolean, double precision, double precision,
+                                            double precision, timestamptz, double precision, double precision, double precision, timestamptz, text) to authenticated;
+revoke execute on function public.distance_m(double precision, double precision, double precision, double precision), public.pod_fix_ok(double precision, double precision, double precision, timestamptz)
+  from public, anon, authenticated;

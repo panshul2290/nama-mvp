@@ -9,6 +9,7 @@ import { FleetMap } from "@/components/nws/FleetMap";
 import type { LatLng, MapSite } from "@/components/nws/FleetMapView";
 import { permitSummary, type Permit } from "@/components/nws/fleetData";
 import { CHANNEL_LABEL, maskPhone, n3, omr3, one, orderSla, St, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
+import { PodLocation } from "@/components/PodLocation";
 import { SignatureSvg } from "@/components/SignatureSvg";
 import { PenaltyDialog } from "@/components/nws/PenaltyDialog";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
@@ -18,7 +19,7 @@ import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
-import type { Order, OrderLocation, OrderMessage } from "@/lib/types";
+import type { Order, OrderLocation, OrderMessage, Pod as BasePod } from "@/lib/types";
 
 type One<T> = T | T[] | null;
 type Detail = Order & {
@@ -37,7 +38,8 @@ type Detail = Order & {
 type Audit = { id: number; at: string; action: string; actor_email: string | null; reason: string | null };
 type Payment = { id: string; method: string; amount: string; wallet_amount: string; card_amount: string; card_last4: string | null; status: string; gateway_ref: string | null; failure_reason: string | null; refunded_amount: string; created_at: string; captured_at: string | null };
 type WalletTx = { id: number; kind: string; amount: string; memo: string; created_at: string };
-type Pod = { kind: string; photo_path: string | null; meter_gal: number; signature_path: string | null; signature_svg: string | null; no_signature: boolean; left_at_tank: boolean; created_at: string; status: string; rejected_reason: string | null };
+// The proof's location fields come from lib/types (0024); these are the NWS-only extras.
+type Pod = BasePod & { signature_path: string | null; rejected_reason: string | null };
 type SourceEvent = { id: number; source: string; kind: string; meter_gal: number | null; verified: boolean; note: string; created_at: string; site: One<{ code: string; name: string }> };
 type Message = OrderMessage & { sender: One<{ full_name: string }> };
 const ROLE: Record<OrderMessage["sender_role"], string> = { customer: "Customer", driver: "Driver", staff: "NWS" };
@@ -553,6 +555,7 @@ export default function OrderDetail() {
                     </>
                   )}
                 </dl>
+                <PodLocation pod={pod} site={loc} />
                 <div className="grid2">
                   {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not optimisable */}
                   {photo ? <img className="pod-img" src={photo} alt={`Proof of delivery for ${orderNo(o.order_no)}`} /> : <span className="mut" style={{ fontSize: 13 }}>{pod.photo_path ? "Loading photo…" : "No photo"}</span>}

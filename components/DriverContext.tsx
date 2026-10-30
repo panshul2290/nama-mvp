@@ -67,6 +67,11 @@ type DriverState = {
   declineJob: (id: string) => void;
   me: LngLat | null;
   getPosition: () => LngLat | null;
+  /**
+   * The device's position for evidence (proof of delivery): the latest tracking fix if it is under
+   * 20 s old, otherwise one fresh reading (up to 8 s), otherwise the last fix we have, or null.
+   */
+  locate: () => Promise<Fix | null>;
   hasFix: boolean;
   gpsError: boolean;
   /** Screen wake lock state during a job: held, unsupported, or failed. */
@@ -615,6 +620,16 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   }, [jobId]);
 
   const getPosition = useCallback(() => meRef.current, []);
+  const locate = useCallback(async (): Promise<Fix | null> => {
+    const f = fixRef.current;
+    if ((f && Date.now() - lastFixAt.current < 20_000) || simRoute.current) return f; // fresh, or the simulator is driving
+    try {
+      // Any accuracy is kept here: it is stored with the proof and shown next to it.
+      return await getCurrentPosition({ highAccuracy: true, maximumAgeMs: 10_000, timeoutMs: 8_000 });
+    } catch {
+      return f;
+    }
+  }, []);
   const shownJobs = useMemo(() => (online && !job ? openJobs.filter((r) => !declined.includes(r.id)) : []), [online, job, openJobs, declined]);
 
   if (!profile || !ready || !tanker) return fallback;
@@ -643,6 +658,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
         declineJob,
         me,
         getPosition,
+        locate,
         hasFix,
         gpsError,
         wakeLock,

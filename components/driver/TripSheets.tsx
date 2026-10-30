@@ -5,8 +5,12 @@ import { useDriver, type IssueKind } from "@/components/DriverContext";
 import { DICT, useFmt } from "@/components/driver/i18n";
 import { Sheet } from "@/components/driver/Sheet";
 import { Icon } from "@/components/icons";
+import { distanceKm } from "@/lib/geo";
 import { useT } from "@/lib/i18n";
+import { nativeCamera, nativePhoto, PhotoError, shrinkPhoto, type PhotoSource } from "@/lib/photo";
+import { POD_FAR_M } from "@/lib/podLocation";
 import { supabase } from "@/lib/supabase/client";
+import type { Fix } from "@/lib/tracking";
 
 const SIG_W = 300;
 const SIG_H = 120;
@@ -52,15 +56,22 @@ function SignaturePad({ value, setValue, label }: { value: string; setValue: Dis
   );
 }
 
-/** Proof of delivery (DW/TE) or of collection (WW): photo, flow-meter reading and signature. */
+/**
+ * Proof of delivery (DW/TE) or of collection (WW): photo (live camera or gallery), flow-meter reading
+ * and signature, with the phone's location when the photo is added and again on submit (0024).
+ */
 export function PodSheet({ onClose }: { onClose: () => void }) {
-  const { job, profile, jobAction, getPosition, toast } = useDriver();
+  const { job, profile, jobAction, locate, toast } = useDriver();
   const t = useT(DICT);
   const f = useFmt();
   const o = job!.order;
+  const pin = job!.loc;
   const ww = o.service_type === "WW";
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [source, setSource] = useState<PhotoSource | null>(null);
+  const [photoFix, setPhotoFix] = useState<Fix | null | undefined>(undefined); // undefined = still locating
+  const [photoErr, setPhotoErr] = useState<string | null>(null);
   const [meter, setMeter] = useState(String(o.gallons));
   const [sig, setSig] = useState("");
   const [noSig, setNoSig] = useState(false);
@@ -71,6 +82,29 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
   const [uploadFailed, setUploadFailed] = useState(false);
 
   useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview]);
+
+  // A photo arrives (camera or gallery): shrink it if large, show it, and record where the phone is.
+  async function takeIn(raw: File, from: PhotoSource) {
+    setPhotoErr(null);
+    setPhotoFix(undefined);
+    const img = await shrinkPhoto(raw);
+    setFile(img);
+    setSource(from);
+    setPreview((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return URL.createObjectURL(img);
+    });
+    setPhotoFix(await locate());
+  }
+  async function openNative(from: PhotoSource) {
+    try {
+      await takeIn(await nativePhoto(from), from);
+    } catch (e) {
+      const why = e instanceof PhotoError ? e.reason : "failed";
+      if (why === "denied") setPhotoErr(t("cameraDenied"));
+      else if (why === "failed") setPhotoErr(t("photoFailed"));
+    }
+  }
 
   const meterN = Number(meter);
   const meterOk = meter.trim() !== "" && Number.isInteger(meterN) && meterN >= 0 && meterN <= 20000;
@@ -101,7 +135,9 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
       }
       setUploaded({ file, path });
     }
-    const at = getPosition();
+    // The submit fix; without one the server records the tanker's last reported position.
+    const at = await locate();
+    const iso = (ms: number) => new Date(Math.min(ms, Date.now())).toISOString();
     const done = await jobAction("submit_pod", {
       p_meter_gal: meterN,
       p_photo_path: path,
@@ -111,6 +147,13 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
       p_left_at_tank: noSig && leftAtTank,
       p_lat: at?.lat ?? null,
       p_lng: at?.lng ?? null,
+      p_accuracy_m: at ? Math.round(at.accuracy) : null,
+      p_fix_at: at ? iso(at.at) : null,
+      p_photo_lat: photoFix?.lat ?? null,
+      p_photo_lng: photoFix?.lng ?? null,
+      p_photo_accuracy_m: photoFix ? Math.round(photoFix.accuracy) : null,
+      p_photo_at: photoFix ? iso(photoFix.at) : null,
+      p_photo_source: source,
     });
     setBusy(false);
     if (done) {
@@ -129,30 +172,22 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
       </div>
       <p className="mut small">{t("podNote")}</p>
 
-      <label className="d-photo">
+      <div className="d-photo">
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt={t("photoAlt")} />
         ) : (
-          <span className="btn">
-            <Icon name="camera" />
-            {t("takePhoto")}
-          </span>
+          <span className="mut small">{t("takePhoto")}</span>
         )}
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="d-file"
-          onChange={(e) => {
-            const fl = e.target.files?.[0];
-            if (!fl) return;
-            setFile(fl);
-            setPreview(URL.createObjectURL(fl));
-          }}
-        />
-      </label>
-      {preview && <p className="mut small">{t("retakeHint")}</p>}
+      </div>
+      <PhotoButtons native={nativeCamera()} has={!!preview} busy={busy} onNative={openNative} onFile={takeIn} labels={{ camera: preview ? t("photoRetake") : t("photoCamera"), gallery: preview ? t("photoOther") : t("photoGallery") }} />
+      {photoErr && (
+        <p className="d-warn small" role="alert">
+          {photoErr}
+        </p>
+      )}
+      {preview && source === "gallery" && <p className="mut small">{t("photoFromGallery")}</p>}
+      {preview && <LocationLine fix={photoFix} pin={pin} />}
       {uploadFailed && (
         <div className="banner badb" role="alert">
           <b>{t("photoNotUploaded")}</b> {t("photoRetryS")}
@@ -193,6 +228,66 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
       </button>
     </Sheet>
   );
+}
+
+/**
+ * "Take photo" and "Choose from gallery". In the Android app the camera plugin opens the camera or
+ * the photo picker; in a browser two file inputs do (capture opens the rear camera on phones).
+ */
+function PhotoButtons({
+  native, has, busy, onNative, onFile, labels,
+}: {
+  native: boolean;
+  has: boolean;
+  busy: boolean;
+  onNative: (from: PhotoSource) => void;
+  onFile: (file: File, from: PhotoSource) => void;
+  labels: { camera: string; gallery: string };
+}) {
+  const pick = (from: PhotoSource) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fl = e.target.files?.[0];
+    e.target.value = ""; // the same photo can be chosen again after a failed upload
+    if (fl) onFile(fl, from);
+  };
+  const cls = `btn ${has ? "sm" : ""}`;
+  if (native)
+    return (
+      <div className="btns d-photo-btns">
+        <button type="button" className={`${cls} ${has ? "" : "pri"}`} disabled={busy} onClick={() => onNative("camera")}>
+          <Icon name="camera" />
+          {labels.camera}
+        </button>
+        <button type="button" className={cls} disabled={busy} onClick={() => onNative("gallery")}>
+          {labels.gallery}
+        </button>
+      </div>
+    );
+  return (
+    <div className="btns d-photo-btns">
+      <label className={`${cls} ${has ? "" : "pri"}`} aria-disabled={busy}>
+        <Icon name="camera" />
+        {labels.camera}
+        <input type="file" accept="image/*" capture="environment" className="d-file" disabled={busy} onChange={pick("camera")} />
+      </label>
+      <label className={cls} aria-disabled={busy}>
+        {labels.gallery}
+        <input type="file" accept="image/*" className="d-file" disabled={busy} onChange={pick("gallery")} />
+      </label>
+    </div>
+  );
+}
+
+/** Where the phone was when the photo was added, and how far that is from the customer's pin. */
+function LocationLine({ fix, pin }: { fix: Fix | null | undefined; pin: { lat: number; lng: number } | null }) {
+  const t = useT(DICT);
+  const f = useFmt();
+  if (fix === undefined) return <p className="mut small">{t("locating")}</p>;
+  if (!fix) return <p className="d-warn small">{t("locNone")}</p>;
+  const acc = f.km(fix.accuracy / 1000);
+  if (!pin) return <p className="mut small">{t("locOkNoPin", { acc })}</p>;
+  const km = distanceKm(fix, pin);
+  if (km * 1000 > POD_FAR_M) return <p className="d-warn small" role="status">{t("locFar", { dist: f.km(km) })}</p>;
+  return <p className="mut small">{t("locOk", { acc, dist: f.km(km) })}</p>;
 }
 
 const ISSUES: IssueKind[] = ["breakdown", "customer_unreachable", "wrong_address", "station_closed", "accident"];

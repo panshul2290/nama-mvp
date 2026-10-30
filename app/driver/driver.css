@@ -84,10 +84,14 @@
 .d-sheet .mut.small { margin: 6px 0 10px; }
 .d-photo {
   position: relative; height: 140px; border-radius: 10px; background: var(--sunk); border: 1px dashed var(--line);
-  display: grid; place-items: center; overflow: hidden; margin-bottom: 8px; cursor: pointer;
+  display: grid; place-items: center; overflow: hidden; margin-bottom: 8px; text-align: center; padding: 0 12px;
 }
 .d-photo img { width: 100%; height: 100%; object-fit: cover; }
-.d-file { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+/* Take photo / Choose from gallery: the hidden file input covers its label button (web fallback). */
+.d-photo-btns { margin: 0 0 6px; }
+.d-photo-btns > * { flex: 1 1 0; position: relative; justify-content: center; }
+.d-photo-btns > label[aria-disabled="true"] { opacity: .55; pointer-events: none; }
+.d-file { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
 .d-sig {
   width: 100%; height: 120px; border: 1px dashed var(--line); border-radius: 8px; touch-action: none; background: var(--sunk);
   display: block; color: var(--ink); cursor: crosshair;

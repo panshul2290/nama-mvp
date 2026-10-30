@@ -69,6 +69,7 @@ const MESSAGES: Record<string, string> = {
   invalid_meter: "Enter the flow-meter reading in gallons.",
   signature_required: "Ask the customer to sign, or tick “Customer not available to sign”.",
   photo_required: "Take a photo of the tank inlet first.",
+  invalid_pod_location: "The phone reported an impossible location. Wait for a GPS fix and try again.",
   cannot_dispute: "This penalty can't be disputed.",
   application_pending: "A permit application is already pending for this tanker.",
   not_an_owner: "Only tanker company owners can do this.",

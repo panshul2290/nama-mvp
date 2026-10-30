@@ -148,7 +148,9 @@ if (gradle) {
   console.log(`\nAPK: ${resolve(outApk)}`);
 }
 
-// Location (incl. background for the driver), camera for proof of delivery, notifications.
+// Location (incl. background for the driver), camera and photos for proof of delivery
+// (@capacitor/camera: live camera, and the gallery through the system photo picker), notifications.
+// Re-applied on every build, so a regenerated android/ project keeps them.
 function patchManifest(path) {
   let xml = readFileSync(path, "utf8");
   const perms = [
@@ -156,14 +158,25 @@ function patchManifest(path) {
     "android.permission.ACCESS_COARSE_LOCATION",
     "android.permission.ACCESS_FINE_LOCATION",
     "android.permission.CAMERA",
+    // Gallery: Android 13+ reads images with READ_MEDIA_IMAGES; older versions with READ_EXTERNAL_STORAGE.
+    "android.permission.READ_MEDIA_IMAGES",
+    ["android.permission.READ_EXTERNAL_STORAGE", 'android:maxSdkVersion="32"'],
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.WAKE_LOCK",
     ...(app === "driver"
       ? ["android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_LOCATION"]
       : []),
   ];
-  for (const p of perms) {
-    if (!xml.includes(`"${p}"`)) xml = xml.replace("</manifest>", `    <uses-permission android:name="${p}" />\n</manifest>`);
+  for (const entry of perms) {
+    const [p, attrs] = Array.isArray(entry) ? entry : [entry, ""];
+    if (!xml.includes(`"${p}"`)) xml = xml.replace("</manifest>", `    <uses-permission android:name="${p}"${attrs ? ` ${attrs}` : ""} />\n</manifest>`);
+  }
+  // Android 11+ package visibility: let the app find the camera app and the image picker.
+  if (!xml.includes("android.media.action.IMAGE_CAPTURE")) {
+    xml = xml.replace(
+      "</manifest>",
+      `    <queries>\n        <intent>\n            <action android:name="android.media.action.IMAGE_CAPTURE" />\n        </intent>\n        <intent>\n            <action android:name="android.intent.action.GET_CONTENT" />\n            <data android:mimeType="image/*" />\n        </intent>\n    </queries>\n</manifest>`,
+    );
   }
   writeFileSync(path, xml);
 }

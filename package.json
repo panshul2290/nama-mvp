@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "1.2.26",
+    "@capacitor/camera": "8.2.5",
     "@capacitor/core": "8.5.3",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",

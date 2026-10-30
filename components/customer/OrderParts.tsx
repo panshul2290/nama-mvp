@@ -6,6 +6,7 @@ import { SignatureSvg } from "@/components/SignatureSvg";
 import { friendlyError } from "@/lib/errors";
 import { initials } from "@/lib/format";
 import { localDigits } from "@/lib/i18n";
+import { podCheck } from "@/lib/podLocation";
 import { supabase } from "@/lib/supabase/client";
 import type { Order, Pod } from "@/lib/types";
 import { useCx } from "./i18n";
@@ -155,6 +156,9 @@ export function PodCard({ order }: { order: Order }) {
   }, [order.id]);
   if (!pod) return null;
   const short = pod.meter_gal < order.gallons * 0.95;
+  // Where the proof was recorded, against the customer's own pin (0024).
+  const loc = podCheck(pod);
+  const dist = (m: number) => localDigits(m < 1000 ? `${Math.round(m)} ${lang === "ar" ? "م" : "m"}` : `${(m / 1000).toFixed(1)} ${lang === "ar" ? "كم" : "km"}`, lang);
   return (
     <div className="rq-card pad">
       <div className="row">
@@ -194,7 +198,20 @@ export function PodCard({ order }: { order: Order }) {
           <span>{t("coords")}</span>
           <b dir="ltr">
             {pod.lat.toFixed(5)}, {pod.lng.toFixed(5)}
+            {pod.accuracy_m != null && ` ±${Math.round(pod.accuracy_m)} m`}
           </b>
+        </div>
+      )}
+      {loc.distance != null && (
+        <div className="rq-kv">
+          <span />
+          <b className={loc.far ? "badt" : ""}>{t("podDistance", { dist: dist(loc.distance) })}</b>
+        </div>
+      )}
+      {loc.source === "tanker" && <p className="mut small">{t("podTankerFix")}</p>}
+      {loc.far && (
+        <div className="banner" role="status">
+          {t("podFar", { dist: dist(Math.max(loc.distance ?? 0, loc.photoDistance ?? 0)) })}
         </div>
       )}
       {Number(order.short_credit ?? 0) > 0 && (
