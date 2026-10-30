@@ -6,7 +6,7 @@ import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { supabase } from "@/lib/supabase/client";
 
 type Emergency = { on: boolean; zone: string | null; reason: string | null; since: string | null };
-type Hist = { id: number; at: string; actor_email: string | null; action: string; reason: string | null; after: Emergency | null };
+type Hist = { id: number; at: string; actor_email: string | null; action: string; reason: string | null; before: Emergency | null; after: Emergency | null };
 
 export default function EmergencyPage() {
   const { can } = useStaff();
@@ -26,12 +26,12 @@ export default function EmergencyPage() {
       setEm(v);
       if (v.zone) setZone(v.zone);
     });
-    db.from("zones").select("name").eq("active", true).order("name").then(({ data }) => {
+    db.from("zones").select("name").eq("active", true).eq("is_test", false).order("name").then(({ data }) => {
       const names = ((data ?? []) as { name: string }[]).map((z) => z.name);
       setZones(names);
       setZone((z) => z || names[0] || "");
     });
-    db.from("audit_log").select("id, at, actor_email, action, reason, after").like("action", "emergency.%").order("id", { ascending: false }).limit(10)
+    db.from("audit_log").select("id, at, actor_email, action, reason, before, after").like("action", "emergency.%").order("id", { ascending: false }).limit(10)
       .then(({ data }) => setHist((data ?? []) as Hist[]));
   }, []);
   useEffect(load, [load]);
@@ -116,7 +116,7 @@ export default function EmergencyPage() {
                 <tr key={h.id}>
                   <td><small>{fmtDateTime(h.at)}</small></td>
                   <td>{h.action === "emergency.activate" ? <span className="st bad">Activated</span> : <span className="st">Ended</span>}</td>
-                  <td>{h.after?.zone ?? "—"}</td>
+                  <td>{(h.action === "emergency.activate" ? h.after?.zone : h.before?.zone) ?? "—"}</td>
                   <td>{h.actor_email ?? "—"}</td>
                   <td>{h.reason}</td>
                 </tr>

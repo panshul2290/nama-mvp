@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Chips, Empty, PageHead, useAudited } from "@/components/nws/admin/ui";
+import { Chips, Empty, PageHead, ReadOnlyNote, useAudited } from "@/components/nws/admin/ui";
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { friendlyError } from "@/lib/errors";
 import { supabase } from "@/lib/supabase/client";
@@ -60,8 +60,9 @@ export default function FraudPage() {
   return (
     <>
       <PageHead title="Fraud detection" sub="Automatic checks on trips, proof of delivery, ratings, wallets and ordering. Flags are reviewed here; nothing is blocked automatically.">
-        <button className="btn pri" onClick={scan} disabled={scanning}>{scanning ? "Running…" : "Run checks now"}</button>
+        <button className="btn pri" onClick={scan} disabled={scanning || !decider} title={decider ? undefined : "Super admins, operators and finance"}>{scanning ? "Running…" : "Run checks now"}</button>
       </PageHead>
+      {!decider && <ReadOnlyNote who="Super admins, operators and finance" />}
       <div className="half">
         <div className="panel">
           <h2>Detection rules <small>run every scan</small></h2>

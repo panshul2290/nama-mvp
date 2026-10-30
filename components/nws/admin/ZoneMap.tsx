@@ -73,7 +73,12 @@ export default function ZoneMap({ zones, sites }: { zones: Zone[]; sites: Site[]
           const f = e.features?.[0];
           if (!f || e.defaultPrevented) return;
           e.preventDefault(); // one popup per click, topmost layer first
-          new maplibregl.Popup({ closeButton: false }).setLngLat(e.lngLat).setHTML(`<b>${f.properties.name}</b><br><small>${f.properties.info}</small>`).addTo(m);
+          // Zone and site names come from the database: build DOM nodes rather than HTML.
+          const box = document.createElement("div");
+          box.appendChild(document.createElement("b")).textContent = String(f.properties.name ?? "");
+          box.appendChild(document.createElement("br"));
+          box.appendChild(document.createElement("small")).textContent = String(f.properties.info ?? "");
+          new maplibregl.Popup({ closeButton: false }).setLngLat(e.lngLat).setDOMContent(box).addTo(m);
         });
         m.on("mouseenter", layer, () => (m.getCanvas().style.cursor = "pointer"));
         m.on("mouseleave", layer, () => (m.getCanvas().style.cursor = ""));

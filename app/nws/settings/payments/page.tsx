@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Chips, ConfirmDialog, downloadCsv, Empty, fetchPaged, int, Kpi, omr, PageHead, pct, useRun } from "@/components/nws/admin/ui";
+import { Chips, ConfirmDialog, downloadCsv, Empty, fetchPaged, int, Kpi, omr, PageHead, pct, ReadOnlyNote, useRun } from "@/components/nws/admin/ui";
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { supabase } from "@/lib/supabase/client";
 import { ref } from "@/lib/types";
@@ -10,9 +10,12 @@ type Kind = "All" | "Payment" | "Top-up" | "Tip" | "Refund" | "Fine" | "Payout";
 type Line = { id: string; at: string; kind: Exclude<Kind, "All">; party: string; reference: string; amount: number; status: string; tone: string };
 type Batch = { id: string; batch_no: number; total: string; companies: number; created_at: string; run_by: string | null };
 
-type Pay = { id: string; created_at: string; method: string; amount: string; wallet_amount: string; status: string; gateway_ref: string | null; refunded_amount: string; order: { order_no: number } | null; customer: { full_name: string } | null };
-type WTx = { id: number; created_at: string; kind: string; amount: string; memo: string; order: { order_no: number } | null; customer: { full_name: string } | null };
-type CTx = { id: number; created_at: string; kind: string; amount: string; memo: string; company_id: string; order: { order_no: number } | null; company: { name: string } | null };
+type OrdRef = { order_no: number; is_test: boolean } | null;
+type Pay = { id: string; created_at: string; method: string; amount: string; wallet_amount: string; status: string; gateway_ref: string | null; refunded_amount: string; order: OrdRef; customer: { full_name: string } | null };
+type WTx = { id: number; created_at: string; kind: string; amount: string; memo: string; order: OrdRef; customer: { full_name: string } | null };
+type CTx = { id: number; created_at: string; kind: string; amount: string; memo: string; company_id: string; order: OrdRef; company: { name: string } | null };
+// Test-zone orders (0020) stay out of the ledger and the KPIs; rows without an order (top-ups, payouts) stay in.
+const real = (r: { order: OrdRef }) => !r.order?.is_test;
 
 const PAY_STATUS: Record<string, [string, string]> = {
   captured: ["Settled", "ok"], authorized: ["Authorised", "act"], failed: ["Failed", "bad"], refunded: ["Refunded", "warn"],
@@ -22,9 +25,10 @@ const METHOD: Record<string, string> = { wallet: "Wallet", card: "Card", omannet
 const KINDS: Exclude<Kind, "All">[] = ["Payment", "Top-up", "Tip", "Refund", "Fine", "Payout"];
 const DAYS = 30;
 
+/** Start of the current month in Muscat (UTC+4, no daylight saving), whatever the browser's time zone. */
 function monthStart() {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
+  const m = new Date(Date.now() + 4 * 3600_000);
+  return new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth(), 1) - 4 * 3600_000).toISOString();
 }
 
 export default function PaymentsPage() {
@@ -43,30 +47,30 @@ export default function PaymentsPage() {
     const from = new Date(Date.now() - DAYS * 86400_000).toISOString();
     const month = monthStart();
     Promise.all([
-      db.from("payments").select("id, created_at, method, amount, wallet_amount, status, gateway_ref, refunded_amount, order:orders(order_no), customer:profiles(full_name)").gte("created_at", from).order("created_at", { ascending: false }).limit(1000),
-      db.from("wallet_tx").select("id, created_at, kind, amount, memo, order:orders(order_no), customer:profiles(full_name)").in("kind", ["topup", "refund", "goodwill", "cancel_fee"]).gte("created_at", from).order("created_at", { ascending: false }).limit(1000),
-      db.from("company_tx").select("id, created_at, kind, amount, memo, company_id, order:orders(order_no), company:companies(name)").in("kind", ["tip", "penalty", "penalty_reversal", "payout"]).gte("created_at", from).order("created_at", { ascending: false }).limit(1000),
+      db.from("payments").select("id, created_at, method, amount, wallet_amount, status, gateway_ref, refunded_amount, order:orders(order_no, is_test), customer:profiles(full_name)").gte("created_at", from).order("created_at", { ascending: false }).limit(1000),
+      db.from("wallet_tx").select("id, created_at, kind, amount, memo, order:orders(order_no, is_test), customer:profiles(full_name)").in("kind", ["topup", "refund", "goodwill", "cancel_fee"]).gte("created_at", from).order("created_at", { ascending: false }).limit(1000),
+      db.from("company_tx").select("id, created_at, kind, amount, memo, company_id, order:orders(order_no, is_test), company:companies(name)").in("kind", ["tip", "penalty", "penalty_reversal", "payout"]).gte("created_at", from).order("created_at", { ascending: false }).limit(1000),
       // KPI sources: this month's money in, and every earnings row for balances.
-      fetchPaged<{ amount: string; wallet_amount: string; status: string }>((a, b) => db.from("payments").select("amount, wallet_amount, status").gte("created_at", month).order("id").range(a, b), 50000),
+      fetchPaged<{ amount: string; wallet_amount: string; status: string; order: OrdRef }>((a, b) => db.from("payments").select("amount, wallet_amount, status, order:orders(order_no, is_test)").gte("created_at", month).order("id").range(a, b), 50000),
       fetchPaged<{ amount: string }>((a, b) => db.from("wallet_tx").select("amount").eq("kind", "topup").gte("created_at", month).order("id").range(a, b), 50000),
       fetchPaged<{ company_id: string; kind: string; amount: string; created_at: string }>((a, b) => db.from("company_tx").select("company_id, kind, amount, created_at").eq("bucket", "earnings").order("id").range(a, b), 100000),
     ]).then(([p, w, c, pm, tm, all]) => {
       const out: Line[] = [];
-      for (const r of (p.data ?? []) as unknown as Pay[]) {
+      for (const r of ((p.data ?? []) as unknown as Pay[]).filter(real)) {
         const [st, tone] = PAY_STATUS[r.status] ?? [r.status, ""];
         out.push({ id: `P-${r.id.slice(0, 8)}`, at: r.created_at, kind: "Payment", party: r.customer?.full_name || "Customer", reference: `${r.order ? ref.order(r.order.order_no) : "—"} · ${METHOD[r.method] ?? r.method}`, amount: Number(r.amount), status: st, tone });
       }
-      for (const r of (w.data ?? []) as unknown as WTx[]) {
+      for (const r of ((w.data ?? []) as unknown as WTx[]).filter(real)) {
         const k: Line["kind"] = r.kind === "topup" ? "Top-up" : r.kind === "cancel_fee" ? "Fine" : "Refund";
         out.push({ id: `W-${r.id}`, at: r.created_at, kind: k, party: r.customer?.full_name || "Customer", reference: r.order ? `${ref.order(r.order.order_no)} · ${r.memo}` : r.memo, amount: Number(r.amount), status: "Settled", tone: "ok" });
       }
-      for (const r of (c.data ?? []) as unknown as CTx[]) {
+      for (const r of ((c.data ?? []) as unknown as CTx[]).filter(real)) {
         const k: Line["kind"] = r.kind === "tip" ? "Tip" : r.kind === "payout" ? "Payout" : "Fine";
         out.push({ id: `C-${r.id}`, at: r.created_at, kind: k, party: r.company?.name || "Tanker company", reference: r.order ? `${ref.order(r.order.order_no)} · ${r.memo}` : r.memo, amount: Number(r.amount), status: r.kind === "payout" ? "Paid (simulated bank transfer)" : r.kind === "penalty_reversal" ? "Reversed" : "Settled", tone: r.kind === "penalty_reversal" ? "warn" : "ok" });
       }
       setLines(out.sort((a, b) => b.at.localeCompare(a.at)));
 
-      const pays = pm.rows;
+      const pays = pm.rows.filter(real);
       // Money actually collected from customers: the non-wallet part of captured payments plus wallet top-ups (wallet spend isn't counted twice).
       const collected = pays.filter((x) => ["captured", "partially_refunded", "refunded"].includes(x.status)).reduce((a, x) => a + Number(x.amount) - Number(x.wallet_amount), 0)
         + tm.rows.reduce((a, x) => a + Number(x.amount), 0);
@@ -99,6 +103,7 @@ export default function PaymentsPage() {
   return (
     <>
       <PageHead title="Payments and settlements" sub="Money in from customers, tips, refunds and fines, and payouts to tanker companies. Gateway and bank transfers are simulated." />
+      {!finance && <ReadOnlyNote who="Finance and Super admins" />}
       <div className="okpis">
         <Kpi label="Collected this month (OMR)" value={kpi ? omr(kpi.collected) : "…"} sub="card, OmanNet and cash payments plus wallet top-ups" />
         <Kpi label="Paid out to owners (OMR)" value={kpi ? omr(kpi.paidMonth) : "…"} sub={kpi ? `this month · ${omr(kpi.paidAll)} all time` : undefined} />
@@ -111,7 +116,14 @@ export default function PaymentsPage() {
           <Chips items={(["All", ...KINDS] as Kind[]).map((k) => [k, k, lines ? counts(k) : undefined] as [Kind, string, number?])} value={kind} onChange={setKind} />
           <div className="btns">
             {finance && <button className="btn pri" onClick={() => setConfirm(true)}>Run payout batch</button>}
-            <button className="btn" disabled={!shown.length} onClick={() => downloadCsv(`ledger_${kind}`, [["Ref", "Time", "Type", "Party", "For", "OMR", "Status"], ...shown.map((l) => [l.id, l.at, l.kind, l.party, l.reference, l.amount.toFixed(3), l.status])])}>
+            <button
+              className="btn"
+              disabled={!shown.length}
+              onClick={() => {
+                downloadCsv(`ledger_${kind}`, [["Ref", "Time", "Type", "Party", "For", "OMR", "Status"], ...shown.map((l) => [l.id, l.at, l.kind, l.party, l.reference, l.amount.toFixed(3), l.status])]);
+                void supabase().rpc("staff_log_export", { p_what: `payments ledger (${kind})`, p_rows: shown.length });
+              }}
+            >
               Export CSV
             </button>
           </div>

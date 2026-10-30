@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Empty, int, PageHead, Switch, useAudited } from "@/components/nws/admin/ui";
+import { Empty, int, PageHead, ReadOnlyNote, Switch, useAudited } from "@/components/nws/admin/ui";
 import { fmtDate, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { friendlyError } from "@/lib/errors";
 import { supabase } from "@/lib/supabase/client";
@@ -66,6 +66,7 @@ export default function PromotionsPage() {
   return (
     <>
       <PageHead title="Promotions and loyalty" sub="Discount campaigns on the delivery fee, and how customers earn and redeem loyalty points." />
+      {!promoEditor && <ReadOnlyNote who="Finance and Super admins" />}
       <div className="wide">
         <div className="panel">
           <div className="toolbar">
@@ -121,13 +122,13 @@ export default function PromotionsPage() {
           <p className="note">Cashback and points are checked by the fraud rules (Wallet misuse) before they reach the wallet.</p>
         </div>
       </div>
-      {edit && <PromoDialog promo={edit === "new" ? null : edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
+      {edit && <PromoDialog promo={edit === "new" ? null : edit} taken={(promos ?? []).map((x) => x.code)} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
       {dialog}
     </>
   );
 }
 
-function PromoDialog({ promo, onClose, onDone }: { promo: Promotion | null; onClose: () => void; onDone: () => void }) {
+function PromoDialog({ promo, taken, onClose, onDone }: { promo: Promotion | null; taken: string[]; onClose: () => void; onDone: () => void }) {
   const { toast } = useStaff();
   const [code, setCode] = useState(promo?.code ?? "");
   const [label, setLabel] = useState(promo?.label ?? "");
@@ -186,6 +187,8 @@ function PromoDialog({ promo, onClose, onDone }: { promo: Promotion | null; onCl
       onConfirm={async (reason) => {
         const pct = Number(pctV) / 100;
         if (!/^[A-Z0-9]{3,20}$/.test(code)) return toast("Codes are 3–20 capital letters or digits.", true);
+        // Saving is an upsert, so a new campaign with an existing code would overwrite it.
+        if (!promo && taken.includes(code)) return toast(`${code} already exists — edit that campaign instead.`, true);
         if (!label.trim()) return toast("Enter a label.", true);
         if (!(pct > 0 && pct <= 0.5)) return toast("The discount must be between 1% and 50%.", true);
         const { error } = await upsert({ code, label: label.trim(), pct, audience, max_uses: Math.max(1, Number(maxUses) || 1), active, valid_to: validTo || null }, reason);

@@ -158,7 +158,7 @@ export default function Consumption({ rows }: { rows: ORow[] }) {
               </tbody>
             </table>
           </div>
-          <p className="note">Average interval between a property&apos;s drinking-water deliveries over the last 180 days. Customers get the “Refill reminder” notification template when a refill is due.</p>
+          <p className="note">Average interval between a property&apos;s drinking-water deliveries over the last 180 days. The “Refill reminder” notification template is ready, but reminders aren’t sent automatically in the pilot.</p>
         </div>
       </div>
 

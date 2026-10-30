@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Empty, fetchPaged, PageHead, pct, ReadOnlyNote, Switch, useAudited } from "@/components/nws/admin/ui";
+import { Empty, PageHead, pct, ReadOnlyNote, Switch, useAudited } from "@/components/nws/admin/ui";
 import { fmtDate, fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type DataRequest } from "@/lib/types";
@@ -33,13 +33,10 @@ export default function PrivacyPage() {
         setNow(Date.now());
         setReqs((data ?? []) as Req[]);
       });
-    // prefs is a private column: staff read the consent flag through staff_private_profiles().
-    Promise.all([
-      fetchPaged<{ id: string }>((a, b) => db.from("profiles").select("id").eq("role", "customer").order("id").range(a, b), 50000),
-      fetchPaged<{ id: string; share_usage: boolean }>((a, b) => db.rpc("staff_private_profiles", { p_ids: null }).order("id").range(a, b), 50000),
-    ]).then(([{ rows: cust }, { rows: priv }]) => {
-      const sharing = new Set(priv.filter((r) => r.share_usage).map((r) => r.id));
-      setConsent({ share: cust.filter((r) => sharing.has(r.id)).length, n: cust.length });
+    // Counted in the database (0024), so no customer's private fields come to the browser.
+    db.rpc("staff_consent_stats").then(({ data }) => {
+      const s = (data as { customers: number; sharing: number }[] | null)?.[0];
+      setConsent(s ? { share: s.sharing, n: s.customers } : null);
     });
   }, []);
   useEffect(load, [load]);
@@ -48,7 +45,7 @@ export default function PrivacyPage() {
     if (!p) return;
     ask({
       title: "Save privacy controls",
-      body: "Masking applies immediately in every app. Retention changes apply to the next nightly clean-up.",
+      body: "The controls are saved and audited as NWS policy. In the pilot the apps don’t apply them automatically yet (each is marked “Not enforced yet”).",
       confirm: "Save controls",
       ok: "Privacy controls saved",
       run: (reason) => supabase().rpc("staff_update_setting", { p_key: "PRIVACY", p_value: p, p_reason: reason }),
@@ -87,11 +84,11 @@ export default function PrivacyPage() {
           <div className="tblwrap">
             <table>
               <tbody>
-                <tr><td>Mask customer phone numbers to drivers<small style={{ display: "block" }}>Calls and chats go through the masked relay</small></td><td className="num">{sw("mask_phone", "Mask phone numbers")}</td></tr>
-                <tr><td>Mask exact addresses until a tanker is assigned</td><td className="num">{sw("mask_address", "Mask addresses")}</td></tr>
-                <tr><td>Share usage data with NWS by default<small style={{ display: "block" }}>Default for new customers; they can change it in their app</small></td><td className="num">{sw("usage_data_default", "Usage data default")}</td></tr>
-                <tr><td>Keep orders and payments</td><td className="num">{sel("retention_orders_years", [[5, "5 years"], [7, "7 years"], [10, "10 years"]])}</td></tr>
-                <tr><td>Keep GPS history</td><td className="num">{sel("retention_gps_days", [[30, "30 days"], [90, "90 days"], [180, "180 days"], [365, "1 year"], [730, "2 years"]])}</td></tr>
+                <tr><td>Mask customer phone numbers to drivers <NotYet /><small style={{ display: "block" }}>Calls and chats go through the masked relay</small></td><td className="num">{sw("mask_phone", "Mask phone numbers")}</td></tr>
+                <tr><td>Mask exact addresses until a tanker is assigned <NotYet /></td><td className="num">{sw("mask_address", "Mask addresses")}</td></tr>
+                <tr><td>Share usage data with NWS by default <NotYet /><small style={{ display: "block" }}>Default for new customers; they can change it in their app</small></td><td className="num">{sw("usage_data_default", "Usage data default")}</td></tr>
+                <tr><td>Keep orders and payments <NotYet /></td><td className="num">{sel("retention_orders_years", [[5, "5 years"], [7, "7 years"], [10, "10 years"]])}</td></tr>
+                <tr><td>Keep GPS history <NotYet /></td><td className="num">{sel("retention_gps_days", [[30, "30 days"], [90, "90 days"], [180, "180 days"], [365, "1 year"], [730, "2 years"]])}</td></tr>
               </tbody>
             </table>
           </div>
@@ -159,4 +156,9 @@ export default function PrivacyPage() {
       {dialog}
     </>
   );
+}
+
+/** These controls are stored as policy, but no app or job reads them yet. */
+function NotYet() {
+  return <span className="st warn ptag" title="Saved and audited; the apps don’t apply it automatically in the pilot">Not enforced yet</span>;
 }

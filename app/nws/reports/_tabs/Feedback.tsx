@@ -15,11 +15,14 @@ export default function Feedback({ rows, days }: { rows: ORow[]; days: number })
   useEffect(() => {
     const db = supabase();
     Promise.all([
-      fetchPaged<{ category: string }>((a, b) => db.from("complaints").select("category").gte("created_at", sinceIso(days)).order("id").range(a, b), ROW_CAP),
+      // Test-zone orders stay out of reports; complaints without an order are kept.
+      fetchPaged<{ category: string; order: { is_test: boolean } | { is_test: boolean }[] | null }>((a, b) =>
+        db.from("complaints").select("category, order:orders(is_test)").gte("created_at", sinceIso(days)).order("id").range(a, b), ROW_CAP),
       db.from("complaint_sla").select("category, label"),
     ]).then(([c, sla]) => {
       const labels = new Map(((sla.data ?? []) as { category: string; label: string }[]).map((r) => [r.category, r.label]));
-      setCx(c.rows.map((r) => ({ category: r.category, label: labels.get(r.category) ?? r.category })));
+      const test = (o: { is_test: boolean } | { is_test: boolean }[] | null) => (Array.isArray(o) ? o[0]?.is_test : o?.is_test) === true;
+      setCx(c.rows.filter((r) => !test(r.order)).map((r) => ({ category: r.category, label: labels.get(r.category) ?? r.category })));
     });
   }, [days]);
 

@@ -12,9 +12,9 @@ const ROLES: StaffRole[] = ["admin", "operator", "permit_officer", "inspector", 
 const MODULES = ["Live ops", "Orders", "Fleet", "Permits", "Customers", "Complaints", "Reports", "Settings", "Finance"];
 
 // What each role may change, mirrored from the require_staff() checks in the staff RPCs
-// (0008, 0012). Every role can read everything (RLS); F = can make changes, V = view only.
+// (0008, 0012; since 0023 the Super admin passes every check). F = can make changes, V = view only.
 const MATRIX: Record<StaffRole, [string, string][]> = {
-  admin: [["F", "Acknowledge/resolve alerts, emergency mode"], ["V", "Order actions are for operators"], ["F", "Penalties, company activation"], ["V", "Permit decisions are for permit officers"], ["F", "Block, verify ID, goodwill"], ["F", "Case actions"], ["F", "Build and schedule"], ["F", "All settings, users and roles"], ["F", "Payout batches, business accounts"]],
+  admin: [["F", "Everything operators can do"], ["F", "Assign, cancel, reschedule, refund"], ["F", "Block, assign drivers, penalties"], ["F", "Every permit step (not approving a tanker they inspected)"], ["F", "Block, verify ID, goodwill"], ["F", "Case actions, call-centre cases"], ["F", "Build and schedule"], ["F", "All settings, users and roles"], ["F", "Payout batches, business accounts"]],
   operator: [["F", "Alerts incl. suspend tanker, emergency mode"], ["F", "Assign, cancel, reschedule, refund"], ["F", "Block, assign drivers, penalties"], ["V", ""], ["F", "Block, verify ID"], ["F", "Case actions, call-centre cases"], ["F", "Build and schedule"], ["F", "Zones, emergency, incidents, fraud"], ["V", ""]],
   permit_officer: [["V", ""], ["V", ""], ["F", "Documents, company activation"], ["F", "Create, review, stages"], ["V", ""], ["V", ""], ["F", "Build and schedule"], ["V", ""], ["V", ""]],
   inspector: [["F", "Acknowledge/resolve alerts"], ["V", ""], ["F", "Penalties, documents"], ["F", "Inspections"], ["V", ""], ["V", ""], ["F", "Build and schedule"], ["V", ""], ["V", ""]],
@@ -29,11 +29,15 @@ export default function UsersPage() {
   const [rows, setRows] = useState<StaffRow[] | null>(null);
   const [zones, setZones] = useState<string[]>([]);
   const [adding, setAdding] = useState(false);
+  const [zoning, setZoning] = useState<StaffRow | null>(null);
+  const [emails, setEmails] = useState<Map<string, string>>(new Map());
   const admin = can("admin");
 
   const load = useCallback(() => {
     const db = supabase();
     db.from("profiles").select("id, full_name, staff_role, staff_zones, created_at").eq("role", "nws_staff").order("full_name").then(({ data }) => setRows((data ?? []) as StaffRow[]));
+    // Emails live in auth.users; staff_directory (0024, admin only) returns them for staff accounts.
+    db.rpc("staff_directory").then(({ data }) => setEmails(new Map(((data ?? []) as { id: string; email: string }[]).map((x) => [x.id, x.email]))));
     db.from("zones").select("name").order("name").then(({ data }) => setZones(((data ?? []) as { name: string }[]).map((z) => z.name)));
   }, []);
   useEffect(load, [load]);
@@ -72,15 +76,16 @@ export default function UsersPage() {
         <div className="tblwrap">
           <table>
             <thead>
-              <tr><th>Name</th><th>Role</th><th>Zones</th><th>Since</th><th></th></tr>
+              <tr><th>Name</th><th>Email</th><th>Role</th><th>Zones</th><th>Since</th><th></th></tr>
             </thead>
             <tbody>
-              {rows?.length === 0 && <Empty cols={5}>No staff users.</Empty>}
+              {rows?.length === 0 && <Empty cols={6}>No staff users.</Empty>}
               {rows?.map((u) => {
                 const self = u.id === staff.id;
                 return (
                   <tr key={u.id}>
                     <td>{u.full_name || <span className="mut">No name</span>}{self && <small style={{ display: "block" }}>You</small>}</td>
+                    <td>{emails.get(u.id) ?? <span className="mut">—</span>}</td>
                     <td>
                       {admin && !self ? (
                         <select className="inl" aria-label="Role" value={u.staff_role} onChange={(e) => changeRole(u, e.target.value as StaffRole)}>
@@ -90,7 +95,14 @@ export default function UsersPage() {
                         <span title={self ? "You can’t change your own role" : undefined}>{STAFF_ROLE_LABEL[u.staff_role]}</span>
                       )}
                     </td>
-                    <td>{u.staff_zones?.length ? u.staff_zones.join(", ") : <span className="mut">All zones</span>}</td>
+                    <td>
+                      {u.staff_zones?.length ? u.staff_zones.join(", ") : <span className="mut">All zones</span>}
+                      {admin && (
+                        <button className="lk small" style={{ display: "block" }} onClick={() => setZoning(u)}>
+                          Edit zones
+                        </button>
+                      )}
+                    </td>
                     <td><small>{new Date(u.created_at).toLocaleDateString(undefined, { month: "short", year: "numeric" })}</small></td>
                     <td className="num">{admin && !self && <button className="btn sm bad" onClick={() => remove(u)}>Remove</button>}</td>
                   </tr>
@@ -124,6 +136,7 @@ export default function UsersPage() {
       </div>
 
       {adding && <AddUser zones={zones} onClose={() => setAdding(false)} onDone={() => { setAdding(false); load(); }} />}
+      {zoning && <EditZones user={zoning} zones={zones} onClose={() => setZoning(null)} onDone={() => { setZoning(null); load(); }} />}
       {dialog}
     </>
   );
@@ -170,6 +183,37 @@ function AddUser({ zones, onClose, onDone }: { zones: string[]; onClose: () => v
         const { error } = await supabase().rpc("staff_set_role_by_email", { p_email: email.trim(), p_staff_role: role, p_zones: picked, p_reason: reason });
         if (error) return toast(friendlyError(error), true);
         toast(`${email.trim()} is now ${STAFF_ROLE_LABEL[role]}`);
+        onDone();
+      }}
+    />
+  );
+}
+
+function EditZones({ user, zones, onClose, onDone }: { user: StaffRow; zones: string[]; onClose: () => void; onDone: () => void }) {
+  const { toast } = useStaff();
+  const [picked, setPicked] = useState<string[]>(user.staff_zones ?? []);
+  return (
+    <ReasonDialog
+      title={`Zones for ${user.full_name || "this user"}`}
+      body="Leave every zone unticked for all zones."
+      confirm="Save zones"
+      extra={
+        <div className="fld">
+          <div className="checks">
+            {zones.map((z) => (
+              <label key={z}>
+                <input type="checkbox" checked={picked.includes(z)} onChange={(e) => setPicked(e.target.checked ? [...picked, z] : picked.filter((x) => x !== z))} />
+                {z}
+              </label>
+            ))}
+          </div>
+        </div>
+      }
+      onCancel={onClose}
+      onConfirm={async (reason) => {
+        const { error } = await supabase().rpc("staff_set_zones", { p_user_id: user.id, p_zones: picked, p_reason: reason });
+        if (error) return toast(friendlyError(error), true);
+        toast("Zones saved");
         onDone();
       }}
     />

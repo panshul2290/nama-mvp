@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Empty, Kpi, PageHead, useAudited, useRun } from "@/components/nws/admin/ui";
+import { Empty, Kpi, PageHead, ReadOnlyNote, useAudited, useRun } from "@/components/nws/admin/ui";
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Incident, type Integration } from "@/lib/types";
@@ -54,18 +54,26 @@ export default function HealthPage() {
   const lat = (ints ?? []).map((i) => i.latency_ms).filter((v): v is number => v != null).sort((a, b) => a - b);
   const p95 = lat.length ? lat[Math.min(lat.length - 1, Math.ceil(lat.length * 0.95) - 1)] : null;
   const open = (incs ?? []).filter((i) => i.state !== "resolved");
-  const okCount = (ints ?? []).filter((i) => i.status === "ok" || i.status === "simulated").length;
+  // Simulated interfaces aren't "OK": they are counted separately.
+  const okCount = (ints ?? []).filter((i) => i.status === "ok").length;
+  const simCount = (ints ?? []).filter((i) => i.status === "simulated").length;
 
   return (
     <>
       <PageHead title="System health" sub="Platform availability, the interfaces to NWS and partner systems, and incidents against the tender's priority matrix.">
         {responder && <button className="btn pri" onClick={() => setOpening(true)}>Open incident</button>}
       </PageHead>
+      {!responder && <ReadOnlyNote who="Super admins and control room operators" />}
       <div className="okpis">
-        <Kpi label="Uptime, 30 days" value="99.9%" sub="simulated · uptime = (720 h − lost) / 720 h; contract target TBC" />
+        <Kpi label="Uptime, 30 days" value="TBC" sub="uptime = (720 h − lost) / 720 h; measured once the platform is hosted; contract target TBC" />
         <Kpi label="Interface latency p95" value={p95 == null ? "—" : `${p95} ms`} sub={`last test of ${lat.length} interface${lat.length === 1 ? "" : "s"}`} tone={p95 != null && p95 > 500 ? "warn" : undefined} />
         <Kpi label="Open incidents" value={incs ? open.length : "…"} sub={open.some((i) => i.priority === "P1") ? "including a P1" : "no P1 open"} tone={open.some((i) => i.priority === "P1") ? "bad" : open.length ? "warn" : "ok"} />
-        <Kpi label="Interfaces OK" value={ints ? `${okCount} / ${ints.length}` : "…"} sub={ints?.some((i) => i.status === "warn" || i.status === "down") ? "some degraded" : "all responding"} tone={ints?.some((i) => i.status === "down") ? "bad" : ints?.some((i) => i.status === "warn") ? "warn" : "ok"} />
+        <Kpi
+          label="Interfaces OK"
+          value={ints ? `${okCount} / ${ints.length}` : "…"}
+          sub={ints?.some((i) => i.status === "warn" || i.status === "down") ? "some degraded" : simCount ? `${simCount} simulated in the pilot` : "all responding"}
+          tone={ints?.some((i) => i.status === "down") ? "bad" : ints?.some((i) => i.status === "warn") ? "warn" : simCount ? undefined : "ok"}
+        />
       </div>
 
       <div className="panel">
@@ -83,7 +91,7 @@ export default function HealthPage() {
                   <td><small>{i.last_test_at ? fmtDateTime(i.last_test_at) : "Never"}</small></td>
                   <td className="num">{i.latency_ms != null ? `${i.latency_ms} ms` : "—"}</td>
                   <td><small>{i.note}</small></td>
-                  <td className="num"><button className="btn sm" disabled={testing === i.key} onClick={() => test(i)}>{testing === i.key ? "Testing…" : "Test"}</button></td>
+                  <td className="num"><button className="btn sm" disabled={!responder || testing === i.key} title={responder ? undefined : "Super admins and operators"} onClick={() => test(i)}>{testing === i.key ? "Testing…" : "Test"}</button></td>
                 </tr>
               ))}
             </tbody>
