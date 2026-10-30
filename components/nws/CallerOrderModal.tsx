@@ -18,6 +18,23 @@ type Placed = { id: string; order_no: number };
 
 const MUSCAT: LngLat = { lat: 23.588, lng: 58.3829 };
 
+// Two-hour delivery windows, 8 am – 8 pm Muscat time (UTC+4), today and tomorrow; past ones left out.
+type Win = { label: string; start: string; end: string };
+function windows(now: number): Win[] {
+  const MCT = 4 * 3_600_000;
+  const local = new Date(now + MCT);
+  const day0 = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - MCT; // Muscat midnight, as UTC ms
+  const fmt = (h: number) => (h === 12 ? "12 pm" : h > 12 ? `${h - 12} pm` : `${h} am`);
+  const out: Win[] = [];
+  for (const [d, name] of [[0, "Today"], [1, "Tomorrow"]] as const)
+    for (let h = 8; h < 20; h += 2) {
+      const start = day0 + d * 86_400_000 + h * 3_600_000;
+      if (start + 2 * 3_600_000 <= now + 30 * 60_000) continue;
+      out.push({ label: `${name} ${fmt(h)}–${fmt(h + 2)}`, start: new Date(start).toISOString(), end: new Date(start + 2 * 3_600_000).toISOString() });
+    }
+  return out;
+}
+
 function km(a: LngLat, b: LngLat) {
   const r = (d: number) => (d * Math.PI) / 180;
   const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
@@ -39,6 +56,8 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
   const [address, setAddress] = useState("");
   const [gx, setGx] = useState(genesysId);
   const [emergency, setEmergency] = useState(false);
+  const [wins] = useState(() => windows(Date.now()));
+  const [win, setWin] = useState(""); // "" = as soon as possible
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -86,8 +105,10 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
   );
   const pick = useMemo(() => ({ value: pin, onChange: setPin }), [pin]);
 
+  const chosen = wins.find((x) => x.start === win) ?? null;
+
   async function submit() {
-    if (!caller) return;
+    if (!caller || caller.account_blocked) return;
     setBusy(true);
     const { data, error } = await supabase().rpc("staff_place_order", {
       p_customer_id: caller.id,
@@ -99,6 +120,9 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
       p_address: address,
       p_genesys_id: gx,
       p_emergency: emergency,
+      p_slot_start: chosen?.start ?? null,
+      p_slot_end: chosen?.end ?? null,
+      p_slot_label: chosen?.label ?? null,
     });
     setBusy(false);
     if (error) return toast(friendlyError(error), true);
@@ -107,7 +131,7 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
 
   return (
     <Modal title="New order for a caller" wide onClose={onClose}>
-      <p>Genesys call centre: the order is placed for the caller’s account, priced from the tariff and paid in cash on delivery.</p>
+      <p>Genesys call centre: the order is placed for the caller’s account, priced from the tariff and paid in cash on delivery. (The Genesys link is simulated: the interaction ID is entered by hand.)</p>
       <div className="grid2">
         <div>
           <div className="fld">
@@ -117,7 +141,7 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
           <div className="picklist" role="listbox" aria-label="Customers">
             {callers.length === 0 && <span className="mut" style={{ fontSize: 13 }}>No customers match.</span>}
             {callers.map((c) => (
-              <button key={c.id} type="button" className={`pickrow ${caller?.id === c.id ? "on" : ""}`} onClick={() => choose(c)}>
+              <button key={c.id} type="button" className={`pickrow ${caller?.id === c.id ? "on" : ""}`} disabled={c.account_blocked} title={c.account_blocked ? "Account blocked — unblock it in Customers first" : undefined} onClick={() => choose(c)}>
                 <span>
                   <b>{c.full_name || "Customer"}</b> {c.account_blocked && <span className="st bad ptag">Blocked</span>}
                 </span>
@@ -190,6 +214,17 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
           <label htmlFor="ad">Address / directions</label>
           <input id="ad" className="in" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Building, way number, landmark" />
         </div>
+        <div className="fld">
+          <label htmlFor="wn">Window</label>
+          <select id="wn" className="in" value={win} onChange={(e) => setWin(e.target.value)}>
+            <option value="">As soon as possible</option>
+            {wins.map((x) => (
+              <option key={x.start} value={x.start}>
+                {x.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <label className="mut" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, marginBottom: 14 }}>
         <input type="checkbox" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} /> Emergency / priority request (priority multiplier on the delivery fee)
@@ -198,7 +233,7 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
         <button className="btn" onClick={onClose} disabled={busy}>
           Cancel
         </button>
-        <button className="btn pri" disabled={busy || !caller || !zone || gallons < 1} onClick={submit}>
+        <button className="btn pri" disabled={busy || !caller || caller.account_blocked || !zone || gallons < 1} onClick={submit}>
           {busy ? "Placing…" : "Place order"}
         </button>
       </div>

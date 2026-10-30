@@ -46,6 +46,8 @@ const TYPES: (ServiceType | "all")[] = ["all", "DW", "WW", "TE"];
 const TYPE_LABEL = { all: "All tankers", DW: "Drinking water", WW: "Wastewater", TE: "Treated effluent" };
 const ORDER_COLS = "id, order_no, service_type, gallons, area, status, tanker_id, tanker_plate, created_at, released_at, slot_end, collected_at, delivered_at, is_test, loc:order_locations(lat, lng)";
 const SCAN_EVERY = 60_000;
+// Alert types staff_alert_action maps to a penalty rule; other types pick a rule in the dialog.
+const ALERT_RULE = new Set(["Discharge outside approved zone", "Non-renewed tanker on active trip", "Delivery window breach", "Short volume"]);
 
 // Haversine distance in km (mirrors public.km).
 function km(a: LatLng, b: LatLng) {
@@ -63,6 +65,7 @@ export default function LiveOperations() {
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [today, setToday] = useState<LiveOrder[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [openAll, setOpenAll] = useState<{ id: number; lat: number | null; lng: number | null; severity: Alert["severity"] }[]>([]);
   const [sites, setSites] = useState<MapSite[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [emergency, setEmergency] = useState<Emergency | null>(null);
@@ -73,17 +76,18 @@ export default function LiveOperations() {
   const [selTanker, setSelTanker] = useState<string | null>(null);
   const [selAlert, setSelAlert] = useState<number | null>(null);
   const [trail, setTrail] = useState<LatLng[] | null>(null);
-  const [dlg, setDlg] = useState<null | "suspend" | "penalty" | "alertPenalty" | "alertSuspend">(null);
+  const [dlg, setDlg] = useState<null | "suspend" | "penalty" | "alertPenalty" | "alertPenaltyPick" | "alertSuspend">(null);
   const [lastScan, setLastScan] = useState<number | null>(null);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  const preselected = useRef(false); // the first open alert is selected on arrival, as in the prototype
   const testAreas = useTestAreas();
 
   const load = useCallback(async () => {
     const db = supabase();
     const day = startOfDay(Date.now());
-    const [t, o, d, a, e] = await Promise.all([
+    const [t, o, d, a, e, oa] = await Promise.all([
       db
         .from("tankers")
         .select(
@@ -95,11 +99,21 @@ export default function LiveOperations() {
       db.from("orders").select(ORDER_COLS).eq("is_test", false).or(`created_at.gte.${day},delivered_at.gte.${day}`),
       db.from("alerts").select("id, tanker_id, order_id, type, severity, message, lat, lng, state, created_at, action_note").order("created_at", { ascending: false }).limit(60),
       db.from("app_settings").select("value").eq("key", "EMERGENCY").maybeSingle(),
+      db.from("alerts").select("id, lat, lng, severity").eq("state", "open").limit(5000),
     ]);
     setTankers((t.data ?? []) as unknown as LiveTanker[]);
     setOrders((o.data ?? []) as unknown as LiveOrder[]);
     setToday((d.data ?? []) as unknown as LiveOrder[]);
     setAlerts((a.data ?? []) as Alert[]);
+    if (!preselected.current) {
+      preselected.current = true;
+      const first = ((a.data ?? []) as Alert[]).find((x) => x.state === "open");
+      if (first) {
+        setSelAlert((prev) => prev ?? first.id);
+        setSelTanker((prev) => prev ?? first.tanker_id);
+      }
+    }
+    setOpenAll((oa.data ?? []) as { id: number; lat: number | null; lng: number | null; severity: Alert["severity"] }[]);
     try {
       setEmergency(e.data ? (JSON.parse(e.data.value) as Emergency) : null);
     } catch {
@@ -137,7 +151,7 @@ export default function LiveOperations() {
       clearInterval(sc);
     };
   }, [load, scan]);
-  useRealtime("nws-live", ["tankers", "orders", "alerts"], load);
+  useRealtime("nws-live", ["tankers", "orders", "alerts"], load, 5000);
 
   // Age = server age at fetch time + time since (independent of the browser clock).
   const age = useCallback((t: LiveTanker) => (t.location_age_s == null ? null : t.location_age_s + Math.max(0, now - fetchedAt) / 1000), [now, fetchedAt]);
@@ -165,8 +179,10 @@ export default function LiveOperations() {
   const allOnline = tankers.filter((t) => t.is_online);
   const online = allOnline.filter((t) => !inTest({ lat: t.last_lat, lng: t.last_lng }));
   const testOnline = allOnline.length - online.length;
-  const kpiAlerts = openAlerts.filter((a) => !inTest(a));
-  const inProgress = orders.filter((o) => !o.is_test).length;
+  const kpiAlerts = openAll.filter((a) => !inTest(a));
+  const openCount = openAll.length;
+  const testAlerts = openCount - kpiAlerts.length;
+  const inProgress = orders.filter((o) => !o.is_test && o.status !== "requested").length;
   const delivered = today.filter((o) => o.status === "delivered" && o.delivered_at && o.delivered_at >= day);
   const onTime = delivered.filter((o) => orderSla(o, now).tone === "ok").length;
   const tripsToday = today.filter((o) => o.created_at >= day && o.status !== "cancelled").length;
@@ -318,9 +334,9 @@ export default function LiveOperations() {
             <i />
             {emergency?.on ? "Emergency active" : "Emergency mode"}
           </Link>
-          <button className="ib" aria-label={`${openAlerts.length} open alerts`} title={`${openAlerts.length} open alerts`} onClick={() => feedRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+          <button className="ib" aria-label={`${openCount} open alerts`} title={`${openCount} open alerts`} onClick={() => feedRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
             <Icon name="bell" />
-            {openAlerts.length > 0 && <span className="dot">{openAlerts.length}</span>}
+            {openCount > 0 && <span className="dot">{openCount}</span>}
           </button>
         </div>
       </div>
@@ -356,7 +372,9 @@ export default function LiveOperations() {
         <div className="okpi">
           <span>Open alerts</span>
           <b>{loaded ? kpiAlerts.length : "—"}</b>
-          <small className={highOpen ? "bad" : ""}>{highOpen} high severity</small>
+          <small className={highOpen ? "bad" : ""}>
+            {highOpen} high severity{testAlerts > 0 ? ` · ${testAlerts} more in the test zone` : ""}
+          </small>
         </div>
       </div>
 
@@ -385,7 +403,7 @@ export default function LiveOperations() {
           </div>
           <div className="ov ov-tr live">
             <i />
-            Live · IVMS simulated
+            Live GPS · IVMS link simulated
           </div>
           <div className="ov ov-bl">
             <div className="legend2">
@@ -405,7 +423,7 @@ export default function LiveOperations() {
         <div className="ops-side">
           <div className="panel alerts" ref={feedRef}>
             <h2>
-              Alerts <span className={`st ${openAlerts.length ? "bad" : "ok"}`}>{openAlerts.length} open</span>
+              Alerts <span className={`st ${openCount ? "bad" : "ok"}`}>{openCount} open</span>
             </h2>
             <div className="feed">
               {alerts.length === 0 && <div className="empty">No alerts. The control-room scan runs every minute.</div>}
@@ -511,12 +529,18 @@ export default function LiveOperations() {
                 </div>
                 {alert && alert.state !== "resolved" ? (
                   <div className="tk-act">
-                    <button className="btn bad" disabled={!alertRole} title={roleTip(alertRole, "Operators, inspectors and admins")} onClick={() => setDlg("alertPenalty")}>
+                    <button className="btn bad" disabled={!alertRole} title={roleTip(alertRole, "Operators, inspectors and admins")} onClick={() => setDlg(ALERT_RULE.has(alert.type) ? "alertPenalty" : "alertPenaltyPick")}>
                       Issue penalty
                     </button>
-                    <button className="btn" disabled={!alertRole} title={roleTip(alertRole, "Operators, inspectors and admins")} onClick={() => alertAction("inspector", null, "Inspector dispatched")}>
-                      Send inspector
-                    </button>
+                    {alert.action_note === "Inspector dispatched" ? (
+                      <button className="btn" disabled title="An inspector is already on the way for this alert">
+                        Inspector sent
+                      </button>
+                    ) : (
+                      <button className="btn" disabled={!alertRole} title={roleTip(alertRole, "Operators, inspectors and admins")} onClick={() => alertAction("inspector", null, "Inspector dispatched for today")}>
+                        Send inspector
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="tk-act">
@@ -528,7 +552,7 @@ export default function LiveOperations() {
                       disabled={!inspectRole}
                       title={roleTip(inspectRole, "Inspectors and permit officers")}
                       onClick={async () => {
-                        if (await rpc("staff_record_inspection", { p_tanker_id: tanker.id, p_permit_id: null, p_result: "scheduled", p_notes: "Sent from Live operations" }, "Inspection scheduled for today")) load();
+                        if (await rpc("staff_record_inspection", { p_tanker_id: tanker.id, p_permit_id: null, p_result: "scheduled", p_notes: "Sent from Live operations" }, "Inspection booked for tomorrow")) load();
                       }}
                     >
                       Send inspector
@@ -553,7 +577,7 @@ export default function LiveOperations() {
                   )}
                   <button
                     onClick={() =>
-                      drv ? toast(`Calling ${drv.full_name || "the driver"} through a masked number — the real number (${maskPhone(drv.phone)}) stays hidden`) : toast("No driver assigned to this tanker", true)
+                      drv ? toast(`Simulated: calling ${drv.full_name || "the driver"} through a masked number — the real number (${maskPhone(drv.phone)}) stays hidden`) : toast("No driver assigned to this tanker", true)
                     }
                   >
                     Call driver
@@ -600,6 +624,15 @@ export default function LiveOperations() {
               load();
             }
           }}
+        />
+      )}
+      {dlg === "alertPenaltyPick" && alert && (
+        <PenaltyDialog
+          title={`Issue penalty — ${alert.type}`}
+          tankerId={alert.tanker_id}
+          orderId={alert.order_id}
+          onClose={() => setDlg(null)}
+          onDone={() => alertAction("resolve", "Penalty issued from the framework", "Penalty issued and alert resolved")}
         />
       )}
       {dlg === "penalty" && tanker && <PenaltyDialog title={`Issue penalty — ${tanker.plate}`} tankerId={tanker.id} orderId={job?.id ?? null} onClose={() => setDlg(null)} onDone={load} />}

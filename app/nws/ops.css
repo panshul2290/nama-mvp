@@ -126,3 +126,4 @@
 @media (max-width: 1180px) {
   .nws .pv, .nws .pv-two, .nws .grid2 { grid-template-columns: 1fr; }
 }
+.nws .pickrow:disabled { opacity: 0.5; cursor: not-allowed; }

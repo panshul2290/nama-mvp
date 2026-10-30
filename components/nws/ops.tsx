@@ -4,7 +4,7 @@
 // Permits, Customers, Complaints): tabs, KPI tiles, dialogs, RPC runner, formatting.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStaff } from "@/components/nws/StaffContext";
-import { saveCsv, type CsvCell } from "@/lib/csv";
+import { saveCsv, saveTable, TABLE_FORMATS, type CsvCell, type TableFormat } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
 import { servedAt, slaDue } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
@@ -81,28 +81,37 @@ export function useRpc() {
   );
 }
 
-/** Subscribe to realtime changes on some tables; calls `onChange` (debounced). */
-export function useRealtime(name: string, tables: string[], onChange: () => void, delay = 600) {
+/**
+ * Subscribe to realtime changes on some tables and call `onChange` at most once per `delay` ms
+ * (a burst of GPS fixes reloads once, not once per fix). `filters` narrows a table to some rows,
+ * e.g. { orders: "id=eq.<uuid>" }.
+ */
+export function useRealtime(name: string, tables: string[], onChange: () => void, delay = 600, filters?: Record<string, string>) {
   const cb = useRef(onChange);
   useEffect(() => {
     cb.current = onChange;
   });
   const key = tables.join(",");
+  const fkey = filters ? JSON.stringify(filters) : "";
   useEffect(() => {
     const db = supabase();
+    const f = fkey ? (JSON.parse(fkey) as Record<string, string>) : {};
     let t: ReturnType<typeof setTimeout> | undefined;
     const soon = () => {
-      clearTimeout(t);
-      t = setTimeout(() => cb.current(), delay);
+      if (t) return;
+      t = setTimeout(() => {
+        t = undefined;
+        cb.current();
+      }, delay);
     };
     let ch = db.channel(name);
-    for (const table of key.split(",")) ch = ch.on("postgres_changes", { event: "*", schema: "public", table }, soon);
+    for (const table of key.split(",")) ch = ch.on("postgres_changes", { event: "*", schema: "public", table, ...(f[table] ? { filter: f[table] } : {}) }, soon);
     ch.subscribe();
     return () => {
       clearTimeout(t);
       db.removeChannel(ch);
     };
-  }, [name, key, delay]);
+  }, [name, key, fkey, delay]);
 }
 
 /** Signed URL for a private file in the evidence bucket (null when missing). */
@@ -128,6 +137,24 @@ export function useSignedUrl(path: string | null | undefined) {
 /** Download rows as CSV (first row = headers). */
 export function downloadCsv(name: string, rows: CsvCell[][]) {
   saveCsv(`${name}.csv`, rows);
+}
+
+/** Save rows in any of the export formats the RFP lists (CSV, XLS, XML, TXT). */
+export function downloadTable(name: string, rows: CsvCell[][], fmt: TableFormat) {
+  saveTable(name, rows, fmt);
+}
+
+/** One button per export format, as in the prototype (Export CSV / XLS / XML / TXT). */
+export function ExportButtons({ onExport, disabled }: { onExport: (fmt: TableFormat) => void; disabled?: boolean }) {
+  return (
+    <div className="btns">
+      {TABLE_FORMATS.map((f) => (
+        <button key={f} className="btn sm" disabled={disabled} onClick={() => onExport(f)}>
+          Export {f.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function Tabs<K extends string>({ tabs, value, onChange }: { tabs: [K, string, number?][]; value: K; onChange: (k: K) => void }) {

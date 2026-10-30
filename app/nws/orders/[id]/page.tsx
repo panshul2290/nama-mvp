@@ -14,6 +14,7 @@ import { PenaltyDialog } from "@/components/nws/PenaltyDialog";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { OrderBill, STATUS_TEXT } from "@/components/OrderBits";
 import { usePricingRules } from "@/components/usePricingRules";
+import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
@@ -70,7 +71,8 @@ function tomorrowMorning() {
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
   const { rules } = usePricingRules();
-  const { can, toast } = useStaff();
+  const { can, toast, staff } = useStaff();
+  const readOnly = staff.staff_role === "viewer";
   const rpc = useRpc();
   const now = useNow(30_000);
   const [o, setO] = useState<Detail | null>(null);
@@ -114,6 +116,7 @@ export default function OrderDetail() {
       db.from("penalties").select("id, penalty_no, amount, state, reason, created_at, rule:penalty_rules(label)").eq("order_id", id).order("created_at"),
       db.from("gps_fixes").select("lat, lng").eq("order_id", id).order("recorded_at").limit(1000),
     ]);
+    if (a.error) return toast(friendlyError(a.error), true);
     if (!a.data) return setMissing(true);
     setO(a.data as unknown as Detail);
     setLoc(b.data as OrderLocation | null);
@@ -132,7 +135,7 @@ export default function OrderDetail() {
       const v = await db.rpc("order_verification", { p_order_id: id });
       setVerify((v.data ?? null) as Verification);
     }
-  }, [id]);
+  }, [id, toast]);
 
   useEffect(() => {
     const t = setTimeout(load, 0);
@@ -144,7 +147,7 @@ export default function OrderDetail() {
       .then(({ data }) => setSites(((data ?? []) as (MapSite & { code: string; name: string })[]).map((s) => ({ ...s, label: `${s.code} · ${s.name}` }))));
     return () => clearTimeout(t);
   }, [load]);
-  useRealtime(`nws-order-${id}`, ["orders", "order_messages"], load, 800);
+  useRealtime(`nws-order-${id}`, ["orders", "order_messages"], load, 800, { orders: `id=eq.${id}`, order_messages: `order_id=eq.${id}` });
 
   const photo = useSignedUrl(pod?.photo_path);
   const sigFile = useSignedUrl(pod?.signature_svg ? null : pod?.signature_path);
@@ -180,7 +183,7 @@ export default function OrderDetail() {
 
   async function send() {
     const text = body.trim();
-    if (!text) return;
+    if (!text || readOnly) return;
     if (await rpc("send_message", { p_order_id: id, p_body: text })) {
       setBody("");
       load();
@@ -255,7 +258,7 @@ export default function OrderDetail() {
               Cancel order
             </button>
           )}
-          {pay && refundable > 0 && o.billing !== "account" && (
+          {pay && refundable > 0 && o.billing !== "account" && !(pay.method === "cash" && pay.status === "authorized") && (
             <button
               className="btn"
               disabled={!canRefund}
@@ -369,7 +372,7 @@ export default function OrderDetail() {
             )}
             <div className="sendrow">
               <input className="in" placeholder="Message the customer and driver as NWS…" value={body} maxLength={500} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} aria-label="Message" />
-              <button className="btn pri" disabled={!body.trim() || can("viewer")} onClick={send}>
+              <button className="btn pri" disabled={!body.trim() || readOnly} title={readOnly ? "Read-only role" : undefined} onClick={send}>
                 Send
               </button>
             </div>
@@ -646,7 +649,11 @@ export default function OrderDetail() {
       {dlg === "cancel" && (
         <ReasonDialog
           title={`Cancel ${orderNo(o.order_no)}`}
-          body="The customer is notified and any payment is refunded to their wallet."
+          body={
+            ON_JOB.includes(o.status)
+              ? `A driver is on this job (${STATUS_TEXT[o.status][0].toLowerCase()}). Cancelling stops the trip; the customer is notified and the full payment is refunded to their wallet.`
+              : "The customer is notified and any payment is refunded to their wallet."
+          }
           confirm="Cancel order"
           danger
           onCancel={() => setDlg(null)}

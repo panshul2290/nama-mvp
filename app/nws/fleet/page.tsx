@@ -7,7 +7,8 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { FleetMap } from "@/components/nws/FleetMap";
 import type { LatLng, MapSite, MapTanker } from "@/components/nws/FleetMapView";
 import { permitSummary, type FleetTanker } from "@/components/nws/fleetData";
-import { ago, downloadCsv, Kpi, one, pct, St, Tabs, useNow, useRealtime, useRpc, SERVICE_NAME, HOUR } from "@/components/nws/ops";
+import { ago, downloadTable, ExportButtons, Kpi, one, pct, St, Tabs, useNow, useRealtime, useRpc, SERVICE_NAME, HOUR } from "@/components/nws/ops";
+import type { TableFormat } from "@/lib/csv";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { STATUS_TEXT } from "@/components/OrderBits";
 import { Loading } from "@/components/Shell";
@@ -28,6 +29,7 @@ export default function FleetPage() {
 type WaterTest = { cert_no: string; tested_at: string; passed: boolean };
 type Device = { id: string; firmware: string; sensors: Record<string, boolean>; installed_at: string };
 type Row = FleetTanker & {
+  company_id: string | null;
   last_lat: number | null; last_lng: number | null; last_fix_at: string | null; last_accuracy_m: number | null;
   company: { name: string } | { name: string }[] | null;
   water_tests: WaterTest[];
@@ -66,7 +68,7 @@ function Fleet() {
   const [tab, setTab] = useState<Tab>("tankers");
   const [rows, setRows] = useState<Row[] | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
-  const [freeDrivers, setFreeDrivers] = useState<{ id: string; full_name: string }[]>([]);
+  const [freeDrivers, setFreeDrivers] = useState<{ id: string; full_name: string; company_id: string | null }[]>([]);
   const [dlg, setDlg] = useState<Dialog>(null);
   const [driverPick, setDriverPick] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -86,17 +88,17 @@ function Fleet() {
       db
         .from("tankers")
         .select(
-          "id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, blocked_at, location_age_s, last_lat, last_lng, last_fix_at, last_accuracy_m, company:companies(name), water_tests(cert_no, tested_at, passed), device:devices(id, firmware, sensors, installed_at), assignments:tanker_assignments(id, driver_id, assigned_at, unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
+          "id, plate, service_type, capacity_gal, company_id, is_online, blocked, blocked_reason, blocked_at, location_age_s, last_lat, last_lng, last_fix_at, last_accuracy_m, company:companies(name), water_tests(cert_no, tested_at, passed), device:devices(id, firmware, sensors, installed_at), assignments:tanker_assignments(id, driver_id, assigned_at, unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
         )
         .order("plate"),
-      db.from("profiles").select("id, full_name").eq("role", "driver").order("full_name"),
+      db.from("profiles").select("id, full_name, company_id").eq("role", "driver").order("full_name"),
       db.from("tanker_assignments").select("driver_id").is("unassigned_at", null),
       db.from("sites").select("id, code, kind, name, lat, lng, radius_m").eq("active", true).eq("is_test", false),
     ]);
     setRows((t.data ?? []) as unknown as Row[]);
     setSites((s.data ?? []) as Site[]);
     const busy = new Set((a.data ?? []).map((x) => x.driver_id));
-    setFreeDrivers(((d.data ?? []) as { id: string; full_name: string }[]).filter((x) => !busy.has(x.id)));
+    setFreeDrivers(((d.data ?? []) as { id: string; full_name: string; company_id: string | null }[]).filter((x) => !busy.has(x.id)));
   }, []);
 
   const loadTrips = useCallback(async () => {
@@ -116,7 +118,7 @@ function Fleet() {
     }, 0);
     return () => clearTimeout(first);
   }, [load, loadTrips]);
-  useRealtime("nws-fleet", ["tankers"], load, 800);
+  useRealtime("nws-fleet", ["tankers"], load, 5000);
 
   // Route history and trip log of the selected tanker: last 2 h of fixes, else the latest 200.
   useEffect(() => {
@@ -179,8 +181,8 @@ function Fleet() {
   );
   const mapSites: MapSite[] = useMemo(() => sites.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, kind: s.kind, radius_m: s.radius_m, label: `${s.name} (${s.code})` })), [sites]);
 
-  function exportTankers() {
-    downloadCsv("fleet-register", [
+  function exportTankers(fmt: TableFormat) {
+    downloadTable("fleet-register", [
       ["Plate", "Service", "Capacity (gal)", "Owner", "Driver", "Permit", "Water test", "IVMS device", "Accuracy (m)", "Last fix", "Status"],
       ...list.map((t) => {
         const w = latestTest(t);
@@ -190,16 +192,16 @@ function Fleet() {
           t.blocked ? "Suspended" : "Active",
         ];
       }),
-    ]);
+    ], fmt);
   }
-  function exportTrips(rs: Trip[], name: string) {
-    downloadCsv(name, [
+  function exportTrips(rs: Trip[], name: string, fmt: TableFormat = "csv") {
+    downloadTable(name, [
       ["Order", "Created", "Tanker", "Driver", "Service", "Gallons", "Area", "Status", "Fill site", "Fill check", "Discharge site", "Discharge check", "Completed"],
       ...rs.map((t) => [
         orderNo(t.order_no), t.created_at, t.tanker_plate ?? "", t.driver_name ?? "", t.service_type, t.gallons, t.area, STATUS_TEXT[t.status][0],
         one(t.fill_site)?.name ?? "", verification(t, "fill")?.text ?? "", one(t.discharge_site)?.name ?? "", verification(t, "discharge")?.text ?? "", t.delivered_at ?? t.cancelled_at ?? "",
       ]),
-    ]);
+    ], fmt);
   }
 
   const counts = {
@@ -251,7 +253,7 @@ function Fleet() {
                     ["DW", "Drinking water"],
                     ["WW", "Wastewater"],
                     ["TE", "Treated effluent"],
-                    ["expired", "Expired permit"],
+                    ["expired", "No valid permit"],
                   ] as const
                 ).map(([k, l]) => (
                   <button key={k} className={`chip ${filter === k ? "on" : ""}`} onClick={() => setFilter(k)}>
@@ -262,7 +264,7 @@ function Fleet() {
               </div>
               <div className="filters">
                 <input className="in" placeholder="Plate, owner or driver" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search tankers" style={{ width: 200 }} />
-                <button className="btn sm" onClick={exportTankers} disabled={!list.length}>Export CSV</button>
+                <ExportButtons onExport={exportTankers} disabled={!list.length} />
               </div>
             </div>
             {!isOperator && <p className="note" style={{ paddingTop: 0 }}>Read-only: suspend and assignment actions are for control room operators.</p>}
@@ -335,7 +337,7 @@ function Fleet() {
                         <td onClick={(e) => e.stopPropagation()}>
                           <div className="btns" style={{ flexWrap: "nowrap" }}>
                             {t.blocked ? (
-                              <button className="btn sm" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "unblock", tanker: t })}>Unblock</button>
+                              <button className="btn sm" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "unblock", tanker: t })}>Reinstate</button>
                             ) : (
                               <button className="btn sm bad" disabled={!isOperator} title={opTitle} onClick={() => setDlg({ kind: "block", tanker: t })}>Suspend</button>
                             )}
@@ -409,7 +411,7 @@ function Fleet() {
         <div className="panel">
           <div className="toolbar">
             <span className="mut" style={{ fontSize: 13 }}>Latest {trips?.length ?? 0} trips across the fleet, with station (TFS) and IVMS fill / discharge verification</span>
-            <button className="btn sm" disabled={!trips?.length} onClick={() => trips && exportTrips(trips, "trip-logs")}>Export CSV</button>
+            <ExportButtons disabled={!trips?.length} onExport={(f) => trips && exportTrips(trips, "trip-logs", f)} />
           </div>
           <div className="tblwrap">
             <table>
@@ -502,14 +504,14 @@ function Fleet() {
       {dlg?.kind === "assign" && (
         <ReasonDialog
           title={`Assign a driver to ${dlg.tanker.plate}`}
-          body="NWS override. Only drivers without a tanker are listed."
+          body="NWS override. Only drivers of this tanker's company without a tanker are listed."
           confirm="Assign"
           extra={
             <div className="fld">
               <label htmlFor="drv">Driver</label>
               <select id="drv" className="in" value={driverPick} onChange={(e) => setDriverPick(e.target.value)}>
                 <option value="">Choose a driver…</option>
-                {freeDrivers.map((d) => (
+                {freeDrivers.filter((d) => d.company_id === dlg.tanker.company_id).map((d) => (
                   <option key={d.id} value={d.id}>{d.full_name || d.id}</option>
                 ))}
               </select>

@@ -68,6 +68,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
   const data = useRef({ tankers, orders, sites, trail, selectedId, alerts });
   const applyRef = useRef<() => void>(() => undefined);
   const framedTrail = useRef<LatLng[] | null>(null);
+  const panned = useRef<string | null>(null); // last selected tanker the view moved to
   // Where each tanker is drawn now, where it is heading, and which way it faces.
   const shown = useRef(new Map<string, LatLng>());
   const target = useRef(new Map<string, LatLng>());
@@ -291,6 +292,18 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
         userMoved.current = true;
         return;
       }
+      // A newly selected tanker (from search, an alert or the map) is brought into view.
+      if (selectedId && panned.current !== selectedId) {
+        const sel = target.current.get(selectedId);
+        if (sel) {
+          panned.current = selectedId;
+          m.easeTo({ center: [sel.lng, sel.lat], zoom: Math.max(m.getZoom(), 12), duration: 600 });
+          userMoved.current = true;
+          for (const p of [...tankers, ...orders]) known.current.add(p.id);
+          return;
+        }
+      }
+      if (!selectedId) panned.current = null;
       // Frame everything whenever a new tanker or order appears (not on every GPS move),
       // until the operator takes over the view.
       const pts = [...tankers, ...orders];

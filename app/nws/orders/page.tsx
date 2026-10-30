@@ -7,6 +7,7 @@ import { CallerOrderModal } from "@/components/nws/CallerOrderModal";
 import { CHANNEL_LABEL, downloadCsv, Kpi, n3, one, orderSla, useNow, useRealtime } from "@/components/nws/ops";
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { STATUS_TEXT } from "@/components/OrderBits";
+import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
 import { type ServiceType } from "@/lib/pricing";
 import { muscatDayStart } from "@/lib/sla";
@@ -69,7 +70,7 @@ export default function OrdersPage() {
       query = query.eq("order_no", Number(n));
     }
     const { data, error } = await query;
-    setError(error?.message ?? null);
+    setError(error ? friendlyError(error) : null);
     setRows((data ?? []) as unknown as Row[]);
   }, [group, type, from, to, area, q]);
 
@@ -82,13 +83,13 @@ export default function OrdersPage() {
     const head = (s: OrderStatus[]) => real().in("status", s);
     const [c, acc, cx, made] = await Promise.all([
       Promise.all(GROUPS.slice(1).map((g) => head(g[2]!))),
-      db.from("orders").select("created_at, accepted_at").eq("is_test", false).gte("accepted_at", week).limit(1000),
+      db.from("orders").select("created_at, released_at, accepted_at").eq("is_test", false).gte("accepted_at", week).order("accepted_at", { ascending: false }).limit(1000),
       real().eq("status", "cancelled").gte("cancelled_at", day.toISOString()),
       real().gte("created_at", day.toISOString()),
     ]);
     setCounts(Object.fromEntries(GROUPS.slice(1).map((g, i) => [g[0], c[i].count ?? 0])));
-    const waits = ((acc.data ?? []) as { created_at: string; accepted_at: string }[])
-      .map((o) => Date.parse(o.accepted_at) - Date.parse(o.created_at))
+    const waits = ((acc.data ?? []) as { created_at: string; released_at: string | null; accepted_at: string }[])
+      .map((o) => Date.parse(o.accepted_at) - Date.parse(o.released_at ?? o.created_at))
       .filter((x) => x >= 0)
       .sort((a, b) => a - b);
     setKpi({ median: waits.length ? waits[Math.floor(waits.length / 2)] : null, cancelledToday: cx.count ?? 0, createdToday: made.count ?? 0 });
@@ -130,7 +131,7 @@ export default function OrdersPage() {
       <div className="okpis">
         <Kpi label="In dispatch queue" value={counts.queue ?? "—"} sub="waiting for a tanker" tone={counts.queue ? "warn" : ""} />
         <Kpi label="In progress" value={counts.progress ?? "—"} sub={`${counts.scheduled ?? 0} scheduled · ${counts.approval ?? 0} awaiting approval`} />
-        <Kpi label="Median time to assign" value={median == null ? "—" : `${Math.floor(median / 60_000)} m ${Math.round((median % 60_000) / 1000)} s`} sub="last 7 days" tone="ok" />
+        <Kpi label="Median time to assign" value={median == null ? "—" : `${Math.floor(median / 60_000)} m ${Math.round((median % 60_000) / 1000)} s`} sub="last 7 days · from release · target 10 min" tone={median == null ? undefined : median <= 10 * 60_000 ? "ok" : "warn"} />
         <Kpi
           label="Cancelled today"
           value={kpi ? kpi.cancelledToday : "—"}
@@ -195,7 +196,7 @@ export default function OrdersPage() {
                 <th>Customer</th>
                 <th>Type</th>
                 <th className="num">Gallons</th>
-                <th>Plan</th>
+                <th>Channel</th>
                 <th>Zone</th>
                 <th>Status</th>
                 <th>Tanker</th>

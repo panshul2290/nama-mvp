@@ -5,7 +5,7 @@ import type { ServiceType } from "@/lib/pricing";
 export type Permit = { id: string; permit_no: string; type: ServiceType; status: "pending" | "approved" | "rejected" | "expired"; issued_at: string; expires_at: string };
 export type Assignment = { id: string; driver_id: string; assigned_at: string; unassigned_at: string | null; driver: { full_name: string; phone: string | null } | null };
 export type FleetTanker = {
-  id: string; plate: string; service_type: ServiceType; capacity_gal: number; is_online: boolean;
+  id: string; plate: string; service_type: ServiceType; capacity_gal: number; is_online: boolean; company_id?: string | null;
   blocked: boolean; blocked_reason: string | null; blocked_at: string | null; location_age_s: number | null;
   assignments: Assignment[]; permits: Permit[];
 };
