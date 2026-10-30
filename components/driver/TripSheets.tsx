@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useDriver, type IssueKind } from "@/components/DriverContext";
+import { collectFromOrder, CollectBox } from "@/components/driver/Collect";
 import { DICT, useFmt } from "@/components/driver/i18n";
 import { Sheet } from "@/components/driver/Sheet";
 import { Icon } from "@/components/icons";
@@ -171,6 +172,7 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
         </button>
       </div>
       <p className="mut small">{t("podNote")}</p>
+      <CollectBox amount={collectFromOrder(o)} />
 
       <div className="d-photo">
         {preview ? (

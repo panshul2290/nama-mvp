@@ -10,6 +10,7 @@ export function pushRoute(app: "customer" | "driver", d: PushData | null | undef
   const ev = d.event ?? d.kind ?? "";
   if (app === "customer") {
     if (ev === "data_export_ready") return "/customer/account#data";
+    if (ev === "receipt_ready" && d.order_id) return `/customer/receipt?order=${encodeURIComponent(d.order_id)}`;
     if (d.order_id) return `/customer/order?id=${encodeURIComponent(d.order_id)}${ev === "new_message" ? "&chat=1" : ""}`;
     return "/customer/inbox";
   }

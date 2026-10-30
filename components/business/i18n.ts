@@ -250,6 +250,7 @@ export const BIZ: Dict = withCommon({
   cat_water_quality: { en: "Water quality", ar: "جودة المياه" },
   cat_driver_conduct: { en: "Driver conduct", ar: "سلوك السائق" },
   cat_overcharging: { en: "Overcharging", ar: "مبالغة في الرسوم" },
+  cat_overcharge: { en: "Driver asked for more money", ar: "طلب السائق مبلغاً إضافياً" },
   cat_spillage: { en: "Spillage", ar: "انسكاب" },
   reported: { en: "Problem reported — NWS will get back to you", ar: "تم الإبلاغ عن المشكلة — ستتواصل معك نماء" },
   reportBtn: { en: "Report problem", ar: "إبلاغ عن المشكلة" },

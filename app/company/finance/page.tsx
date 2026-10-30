@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useCompany, useCompanyTx, useFleet } from "@/components/company/CompanyContext";
 import { CO } from "@/components/company/i18n";
+import { PlatformFeesOwed } from "@/components/company/PlatformFees";
 import { useFmt } from "@/components/portal/i18n";
 import { Bars, Columns, Dialog, Kpis, St, dayStart, downloadCsv, useAction, useLive, weekStart } from "@/components/portal/kit";
 import { useLang, useT } from "@/lib/i18n";
@@ -158,6 +159,8 @@ export default function CompanyFinance() {
           </div>
         </div>
       </div>
+
+      <PlatformFeesOwed />
 
       <div className="panel">
         <h2>{t("penalties")}</h2>

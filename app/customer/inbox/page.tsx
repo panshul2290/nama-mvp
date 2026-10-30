@@ -73,7 +73,7 @@ export default function InboxPage() {
             return n.order_id ? (
               <Link
                 key={n.id}
-                href={`/customer/order?id=${n.order_id}`}
+                href={n.event === "receipt_ready" ? `/customer/receipt?order=${n.order_id}` : `/customer/order?id=${n.order_id}`}
                 className={`lrow nrow ${n.event === "new_message" ? "msgrow" : ""}`}
                 onClick={() => n.event === "new_message" && n.order_id && requestOpen(n.order_id)}
               >

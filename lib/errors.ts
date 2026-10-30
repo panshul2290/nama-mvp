@@ -138,6 +138,17 @@ const MESSAGES: Record<string, string> = {
   invalid_governorate: "Choose a governorate.",
   invalid_invite: "Choose owners, an import or a filter to invite.",
   too_many: "Too many at once — at most 500 per call.",
+  // 0034–0036 (money and price integrity)
+  tariff_class_overlap: "That capacity range overlaps another active class of the same service.",
+  tariff_class_missing: "No tariff class covers that volume. Add or widen a class in Settings → Pricing.",
+  delivery_charge_missing: "That capacity class has no delivery charge yet. Set one in Settings → Pricing.",
+  price_increase_not_allowed: "A booked price can only be lowered, never raised.",
+  already_invoiced: "This order is already on an invoice.",
+  already_exists: "That already exists.",
+  cannot_report: "You can report this on an order in progress, or within 72 hours of delivery.",
+  already_reported: "You’ve already reported this order. NWS is looking into it.",
+  invalid_vat_number: "A VAT number is OM followed by 10 digits (e.g. OM1100012345).",
+  receipt_not_ready: "The receipt is issued once the order is delivered.",
 };
 
 // Codes whose detail (after "code: ") is worth showing, e.g. which documents are missing.
@@ -296,6 +307,17 @@ const MESSAGES_AR: Record<string, string> = {
   invalid_governorate: "اختر محافظة.",
   invalid_invite: "اختر مالكين أو عملية استيراد أو عامل تصفية لإرسال الدعوات.",
   too_many: "العدد كبير جداً — 500 كحد أقصى في كل مرة.",
+  // 0034–0036
+  tariff_class_overlap: "نطاق السعة هذا يتداخل مع فئة نشطة أخرى للخدمة نفسها.",
+  tariff_class_missing: "لا توجد فئة تعرفة تغطي هذه الكمية. أضف فئة أو وسّعها من الإعدادات ← التسعير.",
+  delivery_charge_missing: "لا توجد رسوم توصيل لفئة السعة هذه بعد. حدّدها من الإعدادات ← التسعير.",
+  price_increase_not_allowed: "يمكن تخفيض السعر المحجوز فقط، ولا يمكن رفعه.",
+  already_invoiced: "هذا الطلب مدرج في فاتورة بالفعل.",
+  already_exists: "هذا موجود بالفعل.",
+  cannot_report: "يمكنك الإبلاغ عن ذلك أثناء تنفيذ الطلب أو خلال 72 ساعة من التوصيل.",
+  already_reported: "لقد أبلغت عن هذا الطلب بالفعل، ونماء تتابع الأمر.",
+  invalid_vat_number: "الرقم الضريبي يبدأ بـ OM ويليه 10 أرقام (مثال: OM1100012345).",
+  receipt_not_ready: "يصدر الإيصال بعد توصيل الطلب.",
 };
 
 /** Both wordings of every code, in the { en, ar } shape of a dictionary (the i18n unit test checks each). */

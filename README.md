@@ -119,19 +119,23 @@ A desktop portal for NWS staff, styled after the prototype's staff screens.
   - `audit_log` has no INSERT, UPDATE or DELETE grants, and a trigger rejects UPDATE, DELETE and TRUNCATE even for the database owner.
 - **Accounts:** staff can't be created by sign-up; only `npm run seed` or an admin assigns the role. Seeded staff accounts (password: `SEED_PASSWORD`): `nws-admin@nama.test`, `nws-operator@nama.test`, `nws-permits@nama.test`. Staff sign in at `/login?app=nws` (the NWS sign-in accepts only staff accounts) and land on `/nws`.
 
-### Pricing (`0004_pricing_rules.sql`)
-Every tariff figure is a row in `public.pricing_rules` (`rule_key`, `value`, `status`, `source`, `notes`). Nothing is hard-coded in SQL or in `lib/pricing.ts`.
+### Pricing (`0004`, `0026`, `0034`–`0036`)
+NWS sets every customer-facing price; drivers and owners have no RPC that takes a price. Nothing is hard-coded in SQL or in `lib/pricing.ts`: every figure is a row with a status (`confirmed` · `pending_clarification` · `assumption`).
 
-| Status | Rules |
-|---|---|
-| `confirmed` (tender tariff table) | DW up to 650 gal: 1 baisa/gal · WW 1 baisa/gal · TE 0.05 baisa/gal |
-| `pending_clarification` | DW above 650 gal: 3 baisa/gal, applied as a **slab** today (Q05: slab vs whole volume) · VAT 5% on water + fee (Q07) |
-| `assumption` | Delivery base fees DW 3.5 / WW 6 / TE 8 OMR · driver share 85% · peak 1.2× · priority 1.5× · monthly 10% / yearly 15% discount · cancel fee 1 OMR (the last five aren't used by the MVP) |
+| Table | What | Today |
+|---|---|---|
+| `tariff_classes` | water tariff per service and tanker capacity class (gallons range, baisa/gal) | DW 1–650 gal 1 baisa (confirmed) · DW 651+ gal 3 baisa (pending, Q05) · WW 1 baisa · TE 0.05 baisa (confirmed) |
+| `delivery_charges` | delivery charge per zone (or the default for every zone) and capacity class, OMR | defaults DW 3.5 / WW 6 / TE 8 (assumptions), no zone overrides |
+| `pricing_rules` | `tariff_basis` (Q05: `slab` = each class charges its own gallons, as today; `whole_volume` = every gallon at the rate of the class the order falls in), `vat_rate` 5% (Q07), `driver_share` 0.85, peak/priority multipliers, discounts, cancellation fee, and the 0026 distance/demand factors (neutral inside the free distance and below the demand threshold) | |
+| `platform_fees` | tender platform fees: owner subscription (monthly), tanker registration (one-off), per trip DW/WW/TE, per chargeable cancellation | all 0 OMR, "to be quoted in the bid" |
 
-- **Pricing trigger:** a `BEFORE INSERT` trigger on `orders` prices every order from these rules and ignores any price supplied, then prices are frozen. Each order stores the status of the rules behind each line in `orders.price_basis`. The quote and driver earnings screens tag such lines **Assumption** or **Pending NWS clarification**.
-- **`BILLING_MODE`:** a row in `public.app_settings`, `demo` by default. In `production` the trigger refuses to price an order if any rule it uses isn't `confirmed`, with an error that names those rules. It lives in the database because the database is what enforces it. To switch, run this as the database owner: `update app_settings set value = 'production' where key = 'BILLING_MODE';`
-- **Changing a rule:** e.g. `update pricing_rules set value = 'whole_volume', status = 'confirmed', source = 'NWS reply to Q05' where rule_key = 'dw_above_650_basis';`. Signed-in users can read the rules; only the database owner can change them.
-- **Rounding:** each line is rounded to 3 decimals (1 OMR = 1000 baisa). `lib/pricing.ts` mirrors `price_quote()` for the live quote only, and the tests check that the two agree on amounts and statuses.
+- **Quote and order:** the ordered volume picks the class (the tanker that will be sent) and the delivery point's zone picks the delivery charge (else the default); then the peak, priority, distance and demand multipliers apply (capped). Driver earnings = `driver_share` × the delivery fee. `quote_order` and the `BEFORE INSERT` trigger use the same engine (`price_quote_zone`); `lib/pricing.ts` mirrors `price_quote()` and the tests check that they agree.
+- **Locked at booking:** `orders.price_basis` (version 2) stores the whole breakdown: lines, class and slabs, delivery charge and zone, multipliers, VAT rate, driver share. A trigger refuses any later change to the price, the volume or the service. The only exception is `staff_adjust_order_price` (NWS finance, audited), which can only lower the delivery fee and refunds a prepaid customer the difference. Drivers see "Collect: X OMR" (cash on delivery) or "Paid in app — collect nothing".
+- **Editing:** NWS → Settings → Pricing (admin and finance; every change is audited). With `BILLING_MODE = production` an order is refused if any rule, tariff class or delivery charge it uses isn't confirmed. To switch, as the database owner: `update app_settings set value = 'production' where key = 'BILLING_MODE';`
+- **Platform fees** accrue in `platform_fee_ledger`: per trip on delivery, per cancellation when a fee is kept, per tanker when it joins the platform, per owner account on the 1st of the month (pg_cron). NWS → Settings → Payments shows them by month and fee; the company portal's Finance tab shows what the company owes.
+- **Receipts and invoices:** every delivered household order gets a bilingual e-receipt (`/customer/receipt?order=…`, numbered `RCT-<year>-<seq>`). Business invoices carry the UBL / Fawtara fields (type 380, OMR, seller and buyer VAT numbers, lines with VAT category and rate) and export as UBL 2.1 XML (`lib/ubl.ts`). The platform's VAT number is `SELLER.vat_number` (empty until confirmed); VAT treatment is still to be confirmed with the Tax Authority.
+- **Payments** confirm at once with a reference (simulated gateway; card ending 0003 simulates a gateway that answers later: "We're confirming your payment", confirmed within a minute by pg_cron, the order dispatched meanwhile).
+- **Rounding:** each line is rounded to 3 decimals (1 OMR = 1000 baisa).
 
 ### All writes go through RPCs
 Signed-in users have **no** INSERT/UPDATE rights on `orders`. Every change is a `SECURITY DEFINER` function that checks the caller and the allowed transition:

@@ -3,13 +3,15 @@
 import { useParams } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
 import { ORDER_COLS, useBiz, type BizOrder } from "@/components/business/BizContext";
-import { BIZ } from "@/components/business/i18n";
+import { BIZ_MONEY as BIZ } from "@/components/business/money";
 import { NamaLogo } from "@/components/icons";
 import { useFmt } from "@/components/portal/i18n";
+import { friendlyError } from "@/lib/errors";
 import { useLang, useT } from "@/lib/i18n";
 import { segmentLabel, serviceLabel } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Invoice } from "@/lib/types";
+import { exportInvoiceUbl } from "@/lib/ublExport";
 
 // Print-friendly invoice: opened in a new tab from Invoices → "Download PDF",
 // saved as PDF with the browser's print dialog. It renders without PortalShell, so it sets
@@ -20,6 +22,7 @@ export default function InvoicePrint() {
   const [inv, setInv] = useState<Invoice | null | undefined>(undefined);
   const [lines, setLines] = useState<BizOrder[]>([]);
   const [sites, setSites] = useState<Record<string, string>>({});
+  const [ublMsg, setUblMsg] = useState<string | null>(null);
   const { lang, dir } = useLang();
   const t = useT(BIZ);
   const f = useFmt();
@@ -61,9 +64,21 @@ export default function InvoicePrint() {
     <div className="inv-page" dir={dir} lang={lang}>
       <div className="inv-tools">
         <button onClick={() => window.print()}>{t("printSave")}</button>
+        <button
+          className="sec"
+          onClick={async () => {
+            const r = await exportInvoiceUbl(inv.id);
+            if ("error" in r) return setUblMsg(friendlyError(r.error, lang));
+            const what = r.problems.filter((p) => p === "seller_vatin" || p === "buyer_vatin").map((p) => t(p === "seller_vatin" ? "ublNoSeller" : "ublNoBuyer"));
+            setUblMsg(what.length ? t("ublCheck", { what: what.join(", ") }) : t("ublSaved", { file: r.file }));
+          }}
+        >
+          {t("ublExport")}
+        </button>
         <button onClick={() => window.close()} className="sec">
           {t("close")}
         </button>
+        {ublMsg && <span role="status">{ublMsg}</span>}
       </div>
       <article className="inv-doc">
         <header className="inv-head">
@@ -74,7 +89,7 @@ export default function InvoicePrint() {
               <br />
               {t("nwsLine")}
               <br />
-              {t("vatin")}
+              {inv.seller_vatin ? t("sellerVat", { v: inv.seller_vatin }) : t("sellerVatPending")}
             </p>
           </div>
           <div className="inv-title">
@@ -97,6 +112,7 @@ export default function InvoicePrint() {
             <small>{t("billTo")}</small>
             <b>{org.name}</b>
             <span>{t("crN", { cr: org.cr_no })}</span>
+            <span>{inv.buyer_vatin || org.vat_number ? t("buyerVat", { v: (inv.buyer_vatin || org.vat_number) ?? "" }) : t("buyerVatNone")}</span>
             <span>{t("segAccount", { seg: segmentLabel(org.segment, lang), n: f.n(org.terms_days) })}</span>
           </div>
           <div>
@@ -171,6 +187,9 @@ export default function InvoicePrint() {
         <footer className="inv-foot">
           <p>{t("payNote", { inv: ref.invoice(inv.invoice_no) })}</p>
           <p className="mut">{t("generatedBy")}</p>
+          <p className="mut">
+            {t("invMeta", { code: inv.type_code ?? "380", cur: inv.currency ?? "OMR", at: f.dateTime(inv.issued_at) })} · {t("vatNote")}
+          </p>
         </footer>
       </article>
     </div>

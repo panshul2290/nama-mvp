@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ChatButton, ChatSheet, useChatHub, type ChatLabels } from "@/components/chat/OrderChat";
 import { useDriver } from "@/components/DriverContext";
 import { useJobChat } from "@/components/driver/DriverChat";
+import { collectFromOrder, CollectBox } from "@/components/driver/Collect";
 import { DICT, useFmt } from "@/components/driver/i18n";
 import { insideGeofence, metresTo } from "@/components/driver/legs";
 import { IssueSheet, PodSheet } from "@/components/driver/TripSheets";
@@ -202,6 +203,8 @@ function Trip() {
             {t("fillFlagged")}
           </div>
         )}
+
+        {cur.kind === "cust" && <CollectBox amount={collectFromOrder(o)} />}
 
         <div className="tj-box">
           {cur.kind === "fill" && (

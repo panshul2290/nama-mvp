@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChatBubbles } from "@/components/chat/OrderChat";
 import { FleetMap } from "@/components/nws/FleetMap";
 import type { LatLng, MapSite } from "@/components/nws/FleetMapView";
+import { MONEY } from "@/components/nws/i18n/money";
 import { ORD } from "@/components/nws/i18n/orders";
 import { CHANNEL_LABEL, maskPhone, n3, one, orderSla, St, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
 import { PodLocation } from "@/components/PodLocation";
@@ -51,10 +52,10 @@ const ROLE: Record<OrderMessage["sender_role"], string> = { customer: "roleCusto
 type Complaint = { id: string; case_no: number; category: string; state: string; created_at: string; due_at: string };
 type Penalty = { id: string; penalty_no: number; amount: string; state: string; reason: string; created_at: string; rule: One<{ label: string }> };
 type Verification = { company: string | null; permit_no: string | null; permit_valid_to: string | null; water_test: { cert_no: string; passed: boolean; tested_at: string } | null; device: string | null } | null;
-type Dlg = "reschedule" | "cancel" | "refund" | "penalty" | null;
+type Dlg = "reschedule" | "cancel" | "refund" | "penalty" | "adjust" | null;
 
 // Payment methods (pm_*), sources (src_*) and evidence grades (gr_*, the tender's ±10 m, 0028) are worded in ORD.
-const PAY_TONE: Record<string, string> = { authorized: "act", captured: "ok", refunded: "warn", partially_refunded: "warn", failed: "bad", on_account: "act" };
+const PAY_TONE: Record<string, string> = { pending: "warn", authorized: "act", captured: "ok", refunded: "warn", partially_refunded: "warn", failed: "bad", on_account: "act" };
 const ON_JOB = ["accepted", "arriving", "arrived", "collected"];
 
 /** Tomorrow 08:00–10:00 Muscat time (UTC+4, no daylight saving). */
@@ -70,6 +71,7 @@ export default function OrderDetail() {
   const { rules } = usePricingRules();
   const { can, toast, staff } = useStaff();
   const t = useT(ORD);
+  const tm = useT(MONEY);
   const f = useFmt();
   const { lang } = useLang();
   // A lookup in ORD with the raw value as fallback (data values not in the dictionary).
@@ -251,6 +253,19 @@ export default function OrderDetail() {
               }}
             >
               {t("refundWallet")}
+            </button>
+          )}
+          {o.status !== "cancelled" && !o.invoice_id && Number(o.delivery_fee) > 0 && (
+            <button
+              className="btn"
+              disabled={!can("finance")}
+              title={can("finance") ? undefined : t("refundRoles")}
+              onClick={() => {
+                setAmount(n3(Number(o.delivery_fee)));
+                setDlg("adjust");
+              }}
+            >
+              {tm("adjTitle")}
             </button>
           )}
           <Link href="/nws/orders" className="btn">
@@ -446,6 +461,18 @@ export default function OrderDetail() {
               {t("price")} <small>{t("priceSub")}</small>
             </h2>
             <OrderBill order={o} rules={rules} />
+            {o.price_basis?.tariff && (
+              <p className="note" style={{ margin: "0 12px 8px" }}>
+                {tm("adjLocked")}
+                {o.price_basis.locked_at ? ` · ${f.dateTime(o.price_basis.locked_at)}` : ""} ·{" "}
+                {tm("adjClass", { code: o.price_basis.tariff.code, zone: o.price_basis.delivery?.is_default === false ? (o.price_basis.delivery.zone ?? "") : tm("dcDefault") })}
+                {(o.price_basis.adjustments ?? []).map((a) => (
+                  <span key={a.at} style={{ display: "block" }}>
+                    {tm("adjHistory", { at: f.dateTime(a.at), from: f.n3(a.delivery_fee[0]), to: f.n3(a.delivery_fee[1]), reason: a.reason })}
+                  </span>
+                ))}
+              </p>
+            )}
             <dl className="kv" style={{ paddingTop: 0 }}>
               {Number(o.discount ?? 0) > 0 && (
                 <>
@@ -648,6 +675,29 @@ export default function OrderDetail() {
             const amt = Number(amount);
             if (!(amt > 0)) return toast(t("badAmount"), true);
             return act("refund", r, { p_amount: Math.min(amt, refundable) }, t("refundedX", { amt: f.omr3(Math.min(amt, refundable)) }));
+          }}
+        />
+      )}
+      {dlg === "adjust" && (
+        <ReasonDialog
+          title={tm("adjTitle")}
+          body={tm("adjBody")}
+          confirm={tm("adjSave")}
+          extra={
+            <div className="fld">
+              <label htmlFor="adj-fee">{tm("adjNewFee")}</label>
+              <input id="adj-fee" className="in" inputMode="decimal" dir="ltr" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+          }
+          onCancel={() => setDlg(null)}
+          onConfirm={async (r) => {
+            const fee = Number(amount);
+            if (!(fee >= 0)) return toast(t("badAmount"), true);
+            const { data, error } = await supabase().rpc("staff_adjust_order_price", { p_order_id: id, p_delivery_fee: fee, p_reason: r }).single<{ total: string }>();
+            if (error) return toast(friendlyError(error, lang), true);
+            toast(tm("adjDone", { total: f.omr3(data?.total ?? 0) }));
+            setDlg(null);
+            load();
           }}
         />
       )}

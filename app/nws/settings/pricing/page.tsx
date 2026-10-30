@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DeliveryChargesPanel, PlatformFeesPanel, TariffClassesPanel, useTariff } from "@/components/nws/admin/TariffPanels";
 import { PageHead, ReadOnlyNote } from "@/components/nws/admin/ui";
+import { MONEY } from "@/components/nws/i18n/money";
 import { SETTINGS_OPS } from "@/components/nws/i18n/settingsOps";
 import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { fmtNumber, useFmt } from "@/components/portal/i18n";
@@ -20,10 +22,8 @@ const BADGE: Record<RuleStatus, [string, string]> = {
 };
 
 // Display order and labels (dictionary keys), as in the prototype's pricing screen.
+// The delivery charge itself is per zone and capacity class (0034, DeliveryChargesPanel).
 const FEE_ENGINE: [string, string][] = [
-  ["fee_dw_omr", "prFeeDw"],
-  ["fee_ww_omr", "prFeeWw"],
-  ["fee_te_omr", "prFeeTe"],
   ["peak_multiplier", "prPeak"],
   ["priority_multiplier", "prPriority"],
   ["discount_monthly", "prDiscMonthly"],
@@ -43,18 +43,10 @@ const DYNAMIC: [string, string, string][] = [
   ["demand_cap", "prDemandCap", "uX"],
   ["dynamic_cap", "prDynCap", "uX"],
 ];
-// Tariff rows: [rule key, service tag, label key, unit key].
-const TARIFF: [string, ServiceType, string, string][] = [
-  ["dw_tier_threshold_gal", "DW", "prTierEnds", "uGal"],
-  ["dw_rate_upto_650", "DW", "prUpTo650", "uBaisa"],
-  ["dw_rate_above_650", "DW", "prAbove650", "uBaisa"],
-  ["dw_above_650_basis", "DW", "prUpperTier", ""],
-  ["ww_rate", "WW", "prAll", "uBaisa"],
-  ["te_rate", "TE", "prAll", "uBaisa"],
-];
 
 type Factors = { base_fee: number; multiplier: number; peak_mult: number; priority_mult: number; distance_km: number | null; distance_mult: number; demand_ratio: number; demand_mult: number; located: boolean };
-type QuoteRes = { water_charge: number; delivery_fee: number; discount: number; vat: number; total: number; driver_earnings: number; total_status: RuleStatus; peak: boolean; priority: boolean; discount_pct: number; promo_label: string | null; factors?: Factors };
+type QuoteRes = { water_charge: number; delivery_fee: number; discount: number; vat: number; total: number; driver_earnings: number; total_status: RuleStatus; peak: boolean; priority: boolean; discount_pct: number; promo_label: string | null; factors?: Factors;
+  tariff?: { code: string }; delivery?: { is_default: boolean; zone: string | null } };
 
 export default function PricingPage() {
   const { can } = useStaff();
@@ -64,6 +56,7 @@ export default function PricingPage() {
   const [mode, setMode] = useState<string | null>(null);
   const [edit, setEdit] = useState<Rule | null>(null);
   const editor = can("admin", "finance");
+  const tariff = useTariff();
 
   const load = useCallback(() => {
     const db = supabase();
@@ -78,7 +71,11 @@ export default function PricingPage() {
   useEffect(load, [load]);
 
   const byKey = new Map(rules?.map((r) => [r.rule_key, r]));
-  const count = (s: RuleStatus) => rules?.filter((r) => r.status === s).length ?? 0;
+  // Rules, tariff classes and delivery charges all carry a status.
+  const count = (s: RuleStatus) =>
+    (rules?.filter((r) => r.status === s).length ?? 0) +
+    (tariff.classes?.filter((c) => c.active && c.status === s).length ?? 0) +
+    tariff.charges.filter((d) => d.status === s).length;
   const row = (key: string, label: React.ReactNode, unit = "") => {
     const r = byKey.get(key);
     if (!r) return null;
@@ -128,15 +125,8 @@ export default function PricingPage() {
           </div>
         </div>
         <div className="stack">
-          <div className="panel">
-            <h2>{t("prTariff")} <small>{t("prTariffSub")}</small></h2>
-            <div className="tblwrap">
-              <table>
-                <tbody>{TARIFF.map(([k, s, l, u]) => row(k, <><span className={`tag ${s}`}>{s}</span> {t(l)}</>, u))}</tbody>
-              </table>
-            </div>
-            <p className="note">{t("prTariffNote")}</p>
-          </div>
+          <TariffClassesPanel classes={tariff.classes} editor={editor} onChanged={tariff.reload} basisRow={row("tariff_basis", t("prUpperTier"))} />
+          <DeliveryChargesPanel classes={tariff.classes} charges={tariff.charges} zones={tariff.zones} editor={editor} onChanged={tariff.reload} />
           <div className="panel">
             <h2>{t("prDynamic")} <small>{t("prDynamicSub")}</small></h2>
             <div className="tblwrap">
@@ -149,6 +139,7 @@ export default function PricingPage() {
           <PriceCheck />
         </div>
       </div>
+      <PlatformFeesPanel editor={editor} />
       {edit && <EditRule rule={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); load(); }} />}
     </>
   );
@@ -171,7 +162,7 @@ function EditRule({ rule, onClose, onDone }: { rule: Rule; onClose: () => void; 
           <div className="row2">
             <div className="fld">
               <label htmlFor="pr-v">{t("prValue")}</label>
-              {rule.rule_key === "dw_above_650_basis" ? (
+              {rule.rule_key === "tariff_basis" ? (
                 <select id="pr-v" className="in" value={value} onChange={(e) => setValue(e.target.value)}>
                   <option value="slab">{t("prSlab")}</option>
                   <option value="whole_volume">{t("prWhole")}</option>
@@ -207,6 +198,7 @@ function EditRule({ rule, onClose, onDone }: { rule: Rule; onClose: () => void; 
 function PriceCheck() {
   const { lang } = useLang();
   const t = useT(SETTINGS_OPS);
+  const tm = useT(MONEY);
   const f = useFmt();
   const [service, setService] = useState<ServiceType>("DW");
   const [gallons, setGallons] = useState("3000");
@@ -272,6 +264,11 @@ function PriceCheck() {
           <div><span>{t("prVat")}</span><span>{f.n3(q.vat)}</span></div>
           <div className="tot"><span>{t("pcTotal")} {q.total_status !== "confirmed" && <span className={`st ptag ${BADGE[q.total_status][1]}`}>{t(BADGE[q.total_status][0])}</span>}</span><span>{f.n3(q.total)}</span></div>
           <div className="mut"><span>{t("pcDriver")}</span><span>{f.n3(q.driver_earnings)}</span></div>
+          {q.tariff && q.delivery && (
+            <div className="mut" style={{ display: "block", fontSize: 12.5 }}>
+              {tm("adjClass", { code: q.tariff.code, zone: q.delivery.is_default ? tm("dcDefault") : (q.delivery.zone ?? "") })}
+            </div>
+          )}
           {q.factors && (
             <div className="mut" style={{ display: "block", fontSize: 12.5 }}>
               {t("pcFactors", {

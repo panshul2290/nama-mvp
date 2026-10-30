@@ -73,6 +73,7 @@ eq("a route into another app is ignored", pushRoute("customer", { route: "/nws/o
 eq("driver: an auto-dispatch offer opens Jobs", pushRoute("driver", { order_id: "x", event: "job_offered" }), "/driver/jobs");
 eq("driver: low filling credit opens the top-up", pushRoute("driver", { event: "fill_credit_low" }), "/driver/earnings#fill");
 eq("customer: a data export opens Account → Privacy", pushRoute("customer", { event: "data_export_ready" }), "/customer/account#data");
+eq("customer: a ready receipt opens the e-receipt", pushRoute("customer", { event: "receipt_ready", order_id: "o-1" }), "/customer/receipt?order=o-1");
 
 console.log("## UNIT driver offers");
 {

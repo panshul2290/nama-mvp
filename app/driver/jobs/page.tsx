@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
+import { CollectBox } from "@/components/driver/Collect";
 import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
 import { nearestSite } from "@/components/driver/legs";
 import { feeFactorList, pickOffer } from "@/components/driver/offer";
@@ -140,6 +141,7 @@ export default function JobsPage() {
           <small>
             {t("expectedTrip")} <RuleTag status={offer.job.earnings_status} />
           </small>
+          <CollectBox amount={offer.job.collect_omr} />
           {feeFactorList(offer.job.fee_factors).length > 0 && (
             <small className="d-block">
               {feeFactorList(offer.job.fee_factors)
@@ -220,6 +222,7 @@ export default function JobsPage() {
                   {f.n(r.gallons)} {t("gal")} · {r.area} · {f.km(Number(r.distance_km))} · {when(r)}
                 </small>
                 <small>{t("youEarn", { amt: f.omr(r.driver_earnings) })}</small>
+                <CollectBox amount={r.collect_omr} compact />
                 <button className="btn sm pri" disabled={busy} onClick={() => accept(r.id)}>
                   {accepting === r.id ? t("accepting") : t("accept")}
                 </button>

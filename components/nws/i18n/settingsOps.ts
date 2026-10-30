@@ -199,6 +199,7 @@ export const SETTINGS_OPS: Dict = withCommon({
   payRefunded: { en: "Refunded", ar: "مستردّة" },
   payPartRefunded: { en: "Part refunded", ar: "مستردّة جزئياً" },
   payOnAccount: { en: "On account", ar: "على الحساب" },
+  payConfirming: { en: "Confirming", ar: "قيد التأكيد" },
   payPaidSim: { en: "Paid (simulated bank transfer)", ar: "مدفوعة (تحويل مصرفي محاكى)" },
   payReversed: { en: "Reversed", ar: "معكوسة" },
   payTankerCo: { en: "Tanker company", ar: "شركة صهاريج" },

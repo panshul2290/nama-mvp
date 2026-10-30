@@ -10,6 +10,7 @@ import { useNow, useOnline, usePaymentMethods, usePrefs, useProperties, useWalle
 import { householdKey, recoFor, RecoCard } from "@/components/customer/Reco";
 import { FeeFactors, type Factors } from "@/components/customer/FeeFactors";
 import { PropertySheet } from "@/components/customer/PropertySheet";
+import { ServiceNotices } from "@/components/customer/ServiceNotices";
 import { slotOptions } from "@/components/customer/slots";
 import { Bill, quoteToBill, SvcTag, Toggle } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
@@ -326,6 +327,8 @@ function RequestWizard() {
         </div>
 
         {!online && <div className="banner badb">{t("offline")}</div>}
+        {/* Service-disruption notices (0038) for the delivery point, once one is set. */}
+        {prop ? <ServiceNotices lat={prop.lat} lng={prop.lng} /> : pinMode && point !== DEFAULT_CENTER ? <ServiceNotices lat={point.lat} lng={point.lng} /> : <ServiceNotices />}
 
         {step === 1 && (
           <>

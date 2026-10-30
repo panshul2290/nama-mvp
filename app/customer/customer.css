@@ -142,3 +142,27 @@ a.cta { text-decoration: none; }
 .done-hero .st { margin-inline-start: auto; align-self: center; }
 .ff { margin-top: 10px; font-size: 13px; }
 .ff summary { cursor: pointer; color: var(--link); font-weight: 600; margin-bottom: 4px; }
+
+/* Bilingual e-receipt (app/customer/receipt, 0036): English left, value, Arabic right */
+.rcpt { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; font-size: 12.5px; }
+.rcpt-h { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: start; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 8px; }
+.rcpt-h > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rcpt-h small { color: var(--muted); }
+.rcpt-h [dir="rtl"] { text-align: right; }
+.rcpt-t { text-align: center; align-items: center; }
+.rcpt-t h4 { margin: 0; font-size: 14px; }
+.rcpt table { width: 100%; border-collapse: collapse; margin: 0 0 8px; }
+.rcpt th, .rcpt td { padding: 4px 2px; vertical-align: top; border-bottom: 1px dashed var(--line); }
+.rcpt th { font-weight: 500; color: var(--muted); width: 32%; }
+.rcpt th[lang="en"] { text-align: left; }
+.rcpt th[lang="ar"] { text-align: right; }
+.rcpt td { text-align: center; font-weight: 600; overflow-wrap: anywhere; }
+.rcpt-lines thead th { color: var(--ink); font-weight: 700; border-bottom: 1px solid var(--line); }
+.rcpt-lines td { font-variant-numeric: tabular-nums; }
+.rcpt-lines tr.tot th, .rcpt-lines tr.tot td { color: var(--ink); font-weight: 800; border-bottom: 0; border-top: 1px solid var(--line); font-size: 14px; }
+.rcpt-note { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--muted); margin: 6px 0 0; }
+.rcpt-note [dir="rtl"] { text-align: right; }
+@media print {
+  .rcpt { border: 1px solid #999; }
+}
+.pay-card b, .pay-card small { display: block; }

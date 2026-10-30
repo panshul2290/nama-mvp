@@ -10,6 +10,8 @@ export type OrgSummary = {
   id: string;
   name: string;
   cr_no: string;
+  /** 0036: the organisation's VAT registration number (OM + 10 digits). */
+  vat_number?: string | null;
   segment: "commercial" | "government" | "industrial" | "farm";
   credit_limit: number | string;
   terms_days: number;

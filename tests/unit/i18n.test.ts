@@ -34,6 +34,7 @@ const DICT_FILES = [
   ...walk(join(ROOT, "components/nws/i18n")).map(rel),
   "components/company/i18n.ts",
   "components/business/i18n.ts",
+  "components/business/money.ts",
   // Sign-in, messaging and support batch: the one refund policy, the customer app's words.
   "lib/refundPolicy.ts",
   "components/customer/i18n.ts",

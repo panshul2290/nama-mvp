@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chips, ConfirmDialog, downloadCsv, Empty, fetchPaged, Kpi, PageHead, ReadOnlyNote, useRun } from "@/components/nws/admin/ui";
 import { FillCreditPanel } from "@/components/nws/admin/FillCreditPanel";
+import { InvoicesUblPanel, PlatformFeeReport, SellerPanel } from "@/components/nws/admin/MoneyPanels";
 import { SETTINGS_OPS } from "@/components/nws/i18n/settingsOps";
 import { useStaff } from "@/components/nws/StaffContext";
 import { useFmt } from "@/components/portal/i18n";
@@ -23,14 +24,14 @@ type CTx = { id: number; created_at: string; kind: string; amount: string; memo:
 const real = (r: { order: OrdRef }) => !r.order?.is_test;
 
 const PAY_STATUS: Record<string, [string, string]> = {
-  captured: ["Settled", "ok"], authorized: ["Authorised", "act"], failed: ["Failed", "bad"], refunded: ["Refunded", "warn"],
+  captured: ["Settled", "ok"], authorized: ["Authorised", "act"], pending: ["Confirming", "warn"], failed: ["Failed", "bad"], refunded: ["Refunded", "warn"],
   partially_refunded: ["Part refunded", "warn"], on_account: ["On account", "act"],
 };
 const METHOD: Record<string, string> = { wallet: "Wallet", card: "Card", omannet: "OmanNet", wallet_card: "Wallet + card", account: "Account", cash: "Cash" };
 // English export wording → dictionary key, for the screen.
 const SHOWN: Record<string, string> = {
   All: "all", Payment: "payKPayment", "Top-up": "payKTopup", Tip: "payKTip", Refund: "payKRefund", Fine: "payKFine", Payout: "payKPayout",
-  Settled: "paySettled", Authorised: "payAuthorised", Failed: "payFailed", Refunded: "payRefunded", "Part refunded": "payPartRefunded", "On account": "payOnAccount",
+  Settled: "paySettled", Authorised: "payAuthorised", Confirming: "payConfirming", Failed: "payFailed", Refunded: "payRefunded", "Part refunded": "payPartRefunded", "On account": "payOnAccount",
   "Paid (simulated bank transfer)": "payPaidSim", Reversed: "payReversed", Customer: "customer", "Tanker company": "payTankerCo",
   Wallet: "payMWallet", Card: "payMCard", OmanNet: "payMOmanNet", "Wallet + card": "payMWalletCard", Account: "payMAccount", Cash: "payMCash",
 };
@@ -173,6 +174,12 @@ export default function PaymentsPage() {
       </div>
 
       <FillCreditPanel />
+
+      <PlatformFeeReport editor={finance} />
+      <div className="two">
+        <SellerPanel editor={finance} />
+        <InvoicesUblPanel editor={finance} />
+      </div>
 
       <div className="panel">
         <h2>{t("payBatches")} <small>{finance ? t("payBatchesCan") : t("payBatchesBy")}</small></h2>

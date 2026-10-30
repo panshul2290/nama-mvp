@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
-import { amt3, dshort, omr3 } from "@/components/customer/fmt";
+import { amt3, dshort, dtshort, omr3, tshort } from "@/components/customer/fmt";
 import { usePaymentMethods, usePrefs, useWallet, type WalletInfo } from "@/components/customer/hooks";
+import { topupRef, useLiveTopups, type Topup } from "@/components/customer/MoneyParts";
 import { RefundPolicy } from "@/components/customer/RefundPolicy";
 import { Sheet, Toggle } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
@@ -21,13 +22,15 @@ export default function WalletPage() {
   const profile = useCustomer();
   const { t, lang } = useCx();
   const toast = useToast();
-  const { wallet, setWallet } = useWallet();
+  const { wallet, setWallet, reload: reloadWallet } = useWallet();
   const { methods, reload: reloadMethods } = usePaymentMethods(profile.id);
   const { prefs, set: setPref } = usePrefs(profile.id);
   const [tx, setTx] = useState<WalletTx[] | null>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // "Payment received — X OMR" with its reference, once a top-up is confirmed (at once, or live later).
+  const [done, setDone] = useState<Topup | null>(null);
 
   const loadTx = useCallback(
     () =>
@@ -43,6 +46,18 @@ export default function WalletPage() {
   useEffect(() => {
     loadTx();
   }, [loadTx]);
+  const live = useLiveTopups(
+    profile.id,
+    (tu) => {
+      setDone(tu);
+      reloadWallet();
+      loadTx();
+    },
+    () => {
+      reloadWallet();
+      loadTx();
+    },
+  );
 
   const cards = (methods ?? []).filter((m) => m.brand !== "OmanNet");
   const defCard = cards.find((m) => m.is_default) ?? cards[0];
@@ -66,7 +81,10 @@ export default function WalletPage() {
     setBusy(null);
     if (error) return toast.show(friendlyError(error));
     applyWallet(data);
-    toast.show(t("toppedUp", { a: omr3(amount, lang) }));
+    const tu = (data as { topup?: Topup }).topup;
+    if (tu?.status === "pending") live.track(tu);
+    else if (tu) setDone(tu);
+    else toast.show(t("toppedUp", { a: omr3(amount, lang) }));
   }
 
   async function redeem() {
@@ -118,6 +136,13 @@ export default function WalletPage() {
               </button>
             </div>
           </div>
+          {live.pending.map((p) => (
+            <div key={p.id} className="banner info pay-card" role="status" aria-live="polite">
+              <b>{t("payPendT")}</b>
+              <small>{t("topupPendS", { a: omr3(p.amount, lang), t: tshort(p.created_at, lang) })}</small>
+              <small dir="ltr">{topupRef(p)}</small>
+            </div>
+          ))}
           <div className="opts">
             {TOPUPS.map((v) => (
               <button key={v} type="button" className="opt topup" disabled={busy !== null} onClick={() => topup(v)}>
@@ -196,6 +221,20 @@ export default function WalletPage() {
         </div>
         {toast.node}
       </main>
+      {done && (
+        <Sheet title={t("topupOkT", { a: omr3(done.amount, lang) })} onClose={() => setDone(null)}>
+          <div className="banner okb pay-card" role="status">
+            <b>{t("topupOkT", { a: omr3(done.amount, lang) })}</b>
+            <small>{t("topupOkS", { r: topupRef(done), t: dtshort(done.confirmed_at ?? done.created_at, lang) })}</small>
+          </div>
+          <p>
+            {t("balance")}: <b>{wallet ? omr3(wallet.balance, lang) : "…"}</b>
+          </p>
+          <button className="cta" onClick={() => setDone(null)}>
+            {t("topupDone")}
+          </button>
+        </Sheet>
+      )}
       {adding && (
         <AddCardSheet
           onClose={() => setAdding(false)}

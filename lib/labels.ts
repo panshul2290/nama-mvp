@@ -90,6 +90,10 @@ export const LABELS: Dict = {
   "freq.weekly": { en: "Weekly", ar: "أسبوعياً" },
   "freq.biweekly": { en: "Every 2 weeks", ar: "كل أسبوعين" },
   "freq.monthly": { en: "Monthly", ar: "شهرياً" },
+  // Complaint categories added after the screens' own dictionaries (0035)
+  "complaint.overcharge": { en: "Driver asked for more money", ar: "طلب السائق مبلغاً إضافياً" },
+  // Payment states added in 0036
+  "pay.pending": { en: "Confirming payment", ar: "جارٍ تأكيد الدفع" },
 };
 
 /** The label for "<group>.<value>" in a language; `fallback` (usually the English record) when unknown. */

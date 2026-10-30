@@ -19,6 +19,7 @@ export const COMPLAINTS: Dict = withCommon({
   cat_water_quality: { en: "Water quality", ar: "جودة المياه" },
   cat_driver_conduct: { en: "Driver conduct", ar: "سلوك السائق" },
   cat_overcharging: { en: "Overcharging", ar: "مبالغة في التحصيل" },
+  cat_overcharge: { en: "Driver asked for more money", ar: "طلب السائق مبلغاً إضافياً" },
   cat_spillage: { en: "Spillage", ar: "انسكاب" },
   "team_Tanker operations": { en: "Tanker operations", ar: "عمليات الصهاريج" },
   "team_Water quality lab": { en: "Water quality lab", ar: "مختبر جودة المياه" },

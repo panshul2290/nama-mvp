@@ -143,6 +143,7 @@ export const ORD: Dict = withCommon({
   pricedMode: { en: "Priced in mode", ar: "وضع التسعير" },
   payment: { en: "Payment", ar: "الدفع" },
   pay_authorized: { en: "authorized", ar: "مفوَّض" },
+  pay_pending: { en: "confirming", ar: "قيد التأكيد" },
   pay_captured: { en: "captured", ar: "محصَّل" },
   pay_refunded: { en: "refunded", ar: "مسترد" },
   pay_partially_refunded: { en: "partially refunded", ar: "مسترد جزئياً" },

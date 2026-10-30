@@ -560,4 +560,11 @@ export const DICT: Dict = {
   bgTitle: { en: "Sharing location — on shift", ar: "مشاركة الموقع — في المناوبة" },
   bgMessage: { en: "Nama Driver shares your location with NWS while you’re online.", ar: "يشارك تطبيق نماء للسائقين موقعك مع نماء أثناء اتصالك." },
   bgMessageJob: { en: "Nama Driver shares your location with NWS and your customer during this job.", ar: "يشارك تطبيق نماء للسائقين موقعك مع نماء وعميلك خلال هذه المهمة." },
+
+  // What to collect at the door (0034): the price is Nama's, never the driver's
+  collectT: { en: "Collect: {amt}", ar: "حصّل: {amt}" },
+  collectCash: { en: "Cash on delivery — collect exactly this from the customer.", ar: "الدفع نقداً عند التسليم — حصّل هذا المبلغ بالضبط من العميل." },
+  paidInApp: { en: "Paid in app — collect nothing", ar: "مدفوع في التطبيق — لا تحصّل شيئاً" },
+  paidInAppS: { en: "The customer has already paid Nama. Never ask for cash or extra money.", ar: "دفع العميل لنماء مسبقاً. لا تطلب نقداً أو أي مبلغ إضافي." },
+  priceSetByNama: { en: "Price set by Nama — you can’t change it", ar: "السعر تحدده نماء — لا يمكنك تغييره" },
 };

@@ -78,7 +78,7 @@ export type Tanker = {
 };
 
 export type PayMethod = "wallet" | "card" | "omannet" | "wallet_card" | "account" | "cash";
-export type PaymentStatus = "authorized" | "captured" | "refunded" | "partially_refunded" | "failed" | "on_account";
+export type PaymentStatus = "pending" | "authorized" | "captured" | "refunded" | "partially_refunded" | "failed" | "on_account";
 
 export type Order = {
   id: string;
@@ -110,6 +110,15 @@ export type Order = {
     peak?: boolean;
     priority?: boolean;
     discount_pct?: number;
+    /** 0034: the whole breakdown, locked at booking. */
+    version?: number;
+    locked_at?: string;
+    lines?: { water_charge: number; delivery_fee: number; discount: number; vat: number; total: number; driver_earnings: number };
+    tariff?: { class_id: string; code: string; min_gal: number; max_gal: number | null; rate_baisa: number; status: RuleStatus; basis: string | null; slabs: { code: string; gallons: number; rate_baisa: number; status: RuleStatus }[] };
+    delivery?: { charge_id: string; zone_id: string | null; zone: string | null; is_default: boolean; amount: number; status: RuleStatus; multiplier?: number; fee?: number };
+    vat_rate?: number;
+    driver_share?: number;
+    adjustments?: { at: string; reason: string; delivery_fee: [number, number]; total: [number, number] }[];
   } | null;
   driver_name: string | null;
   tanker_plate: string | null;
@@ -179,6 +188,9 @@ export type OpenRequest = {
   channel?: string;
   contract_no?: number | null;
   is_test?: boolean;
+  /** 0034: what to collect at the door (cash on delivery), 0 when paid in the app. */
+  collect_omr?: string;
+  pay_method?: PayMethod | null;
 };
 
 export type LngLat = { lat: number; lng: number };
@@ -186,7 +198,7 @@ export type LngLat = { lat: number; lng: number };
 export type Company = { id: string; name: string; cr_no: string; phone: string | null; rating: string; since: string; status: "pending" | "active" | "suspended" };
 export type Organization = {
   id: string; name: string; cr_no: string; segment: string; credit_limit: string; terms_days: number; approval_limit: string;
-  invoicing: string; paused: boolean; status: "pending" | "active" | "suspended";
+  invoicing: string; paused: boolean; status: "pending" | "active" | "suspended"; vat_number?: string | null;
 };
 export type Zone = {
   id: string; name: string; governorate: string; center_lat: number; center_lng: number; radius_km: string; active: boolean;
@@ -204,7 +216,7 @@ export type Contract = {
 };
 export type WalletTx = { id: number; customer_id: string; kind: string; amount: string; order_id: string | null; memo: string; created_at: string };
 export type CompanyTx = { id: number; company_id: string; driver_id: string | null; tanker_id: string | null; bucket: "earnings" | "fill_credit"; kind: string; amount: string; order_id: string | null; memo: string; created_at: string };
-export type Payment = { id: string; order_id: string; customer_id: string | null; org_id: string | null; method: PayMethod; amount: string; wallet_amount: string; card_amount: string; card_last4: string | null; status: PaymentStatus; gateway_ref: string | null; failure_reason: string | null; refunded_amount: string; created_at: string; captured_at: string | null };
+export type Payment = { id: string; order_id: string; customer_id: string | null; org_id: string | null; method: PayMethod; amount: string; wallet_amount: string; card_amount: string; card_last4: string | null; status: PaymentStatus; gateway_ref: string | null; failure_reason: string | null; refunded_amount: string; created_at: string; captured_at: string | null; confirmed_at?: string | null };
 export type Pod = {
   order_id: string; kind: "delivery" | "collection"; photo_path: string | null; photo_hash: string | null; meter_gal: number; signature_svg: string | null;
   no_signature: boolean; left_at_tank: boolean; lat: number | null; lng: number | null; created_at: string; status: "accepted" | "rejected";
@@ -237,7 +249,10 @@ export type Penalty = {
 export type PenaltyRule = { code: string; label: string; party: "driver" | "customer" | "business"; amount: string; amount_kind: "omr" | "pct"; compensation: string; active: boolean };
 export type Notification = { id: number; user_id: string; event: string; channels: string[]; title: string; body: string; order_id: string | null; created_at: string; read_at: string | null };
 export type NotificationTemplate = { event: string; label: string; audience: string; title_en: string; body_en: string; title_ar: string; body_ar: string; push: boolean; sms: boolean; whatsapp: boolean; email?: boolean; category?: "service" | "reminder" | "marketing"; critical?: boolean; message_class?: "transactional" | "marketing" };
-export type Invoice = { id: string; invoice_no: number; org_id: string; period_start: string; period_end: string; orders: number; subtotal: string; vat: string; total: string; status: "issued" | "paid" | "overdue"; issued_at: string; due_at: string; paid_at: string | null };
+export type Invoice = { id: string; invoice_no: number; org_id: string; period_start: string; period_end: string; orders: number; subtotal: string; vat: string; total: string; status: "issued" | "paid" | "overdue"; issued_at: string; due_at: string; paid_at: string | null;
+  /** 0036: e-invoice (UBL / Fawtara) fields. */
+  type_code?: string; currency?: string; seller_name?: string | null; seller_vatin?: string | null; buyer_name?: string | null; buyer_cr?: string | null; buyer_vatin?: string | null; vat_rate?: string | null;
+};
 export type TankerDocument = {
   id: string; tanker_id: string | null; driver_id: string | null; kind: string; ref_no: string; valid_to: string; file_path: string | null;
   status: "valid" | "pending_review" | "rejected"; uploaded_at: string;

@@ -8,6 +8,7 @@ import { useCx } from "@/components/customer/i18n";
 import { gal, omr3, tshort, windowText } from "@/components/customer/fmt";
 import { useNow } from "@/components/customer/hooks";
 import { ChatButton, ChatSheet, useChatHub, useOrderChat, type ChatLabels } from "@/components/chat/OrderChat";
+import { canReportOvercharge, OverchargeSheet, PaymentCard, useOverchargeCase } from "@/components/customer/MoneyParts";
 import { CancelSheet, DriverCard, PodCard, RateCard, ReschedSheet, useVerification } from "@/components/customer/OrderParts";
 import { SlaChip } from "@/components/customer/sla";
 import { Bill, fillPending, orderToBill, StatusTag, TimelineH, useUnread } from "@/components/customer/ui";
@@ -72,7 +73,8 @@ function OrderDetail() {
   // fixAt: when the fix reached the server, on this device's clock.
   const [tankerFix, setTankerFix] = useState<{ tankerId: string; pos: LngLat; fixAt: number } | null>(null);
   const [missing, setMissing] = useState(false);
-  const [sheet, setSheet] = useState<"cancel" | "resched" | null>(null);
+  const [sheet, setSheet] = useState<"cancel" | "resched" | "overcharge" | null>(null);
+  const [overchargeCase, setOverchargeCase] = useOverchargeCase(id);
   // Right after an order is placed is when push makes sense ("your tanker is on the way"); asked once.
   const orderOpen = Boolean(order && !["delivered", "cancelled"].includes(order.status));
   useEffect(() => {
@@ -211,6 +213,15 @@ function OrderDetail() {
     hub.clearPending();
   };
   const callDriver = () => toast.show(t("calling"));
+  // "Driver asked for more money?" — while the job runs and for 72 h after delivery (0035).
+  const overcharge =
+    overchargeCase != null ? (
+      <p className="mut small">{t("ocDone", { c: ref.complaint(overchargeCase) })}</p>
+    ) : canReportOvercharge(order, now) ? (
+      <button type="button" className="cta sec" onClick={() => setSheet("overcharge")}>
+        {t("ocBtn")}
+      </button>
+    ) : null;
   const sheets = (
     <>
       {chatOpen && (
@@ -229,6 +240,17 @@ function OrderDetail() {
       )}
       {sheet === "cancel" && <CancelSheet order={order} feeOmr={feeOmr} feeStatus={rules?.cancel_fee_omr?.status} onClose={() => setSheet(null)} onDone={cancelled} />}
       {sheet === "resched" && <ReschedSheet order={order} now={now} onClose={() => setSheet(null)} onDone={changed} />}
+      {sheet === "overcharge" && (
+        <OverchargeSheet
+          order={order}
+          onClose={() => setSheet(null)}
+          onDone={(n) => {
+            setSheet(null);
+            setOverchargeCase(n);
+            toast.show(t("ocDone", { c: ref.complaint(n) }));
+          }}
+        />
+      )}
       {toast.node}
     </>
   );
@@ -299,6 +321,13 @@ function OrderDetail() {
           <div className="rq-card pad">
             <Bill bill={bill} gallons={order.gallons} />
           </div>
+          <PaymentCard order={order} />
+          {!order.org_id && (
+            <Link href={`/customer/receipt?order=${order.id}`} className="cta">
+              {t("rcView")}
+            </Link>
+          )}
+          {overcharge}
           <Link href={`/customer/complaint?order=${order.id}`} className="cta sec">
             {t("report")}
           </Link>
@@ -452,6 +481,8 @@ function OrderDetail() {
           <div className="rq-card pad">
             <Bill bill={bill} gallons={order.gallons} />
           </div>
+          <PaymentCard order={order} />
+          {overcharge}
 
           {(order.status === "scheduled" || order.status === "requested") && (
             <div className="tr-act">

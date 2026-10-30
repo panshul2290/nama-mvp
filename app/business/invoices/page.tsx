@@ -2,12 +2,14 @@
 
 import { useCallback, useState } from "react";
 import { useBiz } from "@/components/business/BizContext";
-import { BIZ } from "@/components/business/i18n";
+import { BIZ_MONEY as BIZ } from "@/components/business/money";
 import { useFmt } from "@/components/portal/i18n";
 import { Kpis, St, useAction, useLive } from "@/components/portal/kit";
-import { useT } from "@/lib/i18n";
+import { friendlyError } from "@/lib/errors";
+import { useLang, useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Invoice } from "@/lib/types";
+import { exportInvoiceUbl } from "@/lib/ublExport";
 
 export default function BusinessInvoices() {
   const { org, canPay, reloadOrg } = useBiz();
@@ -19,6 +21,15 @@ export default function BusinessInvoices() {
   const { busy, run } = useAction();
   const t = useT(BIZ);
   const f = useFmt();
+  const { lang } = useLang();
+  const [vat, setVat] = useState<string | null>(null);
+  const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
+  async function exportUbl(i: Invoice) {
+    const r = await exportInvoiceUbl(i.id);
+    if ("error" in r) return setNote({ text: friendlyError(r.error, lang), bad: true });
+    const what = r.problems.filter((p) => p === "seller_vatin" || p === "buyer_vatin").map((p) => t(p === "seller_vatin" ? "ublNoSeller" : "ublNoBuyer"));
+    setNote(what.length ? { text: t("ublCheck", { what: what.join(", ") }), bad: true } : { text: t("ublSaved", { file: r.file }), bad: false });
+  }
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -59,6 +70,43 @@ export default function BusinessInvoices() {
           { label: t("kCreditUsed"), value: f.omr(org.credit_used), sub: t("ofAmt", { amt: f.omr(org.credit_limit) }) },
         ]}
       />
+      {note && (
+        <div className={`banner ${note.bad ? "badb" : "okb"}`} role="status">
+          {note.text}
+        </div>
+      )}
+      <div className="panel">
+        <h2>
+          <span>
+            {t("myVatT")} <small>{t("myVatS")}</small>
+          </span>
+        </h2>
+        <div className="pad">
+          {canPay ? (
+            <div className="btns" style={{ alignItems: "flex-end" }}>
+              <div className="fld" style={{ margin: 0 }}>
+                <label htmlFor="org-vat">{t("myVatT")}</label>
+                <input id="org-vat" className="in" dir="ltr" maxLength={14} value={vat ?? org.vat_number ?? ""} onChange={(e) => setVat(e.target.value.toUpperCase())} placeholder="OM1100012345" />
+                <small className="mut">{t("myVatHint")}</small>
+              </div>
+              <button
+                className="btn pri"
+                disabled={busy === "vat" || vat == null}
+                onClick={() =>
+                  run("vat", async () => supabase().rpc("org_set_vat_number", { p_vat_number: (vat ?? "").trim() || null }), t("myVatSaved"), () => {
+                    setVat(null);
+                    reloadOrg();
+                  })
+                }
+              >
+                {t("save")}
+              </button>
+            </div>
+          ) : (
+            <b dir="ltr">{org.vat_number || t("myVatNone")}</b>
+          )}
+        </div>
+      </div>
       <div className="panel">
         <h2>
           <span>
@@ -114,6 +162,9 @@ export default function BusinessInvoices() {
                         <a className="btn sm" href={`/business/invoice/${i.id}`} target="_blank" rel="noopener">
                           {t("downloadPdf")}
                         </a>
+                        <button className="btn sm" onClick={() => exportUbl(i)}>
+                          {t("ublExport")}
+                        </button>
                         {canPay && i.status !== "paid" && (
                           <button
                             className="btn sm pri"
