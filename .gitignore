@@ -58,3 +58,10 @@ next-env.d.ts
 /mobile/*/android/.gradle/
 /mobile/*/android/local.properties
 /mobile/*/android/app/src/main/assets/public/
+
+# Confidential bid material and real NWS data: never commit (the repo is public).
+/Tankers Data*.csv
+/Tankers System*.pdf
+/docs/tender/
+/Logo/
+/NWS Tanker Platform Prototype.html
