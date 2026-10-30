@@ -40,7 +40,7 @@
 
 .nws.portal .attn > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13.5px; }
 .nws.portal .attn > div:first-child { border-top: 0; }
-.nws.portal .attn .st { margin-right: 8px; }
+.nws.portal .attn .st { margin-inline-end: 8px; }
 .nws.portal .attn .st:empty { padding: 1px 5px 1px 5px; gap: 0; }
 
 .nws.portal .mapcard.short { height: 380px; min-height: 320px; }
@@ -53,14 +53,14 @@
 .nws.portal .pbar svg { width: 100%; height: 12px; display: block; }
 .nws.portal .pbar .trk, .nws.portal .pcols .trk { fill: var(--sunk); }
 .nws.portal .pbar .val, .nws.portal .pcols .val { fill: var(--accent); }
-.nws.portal .pbar-v { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 700; min-width: 72px; text-align: right; }
+.nws.portal .pbar-v { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 700; min-width: 72px; text-align: end; }
 .nws.portal .pcols { padding: 8px 16px 14px; }
 .nws.portal .pcols svg { width: 100%; height: 120px; display: block; }
 .nws.portal .pcols-l { display: flex; font-size: 11.5px; color: var(--muted); text-align: center; margin-top: 4px; }
 
 /* compliance matrix */
 .nws.portal table.matrix td, .nws.portal table.matrix th { text-align: center; }
-.nws.portal table.matrix td:first-child, .nws.portal table.matrix th:first-child { text-align: left; }
+.nws.portal table.matrix td:first-child, .nws.portal table.matrix th:first-child { text-align: start; }
 .nws.portal .cellbtn { background: none; border: 0; padding: 0; cursor: pointer; }
 .nws.portal .cellbtn:hover .st { filter: brightness(1.25); }
 

@@ -4,6 +4,11 @@
 // Numbers are not formatted here: toLocaleString on a number is unaffected by the time zone.
 
 export const TZ = "Asia/Muscat";
+/**
+ * Intl locale for a UI language: English as en-GB ("29 Oct 2026"); Arabic as ar-OM, which gives
+ * Arabic month and day names and Arabic-Indic digits, as the customer and driver apps show them.
+ */
+export const omanLocale = (lang: "en" | "ar") => (lang === "ar" ? "ar-OM" : "en-GB");
 export const MUSCAT_OFFSET_MS = 4 * 3_600_000;
 const DAY = 86_400_000;
 

@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { HEADING_ICON_SVG, ORDER_ICON_SVG, SITE_ICON_SVG, TANKER_ICON_SVG, svgImage } from "@/components/map/glyphs";
 import { distanceKm, inOman } from "@/lib/geo";
 import { MAP_COLORS, MAP_STYLE, bearing, brandStyle, circlePolygon, localizeLabels, type MapTheme } from "@/lib/mapStyle";
+import { useLang } from "@/lib/i18n";
 import { inTestArea, useTestAreas } from "@/lib/testArea";
 
 maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
@@ -78,12 +79,16 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
   // Active test zones (0020): their tankers and orders are tagged TEST and framed like Omani ones.
   const testAreas = useTestAreas();
   const areas = useRef(testAreas);
+  // Street names follow the portal language (lib/mapStyle), as in the apps' MapView.
+  const { lang } = useLang();
+  const langRef = useRef(lang);
   useEffect(() => {
     onSel.current = onSelect;
     data.current = { tankers, orders, sites, trail, selectedId, alerts };
     areas.current = testAreas;
+    langRef.current = lang;
   });
-  const tagged = (p: LatLng, label: string) => (inTestArea(p, areas.current) ? `${label} · TEST zone` : label);
+  const tagged = (p: LatLng, label: string) => (inTestArea(p, areas.current) ? `${label} · ${langRef.current === "ar" ? "منطقة اختبار" : "TEST zone"}` : label);
 
   useEffect(() => {
     if (!box.current) return;
@@ -106,7 +111,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
     });
     m.on("load", async () => {
       brandStyle(m, theme);
-      localizeLabels(m, "en");
+      localizeLabels(m, langRef.current);
       try {
         await loadIcons(m);
       } catch {
@@ -216,6 +221,11 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const m = map.current;
+    if (m && ready.current) localizeLabels(m, lang);
+  }, [lang]);
 
   useEffect(() => {
     // Tankers as features at their drawn (gliding) positions.

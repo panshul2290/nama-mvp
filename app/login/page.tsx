@@ -115,12 +115,11 @@ function Login() {
 
   // Web apps: the full-screen sign-in from the prototype.
   if (app && isDesktopApp(app)) {
-    const info = APP_INFO[app];
     return (
       <AuthFrame app={app}>
         <div>
-          <h2>{info.title}</h2>
-          <p>{info.sub}</p>
+          <h2>{t(`title_${app}`)}</h2>
+          <p>{t(`sub_${app}`)}</p>
         </div>
         <form onSubmit={submit}>
           {error && <div className="si-msg">{error}</div>}
@@ -164,9 +163,9 @@ function Login() {
         )}
         {signup && (
           <div className="si-links">
-            {signup[0]}{" "}
+            {t(`signupQ_${app}`)}{" "}
             <Link className="lk" href={signupHref}>
-              {signup[1]}
+              {t(`signupA_${app}`)}
             </Link>
           </div>
         )}

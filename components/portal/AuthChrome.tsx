@@ -3,6 +3,9 @@
 import "./auth.css";
 import Link from "next/link";
 import { Icon, NamaLogo, type IconName } from "@/components/icons";
+import { useLang, useT } from "@/lib/i18n";
+import { AUTH } from "./authI18n";
+import { PortalLangToggle } from "./i18n";
 import type { AppKey } from "./session";
 
 // Copy for each app's sign-in and sign-up screens (prototype.html: vSignin, vLauncher).
@@ -77,30 +80,33 @@ export function Ripples() {
 }
 
 export function Brand({ sub }: { sub: string }) {
+  const t = useT(AUTH);
   return (
     <div className="si-brand">
       <NamaLogo />
       <i className="dv" aria-hidden="true" />
       <span>
-        <b>Tanker Operations</b>
+        <b>{t("tankerOps")}</b>
         <span>{sub}</span>
       </span>
     </div>
   );
 }
 
-export function Credits({ copy = "© 2026 Nama Water Services. All data in this system belongs to NWS." }: { copy?: string }) {
+export function Credits({ copy }: { copy?: string }) {
+  const t = useT(AUTH);
   return (
     <>
       <div className="si-foot">
         {/* eslint-disable-next-line @next/next/no-img-element -- small static SVG, also in the static mobile export */}
         <img className="al" src="/brand/aldar-mark.svg" alt="" aria-hidden="true" />
         <span>
-          <small>Developed by</small>
+          <small>{t("devBy")}</small>
+          {/* i18n-ignore: company name */}
           <b>Aldar Development Projects</b>
         </span>
       </div>
-      <div className="si-copy">{copy}</div>
+      <div className="si-copy">{copy ?? t("copy")}</div>
     </>
   );
 }
@@ -108,29 +114,31 @@ export function Credits({ copy = "© 2026 Nama Water Services. All data in this 
 /** Two-column desktop sign-in/sign-up frame: hero on the left, card on the right. */
 export function AuthFrame({ app, children }: { app: AppKey; children: React.ReactNode }) {
   const info = APP_INFO[app];
+  const { lang, dir } = useLang();
+  const t = useT(AUTH);
+  const name = t(`app_${app}`);
   return (
-    <div className="si">
+    <div className="si" dir={dir} lang={lang}>
       <div className="glow" />
       <Ripples />
       <div className="si-grid">
         <div className="si-left">
-          <Brand sub={info.name} />
+          <Brand sub={name} />
           <div className="si-hero">
             <div className="si-eb">
               <i />
-              Permits, dispatch and tracking
+              {t("heroEyebrow")}
             </div>
             <h1>
-              Every tanker permitted.<span>Every delivery verified.</span>
+              {t("heroTitle")}
+              <span>{t("heroTitle2")}</span>
             </h1>
-            <p className="si-lead">
-              One platform for drinking-water, wastewater and treated-effluent tankers across Oman — from the customer’s request to discharge at an approved plant.
-            </p>
+            <p className="si-lead">{t("heroLead")}</p>
             <div className="si-steps">
               {[
-                ["1", "Request", "Customers order in the app, the web portal or through the call centre"],
-                ["2", "Dispatch", "The nearest permitted tanker gets the job, with earnings shown upfront"],
-                ["3", "Verify", "GPS geofences, flow meters and proof of delivery close every trip"],
+                ["1", t("step1"), t("step1s")],
+                ["2", t("step2"), t("step2s")],
+                ["3", t("step3"), t("step3s")],
               ].map(([n, a, b]) => (
                 <div className="si-step" key={n}>
                   <h3>
@@ -147,16 +155,16 @@ export function AuthFrame({ app, children }: { app: AppKey; children: React.Reac
         <div className="si-right">
           <div className="si-lang">
             <Link className="si-back" href="/">
-              <Icon name="back" size={16} />
-              All apps
+              <Icon name="back" size={16} className="rtl-flip" />
+              {t("allApps")}
             </Link>
             <span className="sp" />
-            <b>English</b>
+            <PortalLangToggle />
           </div>
           <div className="si-card">
             <div className="si-app">
               <Icon name={info.icon} size={16} />
-              {info.name}
+              {name}
             </div>
             {children}
           </div>

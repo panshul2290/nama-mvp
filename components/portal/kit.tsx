@@ -3,13 +3,18 @@
 import { createContext, use, useCallback, useEffect, useRef, useState } from "react";
 import { saveCsv, type CsvCell } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
+import { useLang } from "@/lib/i18n";
 import { muscatDayStart, muscatWeekStart } from "@/lib/sla";
 import { omanDate, omanDateTime, omanDay, omanDayEndIso, omanTime } from "@/lib/time";
 import { supabase } from "@/lib/supabase/client";
 import { useFocusTrap } from "@/lib/useFocusTrap";
+import { PORTAL } from "./dict";
+import { fmtNumber } from "./i18n";
 
 // Shared building blocks for the Company portal (tanker owners) and the
 // Business portal (B2B customers). Styles live in components/portal/portal.css.
+// The formatters below are English (exports keep English); screens use useFmt()
+// from ./i18n for the viewer's language.
 
 // ---------------------------------------------------------------- formatting
 const num = (v: number | string | null | undefined) => Number(v ?? 0) || 0;
@@ -102,7 +107,9 @@ export function St({ tone = "", children }: { tone?: "ok" | "warn" | "bad" | "ac
 }
 
 /** Horizontal bars as inline SVG (no chart library). */
-export function Bars({ rows, unit = "", empty = "No data yet." }: { rows: { label: string; value: number }[]; unit?: string; empty?: string }) {
+export function Bars({ rows, unit = "", empty }: { rows: { label: string; value: number }[]; unit?: string; empty?: string }) {
+  const { lang } = useLang();
+  empty ??= PORTAL.noData[lang];
   const max = Math.max(1, ...rows.map((r) => r.value));
   if (!rows.length) return <div className="empty">{empty}</div>;
   return (
@@ -115,7 +122,7 @@ export function Bars({ rows, unit = "", empty = "No data yet." }: { rows: { labe
             <rect x="0" y="0" width={Math.max(0.5, (r.value / max) * 100)} height="10" rx="2" className="val" />
           </svg>
           <span className="pbar-v">
-            {r.value.toLocaleString("en-US")}
+            {fmtNumber(r.value, lang)}
             {unit}
           </span>
         </div>
@@ -163,6 +170,7 @@ export function Dialog({ title, body, onClose, children, wide }: { title: string
 /** Run an RPC-backed action with busy state, toast on success, friendly toast on error. */
 export function useAction() {
   const toast = useToastn();
+  const { lang } = useLang();
   const [busy, setBusy] = useState<string | null>(null);
   const run = useCallback(
     async (key: string, fn: () => PromiseLike<{ error: { message?: string } | null }>, ok?: string, onOk?: () => void) => {
@@ -170,14 +178,14 @@ export function useAction() {
       const { error } = await fn();
       setBusy(null);
       if (error) {
-        toast(friendlyError(error), true);
+        toast(friendlyError(error, lang), true);
         return false;
       }
       if (ok) toast(ok);
       onOk?.();
       return true;
     },
-    [toast],
+    [toast, lang],
   );
   return { busy, run };
 }

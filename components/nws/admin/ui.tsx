@@ -3,12 +3,16 @@
 import { useState } from "react";
 import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { saveCsv, type CsvCell } from "@/lib/csv";
+import { PORTAL } from "@/components/portal/dict";
+import { fmtNumber } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
+import { useLang, useT, type Lang } from "@/lib/i18n";
 import { muscatDayStart } from "@/lib/sla";
 import { omanDateKey, omanDay } from "@/lib/time";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
-// Shared bits for the Reports and Settings screens.
+// Shared bits for the Reports and Settings screens. omr/int/pct/dayLabel are English (exports);
+// screens use useFmt() (components/portal/i18n) for the viewer's language.
 
 export const omr = (v: number | string | null | undefined, digits = 3) =>
   Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -95,12 +99,13 @@ export function Switch({ on, onClick, disabled, label }: { on: boolean; onClick:
 }
 
 export function Chips<T extends string>({ items, value, onChange }: { items: [T, string, number?][]; value: T; onChange: (v: T) => void }) {
+  const { lang } = useLang();
   return (
     <div className="chips">
       {items.map(([id, label, n]) => (
         <button key={id} className={`chip ${value === id ? "on" : ""}`} onClick={() => onChange(id)}>
           {label}
-          {n != null && <span className="tc">{n}</span>}
+          {n != null && <span className="tc">{fmtNumber(n, lang)}</span>}
         </button>
       ))}
     </div>
@@ -117,7 +122,8 @@ export function Empty({ cols, children }: { cols: number; children: React.ReactN
 
 /** Banner shown to roles the database won't let change this screen. */
 export function ReadOnlyNote({ who }: { who: string }) {
-  return <div className="banner info">View only — changes here are made by {who}. The database enforces this for every action.</div>;
+  const t = useT(PORTAL);
+  return <div className="banner info">{t("viewOnly", { who })}</div>;
 }
 
 type RpcResult = PromiseLike<{ error: { message?: string } | null }>;
@@ -136,6 +142,7 @@ type Ask = {
 /** An audited write: ask for a reason, call the RPC, toast the outcome. */
 export function useAudited() {
   const { toast } = useStaff();
+  const { lang } = useLang();
   const [ask, setAsk] = useState<Ask | null>(null);
   const dialog = ask && (
     <ReasonDialog
@@ -147,7 +154,7 @@ export function useAudited() {
       onCancel={() => setAsk(null)}
       onConfirm={async (reason) => {
         const { error } = await ask.run(reason);
-        if (error) return toast(friendlyError(error), true);
+        if (error) return toast(friendlyError(error, lang), true);
         toast(ask.ok);
         setAsk(null);
         ask.done?.();
@@ -160,10 +167,11 @@ export function useAudited() {
 /** Run an RPC without a reason prompt and toast the outcome; resolves true on success. */
 export function useRun() {
   const { toast } = useStaff();
+  const { lang } = useLang();
   return async (p: RpcResult, ok: string) => {
     const { error } = await p;
     if (error) {
-      toast(friendlyError(error), true);
+      toast(friendlyError(error, lang), true);
       return false;
     }
     toast(ok);
@@ -175,15 +183,16 @@ export function useRun() {
 export function ConfirmDialog({ title, body, confirm, onCancel, onConfirm }: { title: string; body: React.ReactNode; confirm: string; onCancel: () => void; onConfirm: () => Promise<void> | void }) {
   const [busy, setBusy] = useState(false);
   const trap = useFocusTrap(busy ? undefined : onCancel);
+  const t = useT(PORTAL);
   return (
     <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onCancel}>
       <div onClick={(e) => e.stopPropagation()}>
         <h3>{title}</h3>
         <div className="mut" style={{ fontSize: 13.5, marginBottom: 16 }}>{body}</div>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button className="btn" onClick={onCancel} disabled={busy}>{t("cancel")}</button>
           <button className="btn pri" disabled={busy} onClick={async () => { setBusy(true); await onConfirm(); setBusy(false); }}>
-            {busy ? "Working…" : confirm}
+            {busy ? t("working") : confirm}
           </button>
         </div>
       </div>
@@ -212,5 +221,5 @@ export async function fetchPaged<T>(page: (from: number, to: number) => PromiseL
 }
 
 /** "Showing the latest N …" for a capped list, or null when nothing was left out. */
-export const cappedNote = (truncated: boolean, shown: number, what: string) =>
-  truncated ? `Showing the latest ${shown.toLocaleString()} ${what} in this period — totals cover only these.` : null;
+export const cappedNote = (truncated: boolean, shown: number, what: string, lang: Lang = "en") =>
+  truncated ? PORTAL.cappedNote[lang].replace("{n}", fmtNumber(shown, lang)).replace("{what}", what) : null;

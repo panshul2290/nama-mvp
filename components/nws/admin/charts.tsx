@@ -2,19 +2,31 @@
 
 // Small hand-written SVG charts for Reports and Settings (no chart library).
 // Colours are CSS variables from nws.css so they follow the portal theme.
+// In Arabic the plot area stays left-to-right (time runs left to right); labels, legends and
+// numbers follow the portal language. Callers pass translated labels and series names.
+import { fmtNumber } from "@/components/portal/i18n";
+import { useLang, type Lang } from "@/lib/i18n";
+
+const EMPTY = { en: "No data in this range.", ar: "لا توجد بيانات في هذه الفترة." };
+const TBC = { en: "TBC", ar: "يُحدَّد لاحقاً" };
+const pctText = (n: number, l: Lang) => (l === "ar" ? `${fmtNumber(n, l)}٪` : `${n}%`);
 
 export const SERVICE_COLOR = { DW: "var(--dw)", WW: "var(--ww)", TE: "var(--te)" } as const;
 export const PALETTE = ["var(--accent)", "var(--dw)", "var(--ww)", "var(--te)", "var(--warn)", "#a78bfa", "var(--bad)", "var(--muted)"];
 
-const fmtDefault = (v: number) => v.toLocaleString();
+/** Default value format: grouped digits in the portal language. */
+const useDefaultFmt = () => {
+  const { lang } = useLang();
+  return { lang, fmtDefault: (v: number) => fmtNumber(v, lang, { maximumFractionDigits: 2 }) };
+};
 
 /** Horizontal labelled bars (the prototype's bars()). */
 export function BarList({
   rows,
   max,
-  fmt = fmtDefault,
+  fmt: fmtArg,
   color = "var(--accent)",
-  empty = "No data in this range.",
+  empty,
 }: {
   rows: { label: React.ReactNode; value: number | null; color?: string; key?: string }[];
   max?: number;
@@ -22,7 +34,9 @@ export function BarList({
   color?: string;
   empty?: string;
 }) {
-  if (rows.length === 0) return <div className="empty">{empty}</div>;
+  const { lang, fmtDefault } = useDefaultFmt();
+  const fmt = fmtArg ?? fmtDefault;
+  if (rows.length === 0) return <div className="empty">{empty ?? EMPTY[lang]}</div>;
   const top = max ?? Math.max(1, ...rows.map((r) => r.value ?? 0));
   return (
     <div className="bars">
@@ -32,7 +46,7 @@ export function BarList({
           <div className="track">
             <div className="fill" style={{ width: `${r.value == null ? 0 : Math.min(100, (r.value / top) * 100).toFixed(1)}%`, background: r.color ?? color }} />
           </div>
-          <span className="num">{r.value == null ? "TBC" : fmt(r.value)}</span>
+          <span className="num">{r.value == null ? TBC[lang] : fmt(r.value)}</span>
         </div>
       ))}
     </div>
@@ -44,7 +58,7 @@ export function LineChart({
   labels,
   series,
   height = 190,
-  fmt = fmtDefault,
+  fmt: fmtArg,
   yMax,
 }: {
   labels: string[];
@@ -53,9 +67,11 @@ export function LineChart({
   fmt?: (v: number) => string;
   yMax?: number;
 }) {
+  const { lang, fmtDefault } = useDefaultFmt();
+  const fmt = fmtArg ?? fmtDefault;
   const W = 640, H = height, L = 44, R = 12, T = 12, B = 26;
   const all = series.flatMap((s) => s.values.filter((v): v is number => v != null));
-  if (labels.length === 0 || all.length === 0) return <div className="empty">No data in this range.</div>;
+  if (labels.length === 0 || all.length === 0) return <div className="empty">{EMPTY[lang]}</div>;
   const top = yMax ?? niceMax(Math.max(...all));
   const x = (i: number) => L + (labels.length === 1 ? (W - L - R) / 2 : (i * (W - L - R)) / (labels.length - 1));
   const y = (v: number) => T + (H - T - B) * (1 - v / top);
@@ -63,7 +79,7 @@ export function LineChart({
   const every = Math.max(1, Math.ceil(labels.length / 10));
   return (
     <div className="chart">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={series.map((s) => s.name).join(", ")}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={series.map((s) => s.name).join(", ")} direction="ltr">
         {ticks.map((t) => (
           <g key={t}>
             <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth={1} />
@@ -102,21 +118,23 @@ export function Donut({
   slices,
   center,
   sub,
-  fmt = fmtDefault,
+  fmt: fmtArg,
 }: {
   slices: { label: string; value: number; color: string }[];
   center?: string;
   sub?: string;
   fmt?: (v: number) => string;
 }) {
+  const { lang, fmtDefault } = useDefaultFmt();
+  const fmt = fmtArg ?? fmtDefault;
   const total = slices.reduce((a, s) => a + s.value, 0);
-  if (total === 0) return <div className="empty">No data in this range.</div>;
+  if (total === 0) return <div className="empty">{EMPTY[lang]}</div>;
   const r = 52, c = 2 * Math.PI * r;
   // Start offset of each slice along the circumference.
   const offs = slices.map((_, i) => slices.slice(0, i).reduce((a, s) => a + (s.value / total) * c, 0));
   return (
     <div className="donut">
-      <svg viewBox="0 0 140 140" role="img" aria-label={slices.map((s) => `${s.label} ${fmt(s.value)}`).join(", ")}>
+      <svg viewBox="0 0 140 140" role="img" aria-label={slices.map((s) => `${s.label} ${fmt(s.value)}`).join(", ")} direction="ltr">
         <circle cx={70} cy={70} r={r} fill="none" stroke="var(--sunk)" strokeWidth={18} />
         {slices.map((s, i) => {
           const len = (s.value / total) * c;
@@ -136,7 +154,7 @@ export function Donut({
             <i style={{ background: s.color }} />
             <span>{s.label}</span>
             <b className="num">{fmt(s.value)}</b>
-            <small>{Math.round((s.value / total) * 100)}%</small>
+            <small>{pctText(Math.round((s.value / total) * 100), lang)}</small>
           </li>
         ))}
       </ul>

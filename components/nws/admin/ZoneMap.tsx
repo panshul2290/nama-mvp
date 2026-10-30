@@ -4,6 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import * as maplibregl from "maplibre-gl";
 import { useEffect, useRef } from "react";
 import { SITE_ICON_SVG, svgImage } from "@/components/map/glyphs";
+import { localDigits, useLang, type Lang } from "@/lib/i18n";
 import { MAP_COLORS, MAP_STYLE, brandStyle, circlePolygon, localizeLabels } from "@/lib/mapStyle";
 import type { Site, Zone } from "@/lib/types";
 
@@ -18,14 +19,20 @@ const zoneShape = (z: Zone): GeoJSON.Polygon =>
   z.min_lat != null && z.max_lat != null && z.min_lng != null && z.max_lng != null
     ? { type: "Polygon", coordinates: [[[z.min_lng, z.min_lat], [z.max_lng, z.min_lat], [z.max_lng, z.max_lat], [z.min_lng, z.max_lat], [z.min_lng, z.min_lat]]] }
     : circlePolygon(z.center_lat, z.center_lng, Number(z.radius_km) * 1000);
-const zoneInfo = (z: Zone) => `${z.is_test ? "TEST zone · box" : `${z.governorate} · radius ${Number(z.radius_km)} km`}${z.active ? "" : " · disabled"}`;
+// Popup wording in the portal language.
+const W = {
+  en: { test: "TEST zone · box", radius: "radius {n} km", disabled: " · disabled", fill: "Filling", discharge: "Discharge", m: "m" },
+  ar: { test: "منطقة اختبار · مربع", radius: "نصف القطر {n} كم", disabled: " · معطّلة", fill: "تعبئة", discharge: "تفريغ", m: "م" },
+};
+const zoneInfo = (z: Zone, l: Lang) => `${z.is_test ? W[l].test : `${z.governorate} · ${W[l].radius.replace("{n}", localDigits(Number(z.radius_km), l))}`}${z.active ? "" : W[l].disabled}`;
+const siteInfo = (s: Site, l: Lang) => `${s.kind === "fill" ? W[l].fill : W[l].discharge} · ${s.service_types.join(", ")} · ${localDigits(s.radius_m, l)} ${W[l].m}${s.active ? "" : W[l].disabled}`;
 
-function data(zones: Zone[], sites: Site[]) {
+function data(zones: Zone[], sites: Site[], l: Lang) {
   return {
-    zones: fc(zones.map((z) => ({ type: "Feature", geometry: zoneShape(z), properties: { name: z.name, active: z.active, info: zoneInfo(z) } }))),
+    zones: fc(zones.map((z) => ({ type: "Feature", geometry: zoneShape(z), properties: { name: z.name, active: z.active, info: zoneInfo(z, l) } }))),
     // Geofences are a few hundred metres: draw them at least 600 m so they show at city zoom.
-    sites: fc(sites.map((s) => ({ type: "Feature", geometry: circlePolygon(s.lat, s.lng, Math.max(600, s.radius_m)), properties: { name: `${s.code} · ${s.name}`, color: siteColor(s), info: `${s.kind === "fill" ? "Filling" : "Discharge"} · ${s.service_types.join(", ")} · ${s.radius_m} m${s.active ? "" : " · disabled"}` } }))),
-    points: fc(sites.map((s) => ({ type: "Feature", geometry: { type: "Point", coordinates: [s.lng, s.lat] }, properties: { name: `${s.code} · ${s.name}`, icon: `site-${s.kind}`, active: s.active, info: `${s.kind === "fill" ? "Filling" : "Discharge"} · ${s.service_types.join(", ")} · ${s.radius_m} m${s.active ? "" : " · disabled"}` } }))),
+    sites: fc(sites.map((s) => ({ type: "Feature", geometry: circlePolygon(s.lat, s.lng, Math.max(600, s.radius_m)), properties: { name: `${s.code} · ${s.name}`, color: siteColor(s), info: siteInfo(s, l) } }))),
+    points: fc(sites.map((s) => ({ type: "Feature", geometry: { type: "Point", coordinates: [s.lng, s.lat] }, properties: { name: `${s.code} · ${s.name}`, icon: `site-${s.kind}`, active: s.active, info: siteInfo(s, l) } }))),
   };
 }
 
@@ -33,7 +40,8 @@ export default function ZoneMap({ zones, sites }: { zones: Zone[]; sites: Site[]
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const ready = useRef(false);
-  const latest = useRef({ zones, sites });
+  const { lang } = useLang();
+  const latest = useRef({ zones, sites, lang });
 
   useEffect(() => {
     if (!box.current) return;
@@ -44,7 +52,7 @@ export default function ZoneMap({ zones, sites }: { zones: Zone[]; sites: Site[]
     m.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
     m.on("load", async () => {
       brandStyle(m, "dark");
-      localizeLabels(m, "en");
+      localizeLabels(m, latest.current.lang);
       await Promise.all(
         (["fill", "discharge"] as const).map(async (k) => {
           const img = await svgImage(SITE_ICON_SVG(k)).catch(() => null);
@@ -52,7 +60,7 @@ export default function ZoneMap({ zones, sites }: { zones: Zone[]; sites: Site[]
         }),
       );
       if (!map.current) return;
-      const d = data(latest.current.zones, latest.current.sites);
+      const d = data(latest.current.zones, latest.current.sites, latest.current.lang);
       m.addSource("zones", { type: "geojson", data: d.zones });
       m.addSource("sites", { type: "geojson", data: d.sites });
       m.addSource("points", { type: "geojson", data: d.points });
@@ -93,14 +101,15 @@ export default function ZoneMap({ zones, sites }: { zones: Zone[]; sites: Site[]
   }, []);
 
   useEffect(() => {
-    latest.current = { zones, sites };
+    latest.current = { zones, sites, lang };
     const m = map.current;
     if (!m || !ready.current) return;
-    const d = data(zones, sites);
+    localizeLabels(m, lang);
+    const d = data(zones, sites, lang);
     (m.getSource("zones") as maplibregl.GeoJSONSource | undefined)?.setData(d.zones);
     (m.getSource("sites") as maplibregl.GeoJSONSource | undefined)?.setData(d.sites);
     (m.getSource("points") as maplibregl.GeoJSONSource | undefined)?.setData(d.points);
-  }, [zones, sites]);
+  }, [zones, sites, lang]);
 
   return <div ref={box} className="mapfill nm dark" />;
 }

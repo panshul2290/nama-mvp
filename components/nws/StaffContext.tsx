@@ -3,12 +3,15 @@
 import { createContext, use, useCallback, useState } from "react";
 import type { Profile, StaffRole } from "@/lib/types";
 import { omanDate, omanDateTime } from "@/lib/time";
+import { PORTAL } from "@/components/portal/dict";
+import { useT } from "@/lib/i18n";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
 export type Staff = Profile & { staff_role: StaffRole };
 
 const Ctx = createContext<{ staff: Staff; can: (...roles: StaffRole[]) => boolean; toast: (m: string, bad?: boolean) => void } | null>(null);
 
+/** English role names (exports); staffRoleLabel() in lib/labels gives the viewer's language. */
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   admin: "Super admin",
   operator: "Control room operator",
@@ -69,6 +72,7 @@ export function ReasonDialog({
 }) {
   const [reason, setReason] = useState(defaultReason);
   const [busy, setBusy] = useState(false);
+  const t = useT(PORTAL);
   const trap = useFocusTrap(busy ? undefined : onCancel);
   return (
     // A backdrop click doesn't close it: the typed reason would be lost (Escape and Cancel do).
@@ -78,12 +82,12 @@ export function ReasonDialog({
         {body && <p>{body}</p>}
         {extra}
         <div className="fld">
-          <label htmlFor="reason">Reason (required, kept in the audit log)</label>
+          <label htmlFor="reason">{t("reasonRequired")}</label>
           <textarea id="reason" className="in" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
         </div>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t("cancel")}
           </button>
           <button
             className={`btn ${danger ? "bad" : "pri"}`}
@@ -94,7 +98,7 @@ export function ReasonDialog({
               setBusy(false);
             }}
           >
-            {busy ? "Saving…" : confirm}
+            {busy ? t("saving") : confirm}
           </button>
         </div>
       </div>

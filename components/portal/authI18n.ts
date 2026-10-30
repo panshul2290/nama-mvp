@@ -116,6 +116,35 @@ export const AUTH: Dict = {
   app_business: { en: "Business portal", ar: "بوابة الأعمال" },
   app_driver: { en: "Driver app", ar: "تطبيق السائقين" },
   app_company: { en: "Company portal", ar: "بوابة الشركات" },
+
+  // Desktop sign-in frame (components/portal/AuthChrome AuthFrame) and the web sign-in headings
+  title_nws: { en: "Sign in", ar: "تسجيل الدخول" },
+  title_business: { en: "Sign in to your business account", ar: "تسجيل الدخول إلى حساب أعمالك" },
+  title_company: { en: "Sign in to your company", ar: "تسجيل الدخول إلى شركتك" },
+  sub_nws: { en: "For Nama staff — control room, permits, customer care and finance.", ar: "لموظفي نماء — غرفة التحكم والتصاريح وخدمة العملاء والمالية." },
+  sub_business: { en: "Hotels, compounds, farms and government sites ordering on account.", ar: "الفنادق والمجمعات السكنية والمزارع والمواقع الحكومية التي تطلب على الحساب." },
+  sub_company: { en: "Tanker owners — fleet, drivers, permits, contracts and earnings.", ar: "مالكو الصهاريج — الأسطول والسائقون والتصاريح والعقود والأرباح." },
+  signupQ_business: { en: "New business customer?", ar: "عميل أعمال جديد؟" },
+  signupA_business: { en: "Open an account", ar: "افتح حساباً" },
+  signupQ_company: { en: "New tanker company?", ar: "شركة صهاريج جديدة؟" },
+  signupA_company: { en: "Register your fleet", ar: "سجّل أسطولك" },
+  heroEyebrow: { en: "Permits, dispatch and tracking", ar: "التصاريح والإسناد والتتبع" },
+  heroTitle: { en: "Every tanker permitted.", ar: "كل صهريج مرخّص." },
+  heroTitle2: { en: "Every delivery verified.", ar: "كل توصيلة موثّقة." },
+  heroLead: {
+    en: "One platform for drinking-water, wastewater and treated-effluent tankers across Oman — from the customer’s request to discharge at an approved plant.",
+    ar: "منصة واحدة لصهاريج مياه الشرب ومياه الصرف والمياه المعالجة في جميع أنحاء عُمان — من طلب العميل حتى التفريغ في محطة معتمدة.",
+  },
+  step1: { en: "Request", ar: "الطلب" },
+  step1s: { en: "Customers order in the app, the web portal or through the call centre", ar: "يطلب العملاء عبر التطبيق أو البوابة الإلكترونية أو مركز الاتصال" },
+  step2: { en: "Dispatch", ar: "الإسناد" },
+  step2s: { en: "The nearest permitted tanker gets the job, with earnings shown upfront", ar: "يُسند الطلب إلى أقرب صهريج مرخّص مع عرض الأرباح مسبقاً" },
+  step3: { en: "Verify", ar: "التحقق" },
+  step3s: { en: "GPS geofences, flow meters and proof of delivery close every trip", ar: "النطاقات الجغرافية وعدادات التدفق وإثبات التسليم تُغلق كل رحلة" },
+  allApps: { en: "All apps", ar: "جميع التطبيقات" },
+  tankerOps: { en: "Tanker Operations", ar: "عمليات الصهاريج" },
+  devBy: { en: "Developed by", ar: "تطوير" },
+  copy: { en: "© 2026 Nama Water Services. All data in this system belongs to NWS.", ar: "© 2026 شركة نماء لخدمات المياه. جميع البيانات في هذا النظام مملوكة لنماء." },
 };
 
 const CODES: Record<string, string> = {

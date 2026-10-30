@@ -1,5 +1,8 @@
 import { Icon } from "@/components/icons";
 import { hhmm } from "@/lib/format";
+import { localDigits, useLang, type Dict, type Lang } from "@/lib/i18n";
+import { label } from "@/lib/labels";
+import { omanLocale, omanTime } from "@/lib/time";
 import { omr, omrValue, ruleNumber, SERVICE_LABEL, type PricingRules, type Quote, type RuleStatus, type ServiceType } from "@/lib/pricing";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -18,18 +21,36 @@ export const STATUS_TEXT: Record<OrderStatus, [string, "act" | "ok" | "warn" | "
 export const SERVICE_SHORT: Record<ServiceType, string> = { DW: "Drinking water", WW: "Wastewater", TE: "Treated water" };
 
 /** Status text and tone; a wastewater job that reached "delivered" (discharged) reads "Completed". */
-export function statusText(status: OrderStatus, type?: ServiceType): [string, "act" | "ok" | "warn" | "bad"] {
-  return status === "delivered" && type === "WW" ? ["Completed", "ok"] : STATUS_TEXT[status];
+export function statusText(status: OrderStatus, type?: ServiceType, lang: Lang = "en"): [string, "act" | "ok" | "warn" | "bad"] {
+  if (status === "delivered" && type === "WW") return [label("order", "completed", lang), "ok"];
+  const [en, tone] = STATUS_TEXT[status];
+  return [label("order", status, lang, en), tone];
 }
 
 export function StatusPill({ status, type }: { status: OrderStatus; type?: ServiceType }) {
-  const [text, tone] = statusText(status, type);
+  const { lang } = useLang();
+  const [text, tone] = statusText(status, type, lang);
   return <span className={`st ${tone}`}>{text}</span>;
 }
 
 export function TypeTag({ type }: { type: ServiceType }) {
-  return <span className={`tag ${type}`}>{SERVICE_SHORT[type]}</span>;
+  const { lang } = useLang();
+  return <span className={`tag ${type}`}>{label("svcShort", type, lang, SERVICE_SHORT[type])}</span>;
 }
+
+// Bill and tracker wording (the web portals and the apps' price tags).
+const BITS: Dict = {
+  assumption: { en: "Assumption", ar: "افتراض" },
+  pendingNws: { en: "Pending NWS clarification", ar: "بانتظار توضيح نماء" },
+  water: { en: "Water charge", ar: "سعر المياه" },
+  waterGal: { en: "Water charge · {n} gal", ar: "سعر المياه · {n} جالون" },
+  fee: { en: "Delivery fee", ar: "رسوم التوصيل" },
+  vat: { en: "VAT", ar: "ضريبة القيمة المضافة" },
+  vatPct: { en: "VAT {n}%", ar: "ضريبة القيمة المضافة {n}٪" },
+  total: { en: "Total", ar: "الإجمالي" },
+};
+export { BITS as ORDER_BITS };
+const bit = (k: string, lang: Lang, n?: string) => BITS[k][lang].replace("{n}", n ?? "");
 
 const STEPS: { key: OrderStatus; label: string; at: keyof Order }[] = [
   { key: "requested", label: "Requested", at: "created_at" },
@@ -46,16 +67,17 @@ export function stepIndex(status: OrderStatus) {
 /** Horizontal 5-step tracker (prototype .tlh). */
 export function Stepper({ order }: { order: Order }) {
   const done = stepIndex(order.status); // steps completed so far
+  const { lang } = useLang();
   return (
     <div className="tlh">
       {STEPS.map((s, i) => {
         const state = i < done ? "done" : i === done && order.status !== "cancelled" ? "cur" : "";
-        const t = hhmm(order[s.at] as string | null);
+        const t = lang === "ar" ? omanTime(order[s.at] as string | null, omanLocale(lang)) : hhmm(order[s.at] as string | null);
         return (
           <div key={s.key} className={state}>
             <i>{state === "done" && <Icon name="check" />}</i>
-            <b>{s.label}</b>
-            <small>{t || (state === "cur" ? "now" : "")}</small>
+            <b>{label("step", s.key, lang, s.label)}</b>
+            <small>{t || (state === "cur" ? label("step", "now", lang) : "")}</small>
           </div>
         );
       })}
@@ -77,13 +99,14 @@ export function Progress({ status }: { status: OrderStatus }) {
 
 /** Flags a price line that rests on a rule NWS hasn't confirmed. */
 export function RuleTag({ status }: { status?: RuleStatus | string | null }) {
+  const { lang } = useLang();
   if (!status || status === "confirmed") return null;
-  return <span className="st warn ptag">{status === "assumption" ? "Assumption" : "Pending NWS clarification"}</span>;
+  return <span className="st warn ptag">{bit(status === "assumption" ? "assumption" : "pendingNws", lang)}</span>;
 }
 
-const vatLabel = (rules?: PricingRules | null) => {
+const vatLabel = (rules?: PricingRules | null, lang: Lang = "en") => {
   const r = rules ? ruleNumber(rules, "vat_rate") : NaN;
-  return Number.isFinite(r) ? `VAT ${Math.round(r * 1000) / 10}%` : "VAT";
+  return Number.isFinite(r) ? bit("vatPct", lang, localDigits(Math.round(r * 1000) / 10, lang)) : bit("vat", lang);
 };
 
 function Line({ label, amount, status, className }: { label: string; amount: string; status?: string | null; className?: string }) {
@@ -111,12 +134,15 @@ export function Bill({ quote, rules }: { quote: Quote; rules: PricingRules }) {
 
 export function OrderBill({ order, rules }: { order: Order; rules?: PricingRules | null }) {
   const b = order.price_basis;
+  const { lang } = useLang();
+  const ar = lang === "ar";
+  const a3 = (v: number | string) => (ar ? Number(v).toLocaleString("ar-OM", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : Number(v).toFixed(3));
   return (
     <div className="bill">
-      <Line label={`Water charge · ${order.gallons.toLocaleString()} gal`} amount={Number(order.water_charge).toFixed(3)} status={b?.water} />
-      <Line label="Delivery fee" amount={Number(order.delivery_fee).toFixed(3)} status={b?.fee} />
-      <Line label={vatLabel(rules)} amount={Number(order.vat).toFixed(3)} status={b?.vat} />
-      <Line className="tot" label="Total" amount={omrValue(order.total)} status={b?.total} />
+      <Line label={bit("waterGal", lang, ar ? order.gallons.toLocaleString("ar-OM") : order.gallons.toLocaleString())} amount={a3(order.water_charge)} status={b?.water} />
+      <Line label={bit("fee", lang)} amount={a3(order.delivery_fee)} status={b?.fee} />
+      <Line label={vatLabel(rules, lang)} amount={a3(order.vat)} status={b?.vat} />
+      <Line className="tot" label={bit("total", lang)} amount={ar ? `${a3(order.total)} ر.ع.` : omrValue(order.total)} status={b?.total} />
     </div>
   );
 }

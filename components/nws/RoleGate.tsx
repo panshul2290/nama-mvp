@@ -4,7 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { canSee, homeFor, READ_ONLY } from "@/components/nws/access";
-import { STAFF_ROLE_LABEL, useStaff } from "@/components/nws/StaffContext";
+import { useStaff } from "@/components/nws/StaffContext";
+import { PORTAL } from "@/components/portal/dict";
+import { useLang, useT } from "@/lib/i18n";
+import { staffRoleLabel } from "@/lib/labels";
 
 /**
  * Shows a section only to the roles that may open it (components/nws/access.ts). The landing page
@@ -15,6 +18,8 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const role = staff.staff_role;
+  const { lang } = useLang();
+  const t = useT(PORTAL);
   const allowed = canSee(role, path);
   const landing = path === "/nws" || path === "/nws/settings";
 
@@ -26,9 +31,9 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     if (landing) return null;
     return (
       <div className="panel">
-        <h2>Not available for your role</h2>
+        <h2>{t("notForRole")}</h2>
         <p className="note">
-          {STAFF_ROLE_LABEL[role]} accounts don’t use this section. <Link href={homeFor(role)} className="lnk">Go to your start page</Link>
+          {t("notForRoleBody", { role: staffRoleLabel(role, lang) })} <Link href={homeFor(role)} className="lnk">{t("goStart")}</Link>
         </p>
       </div>
     );
@@ -37,7 +42,7 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     <>
       {READ_ONLY.includes(role) && (
         <div className="banner info" role="note">
-          <b>Read-only access.</b> You can view and export everything here; actions are greyed out for the {STAFF_ROLE_LABEL[role]} role.
+          <b>{t("readOnlyB")}</b> {t("readOnlyBody", { role: staffRoleLabel(role, lang) })}
         </div>
       )}
       {children}

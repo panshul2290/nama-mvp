@@ -6,8 +6,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Icon, NamaLogo, type IconName } from "@/components/icons";
+import { localDigits, useLang, useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import type { OrgRole, Profile, Role } from "@/lib/types";
+import { PORTAL } from "./dict";
+import { PortalLangToggle } from "./i18n";
 import { ToastProvider } from "./kit";
 import { appFor, areaApp, enforceSessionChoice, signOutApp, useSessionEnd } from "./session";
 
@@ -74,6 +77,8 @@ export function PortalShell({
 }) {
   const path = usePathname();
   const router = useRouter();
+  const { lang, dir } = useLang();
+  const t = useT(PORTAL);
   const root = tabs?.[0]?.href;
 
   // Signs out of this portal only; its sign-in opens again.
@@ -84,7 +89,7 @@ export function PortalShell({
   }
 
   return (
-    <div className="nws portal">
+    <div className="nws portal" dir={dir} lang={lang}>
       <ToastProvider>
         <div className="pwrap">
           <header className="wtop">
@@ -95,13 +100,14 @@ export function PortalShell({
               <small>{who}</small>
             </span>
             <span className="sp" />
-            <Link className="pill" href="/" title="All apps on this site">
+            <PortalLangToggle />
+            <Link className="pill" href="/" title={t("allAppsTitle")}>
               <Icon name="home" size={16} />
-              All apps
+              {t("allApps")}
             </Link>
             <button className="pill" onClick={signOut}>
-              <Icon name="logout" size={16} />
-              Sign out
+              <Icon name="logout" size={16} className="rtl-flip" />
+              {t("signOut")}
             </button>
           </header>
           <div className="vhead">
@@ -113,13 +119,13 @@ export function PortalShell({
           </div>
           {banner}
           {tabs && (
-            <nav className="ptabs" aria-label={`${app} sections`}>
-              {tabs.map((t) => {
-                const on = t.href === root ? path === t.href : path.startsWith(t.href);
+            <nav className="ptabs" aria-label={t("sections", { app })}>
+              {tabs.map((tab) => {
+                const on = tab.href === root ? path === tab.href : path.startsWith(tab.href);
                 return (
-                  <Link key={t.href} href={t.href} className={on ? "on" : ""} aria-current={on ? "page" : undefined}>
-                    {t.label}
-                    {!!t.badge && <span className="tc">{t.badge}</span>}
+                  <Link key={tab.href} href={tab.href} className={on ? "on" : ""} aria-current={on ? "page" : undefined}>
+                    {tab.label}
+                    {!!tab.badge && <span className="tc">{localDigits(tab.badge, lang)}</span>}
                   </Link>
                 );
               })}
@@ -134,10 +140,11 @@ export function PortalShell({
 
 /** Full-page loading state inside the dark portal frame. */
 export function PortalLoading() {
+  const { lang, dir } = useLang();
   return (
-    <div className="nws portal">
+    <div className="nws portal" dir={dir} lang={lang}>
       <div className="pwrap">
-        <div className="ploading" role="status" aria-label="Loading">
+        <div className="ploading" role="status" aria-label={PORTAL.loading[lang]}>
           <span className="spin" aria-hidden="true" />
         </div>
       </div>
