@@ -109,11 +109,21 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
   const { can } = useStaff();
   const now = useNow(30_000);
   const [f, setF] = useState<"open" | State | "all" | "overdue">("open");
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("");
   const [logging, setLogging] = useState(false);
   const all = useMemo(() => cases ?? [], [cases]);
   const overdue = (c: Case) => c.state !== "resolved" && Date.parse(c.due_at) < now;
   const match = (c: Case, k: typeof f) => (k === "all" ? true : k === "open" ? c.state !== "resolved" : k === "overdue" ? overdue(c) : c.state === k);
-  const list = all.filter((c) => match(c, f));
+  // Search by case number, customer name or mobile, or order number.
+  const hit = (c: Case) => {
+    const s = q.trim().toLowerCase().replace(/^c-|^to-/, "");
+    if (!s) return true;
+    const cu = one(c.customer);
+    const o = one(c.order);
+    return String(c.case_no).includes(s) || (cu?.full_name ?? "").toLowerCase().includes(s) || (cu?.phone ?? "").replace(/\s/g, "").includes(s.replace(/\s/g, "")) || (o ? String(o.order_no).includes(s) : false);
+  };
+  const list = all.filter((c) => match(c, f) && (!cat || c.category === cat) && hit(c));
   const label = (cat: string) => slas.find((s) => s.category === cat)?.label ?? cat.replace(/_/g, " ");
   const selected = all.find((c) => c.id === sel) ?? null;
   const canLog = can("complaints_agent", "operator");
@@ -150,6 +160,18 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
             <button className="btn pri" disabled={!canLog} title={canLog ? undefined : "Complaints agents and operators only"} onClick={() => setLogging(true)}>
               Log case from Genesys call
             </button>
+          </div>
+          <div className="toolbar">
+            <div className="filters">
+              <input className="in" placeholder="Case, customer, mobile or order" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search cases" style={{ width: 230 }} />
+              <select className="in" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
+                <option value="">All categories</option>
+                {slas.map((s) => (
+                  <option key={s.category} value={s.category}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            {all.length >= 500 && <small className="mut">Latest 500 cases</small>}
           </div>
           <div className="tblwrap">
             <table>
@@ -189,7 +211,7 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
         </div>
         <div className="panel">
           {selected ? (
-            <CaseDetail key={selected.id} c={selected} label={label(selected.category)} now={now} reload={reload} />
+            <CaseDetail key={selected.id} c={selected} label={label(selected.category)} teams={[...new Set(slas.map((s) => s.team))]} now={now} reload={reload} />
           ) : (
             <>
               <h2>Case detail</h2>
@@ -213,12 +235,24 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
   );
 }
 
-function CaseDetail({ c, label, now, reload }: { c: Case; label: string; now: number; reload: () => Promise<void> }) {
+type Mode = "resolve" | "note" | "reply" | "assign" | "escalate" | "refund";
+const MODE_TEXT: Record<Mode, [label: string, button: string, min: number]> = {
+  resolve: ["Resolution (sent to the customer)", "Resolve and notify", 3],
+  reply: ["Reply to the customer (they see it in the app and get a notification)", "Send reply", 1],
+  note: ["Internal note", "Add note", 3],
+  assign: ["Note for the team (internal, optional)", "Assign", 0],
+  escalate: ["Why it needs a supervisor (internal, optional)", "Escalate", 0],
+  refund: ["Reason (internal, optional)", "Refund to wallet", 0],
+};
+
+function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; teams: string[]; now: number; reload: () => Promise<void> }) {
   const { can } = useStaff();
   const run = useRpc();
   const photo = useSignedUrl(c.photo_path);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [mode, setMode] = useState<"resolve" | "note" | null>(null);
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [team, setTeam] = useState(c.owner_team ?? teams[0] ?? "");
+  const [amount, setAmount] = useState("1");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const agent = can("complaints_agent", "operator", "admin");
@@ -236,6 +270,24 @@ function CaseDetail({ c, label, now, reload }: { c: Case; label: string; now: nu
     const t = setTimeout(loadNotes, 0);
     return () => clearTimeout(t);
   }, [loadNotes, c.state, c.refund_amount]);
+  // Customer replies and other agents' notes arrive live.
+  useRealtime(`case-${c.id}`, ["complaint_notes"], loadNotes, 400, { complaint_notes: `complaint_id=eq.${c.id}` });
+
+  function start(m: Mode) {
+    setText("");
+    setTeam(c.owner_team ?? teams[0] ?? "");
+    setAmount("1");
+    setMode(m);
+  }
+  function submitMode() {
+    const body = text.trim() || null;
+    if (mode === "resolve") return act("resolve", { p_body: body }, `C-${c.case_no} resolved — customer notified`);
+    if (mode === "reply") return act("reply", { p_body: body }, "Reply sent — the customer is notified");
+    if (mode === "note") return act("note", { p_body: body }, "Internal note added");
+    if (mode === "assign") return act("assign", { p_team: team, p_body: body }, `Assigned to ${team}`);
+    if (mode === "escalate") return act("escalate", { p_team: team || null, p_body: body }, "Escalated");
+    if (mode === "refund") return act("refund", { p_amount: Number(amount) }, `${n3(amount)} OMR refunded to the customer's wallet`);
+  }
 
   async function act(action: string, extra: Record<string, unknown>, ok: string) {
     setBusy(true);
@@ -319,7 +371,8 @@ function CaseDetail({ c, label, now, reload }: { c: Case; label: string; now: nu
           )}
         </div>
       )}
-      {c.state === "resolved" && c.resolution && <div className="banner info" style={{ margin: "0 16px 12px" }}>Resolution: {c.resolution}</div>}
+      {/* The resolution is also a timeline entry; show the banner only when it isn't (older cases). */}
+      {c.state === "resolved" && c.resolution && !notes.some((n) => n.body === c.resolution) && <div className="banner info" style={{ margin: "0 16px 12px" }}>Resolution: {c.resolution}</div>}
 
       <h2 style={{ paddingTop: 4 }}>
         Timeline <small>internal notes are not shown to the customer</small>
@@ -349,22 +402,47 @@ function CaseDetail({ c, label, now, reload }: { c: Case; label: string; now: nu
       <div className="pad">
         {mode && (
           <div className="fld">
-            <label htmlFor="cbody">{mode === "resolve" ? "Resolution (sent to the customer)" : "Internal note"}</label>
-            <textarea id="cbody" className="in" rows={3} value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+            {(mode === "assign" || mode === "escalate") && (
+              <>
+                <label htmlFor="cteam">{mode === "assign" ? "Owner team" : "Escalate to"}</label>
+                <select id="cteam" className="in" value={team} onChange={(e) => setTeam(e.target.value)} style={{ marginBottom: 8 }}>
+                  {mode === "escalate" && <option value="">Tanker operations supervisor</option>}
+                  {teams.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </>
+            )}
+            {mode === "refund" && (
+              <>
+                <label htmlFor="camt">Amount in OMR (up to 50.000 per refund)</label>
+                <input id="camt" className="in" type="number" min="0.1" max="50" step="0.5" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ marginBottom: 6 }} />
+                <small className="mut" style={{ display: "block", marginBottom: 8 }}>
+                  Already refunded on this case: {n3(c.refund_amount)} OMR. The money goes back to the order’s payment where possible, otherwise to the wallet as goodwill.
+                </small>
+              </>
+            )}
+            {mode !== "refund" && (
+              <>
+                <label htmlFor="cbody">{MODE_TEXT[mode][0]}</label>
+                <textarea id="cbody" className="in" rows={3} value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+              </>
+            )}
             <div className="btns" style={{ marginTop: 8, justifyContent: "flex-end" }}>
               <button className="btn" onClick={() => setMode(null)} disabled={busy}>
                 Cancel
               </button>
               <button
-                className="btn pri"
-                disabled={busy || text.trim().length < 3}
-                onClick={() =>
-                  mode === "resolve"
-                    ? act("resolve", { p_body: text.trim() }, `C-${c.case_no} resolved — customer notified`)
-                    : act("note", { p_body: text.trim() }, "Internal note added")
+                className={`btn ${mode === "escalate" ? "bad" : "pri"}`}
+                disabled={
+                  busy ||
+                  text.trim().length < MODE_TEXT[mode][2] ||
+                  (mode === "assign" && !team) ||
+                  (mode === "refund" && !(Number(amount) > 0 && Number(amount) <= 50))
                 }
+                onClick={submitMode}
               >
-                {mode === "resolve" ? "Resolve and notify" : "Add note"}
+                {MODE_TEXT[mode][1]}
               </button>
             </div>
           </div>
@@ -372,19 +450,22 @@ function CaseDetail({ c, label, now, reload }: { c: Case; label: string; now: nu
         {!mode &&
           (c.state !== "resolved" ? (
             <div className="btns">
-              <button className="btn" disabled={!agent || busy} title={title} onClick={() => act("assign", { p_team: "Tanker operations" }, "Assigned to tanker operations")}>
-                Assign to tanker ops
+              <button className="btn" disabled={!agent || busy} title={title} onClick={() => start("assign")}>
+                Assign…
               </button>
-              <button className="btn bad" disabled={!agent || busy || c.state === "escalated"} title={title} onClick={() => act("escalate", {}, "Escalated to the supervisor")}>
-                Escalate
+              <button className="btn bad" disabled={!agent || busy || c.state === "escalated"} title={title} onClick={() => start("escalate")}>
+                Escalate…
               </button>
-              <button className="btn" disabled={!agent || busy} title={title} onClick={() => act("refund", { p_amount: 1 }, "1.000 OMR refunded to the customer's wallet")}>
-                Refund 1.000 OMR
+              <button className="btn" disabled={!agent || busy || !c.customer_id} title={!c.customer_id ? "No customer on this case" : title} onClick={() => start("refund")}>
+                Refund…
               </button>
-              <button className="btn pri" disabled={!agent || busy} title={title} onClick={() => { setText(""); setMode("resolve"); }}>
+              <button className="btn" disabled={!agent || busy || !c.customer_id} title={!c.customer_id ? "No customer on this case" : title} onClick={() => start("reply")}>
+                Reply to customer
+              </button>
+              <button className="btn pri" disabled={!agent || busy} title={title} onClick={() => start("resolve")}>
                 Resolve and notify
               </button>
-              <button className="btn" disabled={!agent || busy} title={title} onClick={() => { setText(""); setMode("note"); }}>
+              <button className="btn" disabled={!agent || busy} title={title} onClick={() => start("note")}>
                 Add internal note
               </button>
             </div>
@@ -394,7 +475,7 @@ function CaseDetail({ c, label, now, reload }: { c: Case; label: string; now: nu
               <button className="btn sm" disabled={!agent || busy} title={title} onClick={() => act("reopen", {}, `C-${c.case_no} reopened`)}>
                 Reopen
               </button>
-              <button className="btn sm" disabled={!agent || busy} title={title} onClick={() => { setText(""); setMode("note"); }}>
+              <button className="btn sm" disabled={!agent || busy} title={title} onClick={() => start("note")}>
                 Add internal note
               </button>
             </div>
@@ -421,7 +502,7 @@ function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => v
     const s = q.trim().replace(/[%,()]/g, "");
     const t = setTimeout(async () => {
       if (s.length < 2) return setFound([]);
-      const { data } = await supabase().from("profiles").select("id, full_name, phone").eq("role", "customer").or(`full_name.ilike.%${s}%,phone.ilike.%${s}%`).order("full_name").limit(8);
+      const { data } = await supabase().from("profiles").select("id, full_name, phone").in("role", ["customer", "business"]).or(`full_name.ilike.%${s}%,phone.ilike.%${s}%`).order("full_name").limit(8);
       setFound((data ?? []) as Caller[]);
     }, 250);
     return () => clearTimeout(t);
@@ -530,14 +611,17 @@ function QualityTab({ cases, slas }: { cases: Case[]; slas: Sla[] }) {
   const [rated, setRated] = useState<Rated[] | null>(null);
   const [drivers, setDrivers] = useState<Map<string, { name: string; company: string }>>(new Map());
   const [driverCats, setDriverCats] = useState<Map<string, string[]>>(new Map());
+  const [reopened, setReopened] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const db = supabase();
     const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-    const [r, cx] = await Promise.all([
+    const [r, cx, ro] = await Promise.all([
       db.from("orders").select("driver_id, rating").eq("is_test", false).not("rating", "is", null).not("driver_id", "is", null).gte("rated_at", since).limit(5000),
       db.from("complaints").select("category, order:orders(driver_id)").not("order_id", "is", null).limit(2000),
+      db.from("audit_log").select("target_id").eq("action", "complaint.reopen").limit(5000),
     ]);
+    setReopened(new Set(((ro.data ?? []) as { target_id: string }[]).map((x) => x.target_id)).size);
     const rows = (r.data ?? []) as Rated[];
     setRated(rows);
     const cm = new Map<string, string[]>();
@@ -591,7 +675,12 @@ function QualityTab({ cases, slas }: { cases: Case[]; slas: Sla[] }) {
         <Kpi label="Average driver rating, 30 days" value={avg == null ? "—" : `${avg.toFixed(1)} ★`} sub={`${rated?.length ?? 0} rated deliveries`} tone={avg != null && avg >= 4.5 ? "ok" : ""} />
         <Kpi label="Average resolution time" value={avgRes == null ? "—" : `${avgRes.toFixed(1)} h`} sub={`${resolved.length} resolved cases`} />
         <Kpi label="Resolved within SLA" value={pct(inSla, resolved.length)} sub="target 92%" tone={resolved.length && inSla / resolved.length >= 0.92 ? "ok" : "warn"} />
-        <Kpi label="Refunded on cases" value={`${n3(cases.reduce((a, c) => a + Number(c.refund_amount), 0))}`} sub="OMR to customer wallets" />
+        <Kpi
+          label="Reopened"
+          value={reopened == null ? "—" : pct(reopened, Math.max(resolved.length, reopened))}
+          sub={`${reopened ?? 0} cases reopened · ${n3(cases.reduce((a, c) => a + Number(c.refund_amount), 0))} OMR refunded`}
+          tone={reopened != null && resolved.length && reopened / resolved.length > 0.1 ? "warn" : ""}
+        />
       </div>
       <div className="grid2">
         <div className="panel">
@@ -641,7 +730,7 @@ function SlaTab({ slas }: { slas: Sla[] }) {
     <div className="grid2">
       <div className="panel">
         <h2>
-          Resolution SLA by category <small>changed in Settings</small>
+          Resolution SLA by category <small>escalation is manual: the guideline is half the SLA</small>
         </h2>
         <div className="tblwrap">
           <table>
@@ -650,7 +739,7 @@ function SlaTab({ slas }: { slas: Sla[] }) {
                 <th>Category</th>
                 <th className="num">Hours</th>
                 <th>Owner team</th>
-                <th>First escalation</th>
+                <th>First escalation (guideline)</th>
               </tr>
             </thead>
             <tbody>

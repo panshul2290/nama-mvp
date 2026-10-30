@@ -16,15 +16,15 @@ import type { OrderStatus } from "@/lib/types";
 type Segment = "household" | "commercial" | "government" | "farm";
 type Customer = {
   id: string; full_name: string; phone: string | null; segment: Segment; id_type: string | null; id_no: string | null; id_verified: boolean;
-  account_blocked: boolean; lang: string; loyalty_points: number; created_at: string;
+  account_blocked: boolean; lang: string; loyalty_points: number; created_at: string; role: "customer" | "business"; org_id: string | null; share_usage: boolean | null;
 };
 // id_type, id_no and loyalty_points are private columns: staff read them through staff_private_profiles().
-type Private = { id: string; id_type: string | null; id_no: string | null; loyalty_points: number };
-type PublicCustomer = Omit<Customer, "id_type" | "id_no" | "loyalty_points">;
-const PUBLIC_COLS = "id, full_name, phone, segment, id_verified, account_blocked, lang, created_at";
+type Private = { id: string; id_type: string | null; id_no: string | null; loyalty_points: number; share_usage: boolean | null };
+type PublicCustomer = Omit<Customer, "id_type" | "id_no" | "loyalty_points" | "share_usage">;
+const PUBLIC_COLS = "id, full_name, phone, segment, id_verified, account_blocked, lang, created_at, role, org_id";
 function withPrivate(rows: PublicCustomer[], priv: Private[] | null): Customer[] {
   const m = new Map((priv ?? []).map((p) => [p.id, p]));
-  return rows.map((r) => ({ ...r, id_type: m.get(r.id)?.id_type ?? null, id_no: m.get(r.id)?.id_no ?? null, loyalty_points: m.get(r.id)?.loyalty_points ?? 0 }));
+  return rows.map((r) => ({ ...r, id_type: m.get(r.id)?.id_type ?? null, id_no: m.get(r.id)?.id_no ?? null, loyalty_points: m.get(r.id)?.loyalty_points ?? 0, share_usage: m.get(r.id)?.share_usage ?? null }));
 }
 type Org = {
   id: string; name: string; cr_no: string; segment: string; credit_limit: string; terms_days: number; approval_limit: string; invoicing: string;
@@ -41,7 +41,9 @@ type Contract = {
 type Notif = { id: number; event: string; channels: string[]; title: string; created_at: string; read_at: string | null; user: { full_name: string } | { full_name: string }[] | null };
 
 const SEGMENTS: Segment[] = ["household", "commercial", "government", "farm"];
-const SEG_LABEL: Record<string, string> = { household: "Household", commercial: "Commercial", government: "Government", farm: "Farm", industrial: "Industrial" };
+const SEG_LABEL: Record<string, string> = { household: "Residential", commercial: "Commercial", government: "Government", farm: "Farm", industrial: "Industrial" };
+/** Short customer reference for calls and exports (the prototype's C-1001 style). */
+const custRef = (id: string) => `C-${id.slice(0, 6).toUpperCase()}`;
 const ID_LABEL: Record<string, string> = { civil_id: "Civil ID", resident_card: "Resident card", passport: "Passport" };
 const CONTRACT_TONE: Record<string, string> = { active: "ok", pending_owner: "warn", paused: "warn", ended: "", declined: "bad" };
 const CONTRACT_LABEL: Record<string, string> = { active: "Active", pending_owner: "Pending owner", paused: "Paused", ended: "Ended", declined: "Declined" };
@@ -78,11 +80,10 @@ function Customers() {
   const load = useCallback(async () => {
     const db = supabase();
     const nowIso = new Date().toISOString();
-    const [c, priv, w, o, g, ao, inv, k, n] = await Promise.all([
-      db.from("profiles").select(PUBLIC_COLS).eq("role", "customer").order("created_at", { ascending: false }),
+    const [c, priv, w, g, ao, inv, k] = await Promise.all([
+      db.from("profiles").select(PUBLIC_COLS).in("role", ["customer", "business"]).order("created_at", { ascending: false }),
       db.rpc("staff_private_profiles", { p_ids: null }),
-      db.from("wallet_tx").select("customer_id, amount"),
-      db.from("orders").select("customer_id").limit(10000),
+      db.rpc("staff_customer_stats"),
       db.from("organizations").select("*").order("name"),
       db.from("orders").select("org_id, total").not("org_id", "is", null).eq("billing", "account").eq("is_test", false).is("invoice_id", null).neq("status", "cancelled"),
       db.from("invoices").select("org_id, total, status, due_at").neq("status", "paid"),
@@ -90,15 +91,12 @@ function Customers() {
         .from("contracts")
         .select("id, contract_no, service_type, gallons, frequency, plan, slot, start_date, end_date, monthly_est, status, customer_id, customer:profiles(full_name), org:organizations(name), company:companies(name), property:properties(label, area)")
         .order("created_at", { ascending: false }),
-      db.from("notifications").select("id, event, channels, title, created_at, read_at, user:profiles(full_name)").order("created_at", { ascending: false }).limit(200),
     ]);
     setCustomers(withPrivate((c.data ?? []) as PublicCustomer[], priv.data as Private[] | null));
-    const wm = new Map<string, number>();
-    for (const r of (w.data ?? []) as { customer_id: string; amount: string }[]) wm.set(r.customer_id, (wm.get(r.customer_id) ?? 0) + Number(r.amount));
-    setWallet(wm);
-    const om = new Map<string, number>();
-    for (const r of (o.data ?? []) as { customer_id: string }[]) om.set(r.customer_id, (om.get(r.customer_id) ?? 0) + 1);
-    setOrderCount(om);
+    // Wallet and order counts come from one RPC (a plain select would stop at 1000 rows).
+    const stats = (w.data ?? []) as { customer_id: string; wallet: string; orders: number }[];
+    setWallet(new Map(stats.map((s) => [s.customer_id, Number(s.wallet)])));
+    setOrderCount(new Map(stats.map((s) => [s.customer_id, s.orders])));
     setOrgs((g.data ?? []) as Org[]);
     const um = new Map<string, { used: number; overdue: number; uninvoiced: number }>();
     const get = (id: string) => um.get(id) ?? (um.set(id, { used: 0, overdue: 0, uninvoiced: 0 }), um.get(id)!);
@@ -114,14 +112,19 @@ function Customers() {
     }
     setOrgUse(um);
     setContracts((k.data ?? []) as unknown as Contract[]);
-    setNotifs((n.data ?? []) as unknown as Notif[]);
+  }, []);
+  // A new notification only refreshes the log, not every customer figure.
+  const loadNotifs = useCallback(async () => {
+    const { data } = await supabase().from("notifications").select("id, event, channels, title, created_at, read_at, user:profiles(full_name)").order("created_at", { ascending: false }).limit(200);
+    setNotifs((data ?? []) as unknown as Notif[]);
   }, []);
 
   useEffect(() => {
-    const t = setTimeout(load, 0);
+    const t = setTimeout(() => void Promise.all([load(), loadNotifs()]), 0);
     return () => clearTimeout(t);
-  }, [load]);
-  useRealtime("nws-customers", ["notifications"], load, 1500);
+  }, [load, loadNotifs]);
+  useRealtime("nws-customers", ["notifications"], loadNotifs, 1500);
+  const orgName = useMemo(() => new Map((orgs ?? []).map((o) => [o.id, o.name])), [orgs]);
 
   return (
     <>
@@ -141,7 +144,7 @@ function Customers() {
         value={tab}
         onChange={setTab}
       />
-      {tab === "cust" && <CustomersTab customers={customers} wallet={wallet} orderCount={orderCount} contracts={contracts ?? []} onOpen={setSel} />}
+      {tab === "cust" && <CustomersTab customers={customers} orgName={orgName} wallet={wallet} orderCount={orderCount} contracts={contracts ?? []} onOpen={setSel} />}
       {tab === "b2b" && <OrgsTab orgs={orgs} use={orgUse} reload={load} />}
       {tab === "contracts" && <ContractsTab contracts={contracts} />}
       {tab === "notif" && <NotifTab notifs={notifs} />}
@@ -152,24 +155,29 @@ function Customers() {
 
 function CustomersTab({
   customers,
+  orgName,
   wallet,
   orderCount,
   contracts,
   onOpen,
 }: {
   customers: Customer[] | null;
+  orgName: Map<string, string>;
   wallet: Map<string, number>;
   orderCount: Map<string, number>;
   contracts: Contract[];
   onOpen: (id: string) => void;
 }) {
+  const { staff } = useStaff();
+  // Read-only staff (BI) don't take ID numbers out in exports.
+  const readOnly = staff.staff_role === "viewer";
   const [seg, setSeg] = useState<Segment | "all">("all");
   const [q, setQ] = useState("");
   const all = useMemo(() => customers ?? [], [customers]);
   const list = all.filter((c) => {
     if (seg !== "all" && c.segment !== seg) return false;
     const s = q.trim().toLowerCase();
-    return !s || c.full_name.toLowerCase().includes(s) || (c.phone ?? "").replace(/\s/g, "").includes(s.replace(/\s/g, ""));
+    return !s || c.full_name.toLowerCase().includes(s) || custRef(c.id).toLowerCase().includes(s) || (c.phone ?? "").replace(/\s/g, "").includes(s.replace(/\s/g, ""));
   });
   const verified = all.filter((c) => c.id_verified).length;
   const withBalance = all.filter((c) => (wallet.get(c.id) ?? 0) > 0).length;
@@ -193,13 +201,13 @@ function CustomersTab({
             ))}
           </div>
           <div className="filters">
-            <input className="in" placeholder="Search name or mobile" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search customers" style={{ width: 210 }} />
+            <input className="in" placeholder="Search name, reference or mobile" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search customers" style={{ width: 210 }} />
             <button
               className="btn sm"
               onClick={() =>
                 downloadCsv("customers", [
-                  ["Name", "Segment", "ID type", "ID number", "ID verified", "Mobile", "Wallet (OMR)", "Orders", "Status"],
-                  ...list.map((c) => [c.full_name, c.segment, c.id_type, c.id_no, c.id_verified ? "yes" : "no", c.phone, n3(wallet.get(c.id)), orderCount.get(c.id) ?? 0, c.account_blocked ? "Blocked" : "Active"]),
+                  ["Reference", "Name", "Account", "Segment", "ID type", "ID number", "ID verified", "Mobile", "Wallet (OMR)", "Orders", "Status"],
+                  ...list.map((c) => [custRef(c.id), c.full_name, c.role === "business" ? `Business (B2B) ${orgName.get(c.org_id ?? "") ?? ""}`.trim() : "Customer", SEG_LABEL[c.segment] ?? c.segment, c.id_type, readOnly ? "(hidden)" : c.id_no, c.id_verified ? "yes" : "no", c.phone, n3(wallet.get(c.id)), orderCount.get(c.id) ?? 0, c.account_blocked ? "Blocked" : "Active"]),
                 ])
               }
             >
@@ -231,7 +239,10 @@ function CustomersTab({
                 <tr key={c.id} className="click" onClick={() => onOpen(c.id)}>
                   <td>
                     <b>{c.full_name || "Unnamed customer"}</b>
-                    <small style={{ display: "block" }}>joined {fmtDate(c.created_at)}</small>
+                    <small style={{ display: "block" }}>
+                      {custRef(c.id)} · joined {fmtDate(c.created_at)}
+                      {c.role === "business" && ` · B2B${c.org_id && orgName.get(c.org_id) ? ` · ${orgName.get(c.org_id)}` : ""}`}
+                    </small>
                   </td>
                   <td>{SEG_LABEL[c.segment] ?? c.segment}</td>
                   <td>
@@ -253,7 +264,7 @@ function CustomersTab({
 }
 
 type Detail = {
-  props: { id: string; label: string; address: string; area: string; tank_gal: number }[];
+  props: { id: string; label: string; address: string; area: string; tank_gal: number; interval: number | null; next: string | null }[];
   orders: { id: string; order_no: number; service_type: ServiceType; gallons: number; status: OrderStatus; total: string; created_at: string }[];
   contracts: { id: string; contract_no: number; service_type: ServiceType; gallons: number; frequency: string; status: string }[];
   complaints: { id: string; case_no: number; category: string; state: string; created_at: string }[];
@@ -269,7 +280,7 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
 
   const load = useCallback(async () => {
     const db = supabase();
-    const [p, priv, pr, o, k, x, t] = await Promise.all([
+    const [p, priv, pr, o, k, x, t, dv] = await Promise.all([
       db.from("profiles").select(PUBLIC_COLS).eq("id", id).maybeSingle(),
       db.rpc("staff_private_profiles", { p_ids: [id] }),
       db.from("properties").select("id, label, address, area, tank_gal").eq("customer_id", id).order("created_at"),
@@ -277,10 +288,21 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
       db.from("contracts").select("id, contract_no, service_type, gallons, frequency, status").eq("customer_id", id).order("created_at", { ascending: false }),
       db.from("complaints").select("id, case_no, category, state, created_at").eq("customer_id", id).order("created_at", { ascending: false }),
       db.from("wallet_tx").select("id, kind, amount, memo, created_at").eq("customer_id", id).order("created_at", { ascending: false }).limit(50),
+      db.from("orders").select("property_id, delivered_at").eq("customer_id", id).eq("status", "delivered").not("property_id", "is", null).order("delivered_at").limit(500),
     ]);
+    // Usual interval = average days between deliveries to the property; next refill = last + interval.
+    const byProp = new Map<string, number[]>();
+    for (const r of (dv.data ?? []) as { property_id: string; delivered_at: string | null }[])
+      if (r.delivered_at) byProp.set(r.property_id, [...(byProp.get(r.property_id) ?? []), Date.parse(r.delivered_at)]);
+    const cadence = (pid: string) => {
+      const ts = byProp.get(pid) ?? [];
+      if (ts.length < 2) return { interval: null, next: null };
+      const days = (ts[ts.length - 1] - ts[0]) / 86_400_000 / (ts.length - 1);
+      return { interval: Math.max(1, Math.round(days)), next: new Date(ts[ts.length - 1] + days * 86_400_000).toISOString() };
+    };
     setC(p.data ? withPrivate([p.data as PublicCustomer], priv.data as Private[] | null)[0] : null);
     setD({
-      props: (pr.data ?? []) as Detail["props"],
+      props: ((pr.data ?? []) as Omit<Detail["props"][number], "interval" | "next">[]).map((x) => ({ ...x, ...cadence(x.id) })),
       orders: (o.data ?? []) as Detail["orders"],
       contracts: (k.data ?? []) as Detail["contracts"],
       complaints: (x.data ?? []) as Detail["complaints"],
@@ -316,7 +338,7 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
               <div>
                 <h1>{c.full_name || "Unnamed customer"}</h1>
                 <p>
-                  {SEG_LABEL[c.segment]} · joined {fmtDate(c.created_at)} · <St tone={c.account_blocked ? "bad" : "ok"}>{c.account_blocked ? "Blocked" : "Active"}</St>
+                  {custRef(c.id)} · {SEG_LABEL[c.segment]} · joined {fmtDate(c.created_at)} · <St tone={c.account_blocked ? "bad" : "ok"}>{c.account_blocked ? "Blocked" : "Active"}</St>
                 </p>
               </div>
               <button className="btn" onClick={onClose}>Close</button>
@@ -335,6 +357,10 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                 <dd>{c.lang === "ar" ? "Arabic" : "English"}</dd>
                 <dt>Wallet</dt>
                 <dd>{omr3(wallet)} · {c.loyalty_points.toLocaleString()} loyalty points</dd>
+                <dt>Consents</dt>
+                <dd>Usage data sharing {c.share_usage ? "on" : "off"}</dd>
+                <dt>Account</dt>
+                <dd>{c.role === "business" ? "Business portal member (B2B)" : "Customer app"}</dd>
               </dl>
               <div className="pad btns">
                 <button className="btn" disabled={!canGood} title={canGood ? undefined : "Complaints agents, finance and admins only"} onClick={() => setDlg("goodwill")}>
@@ -348,9 +374,6 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                     Verify ID
                   </button>
                 )}
-                <button className="btn" disabled title="Impersonation isn't available in this pilot">
-                  Open as customer
-                </button>
               </div>
             </div>
 
@@ -360,12 +383,19 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                   <h2>Properties <small>{d?.props.length ?? 0}</small></h2>
                   <div className="tblwrap">
                     <table>
+                      <thead>
+                        <tr><th>Profile and address</th><th className="num">Tank</th><th>Usual interval</th></tr>
+                      </thead>
                       <tbody>
-                        {d?.props.length === 0 && <tr><td className="mut">No saved properties.</td></tr>}
+                        {d?.props.length === 0 && <tr><td colSpan={3} className="mut">No saved properties.</td></tr>}
                         {d?.props.map((p) => (
                           <tr key={p.id}>
                             <td><b>{p.label}</b><small style={{ display: "block" }}>{[p.address, p.area].filter(Boolean).join(" · ") || "—"}</small></td>
                             <td className="num">{p.tank_gal.toLocaleString()} gal</td>
+                            <td>
+                              {p.interval ? `Every ~${p.interval} days` : <span className="mut">Not enough deliveries</span>}
+                              {p.next && <small style={{ display: "block" }}>Next refill ≈ {fmtDate(p.next)}</small>}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -656,7 +686,7 @@ function NotifTab({ notifs }: { notifs: Notif[] | null }) {
             {notifs?.length === 0 && (
               <tr>
                 <td colSpan={6} className="empty">
-                  No notifications visible. Staff can only read notifications once the database grants a staff read policy on the notifications table.
+                  No notifications sent yet.
                 </td>
               </tr>
             )}

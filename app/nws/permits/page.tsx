@@ -3,9 +3,10 @@
 import "../ops.css";
 import { useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { DAY, Modal, n3, one, St, Tabs, useNow, useRpc, useSignedUrl, SERVICE_NAME } from "@/components/nws/ops";
+import { DAY, Modal, n3, one, St, Tabs, useNow, useRealtime, useRpc, useSignedUrl, SERVICE_NAME } from "@/components/nws/ops";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { Loading } from "@/components/Shell";
+import { friendlyError } from "@/lib/errors";
 import { supabase } from "@/lib/supabase/client";
 import type { ServiceType } from "@/lib/pricing";
 
@@ -24,6 +25,7 @@ type TankerRef = { id: string; plate: string; service_type: ServiceType; capacit
 type PermitRow = {
   id: string; permit_no: string; type: ServiceType; issued_at: string; expires_at: string; status: Status; effective_status: Status;
   stage: Stage; info_requested: string | null; reviewed_at: string | null; reason: string | null; created_at: string;
+  info_response: string | null; info_responded_at: string | null; reminded_at: string | null;
   /** Set for applications from an owner or driver; null for permits a permit officer created directly. */
   applied_by: string | null;
   tanker: TankerRef | TankerRef[] | null;
@@ -36,11 +38,11 @@ type Penalty = {
   id: string; penalty_no: number; rule_code: string; amount: string; reason: string; evidence: string; state: "issued" | "disputed" | "upheld" | "cancelled";
   dispute_text: string | null; created_at: string;
   tanker: { plate: string } | { plate: string }[] | null; company: Named; order: { order_no: number } | { order_no: number }[] | null;
-  rule: { label: string } | { label: string }[] | null;
+  rule: { label: string; party: string } | { label: string; party: string }[] | null;
 };
 type Rule = { code: string; label: string; party: string; amount: string; amount_kind: string; active: boolean };
 type Inspection = {
-  id: string; tanker_id: string; permit_id: string | null; result: "scheduled" | "pass" | "fail"; notes: string; scheduled_for: string | null; created_at: string;
+  id: string; tanker_id: string; permit_id: string | null; inspector_id: string | null; result: "scheduled" | "pass" | "fail"; notes: string; scheduled_for: string | null; created_at: string;
   tanker: { plate: string; service_type: ServiceType } | { plate: string; service_type: ServiceType }[] | null;
   permit: { permit_no: string } | { permit_no: string }[] | null;
   inspector: { full_name: string } | { full_name: string }[] | null;
@@ -68,9 +70,29 @@ const DOC_LABEL: Record<string, string> = {
 const PEN_TONE: Record<Penalty["state"], string> = { issued: "warn", disputed: "bad", upheld: "ok", cancelled: "" };
 const PEN_LABEL: Record<Penalty["state"], string> = { issued: "Open", disputed: "Disputed", upheld: "Upheld", cancelled: "Cancelled" };
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+const CHECKLIST: [keyof Checklist, string][] = [["tank_hygiene", "Tank hygiene"], ["valves", "Valves and hoses"], ["ivms_seal", "IVMS seal intact"], ["ppe", "Driver PPE"]];
+type Checklist = { tank_hygiene: boolean; valves: boolean; ivms_seal: boolean; ppe: boolean };
+const ALL_OK: Checklist = { tank_hygiene: true, valves: true, ivms_seal: true, ppe: true };
+// Labels match permit_missing_documents (0023), so the missing ones come pre-ticked.
+const ASK_KINDS = ["Mulkiya", "Insurance", "Water test", "Tank cleanliness certificate", "ROP vehicle inspection", "IVMS installation certificate", "Driver heavy-vehicle licence"];
+
+/** The inspector ticks each item; a pass needs every item ticked. */
+function ChecklistFields({ value, onChange }: { value: Checklist; onChange: (v: Checklist) => void }) {
+  return (
+    <fieldset className="fld" style={{ border: 0, padding: 0, margin: "0 0 10px" }}>
+      <legend style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>Checklist</legend>
+      {CHECKLIST.map(([k, l]) => (
+        <label key={k} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, padding: "2px 0" }}>
+          <input type="checkbox" checked={value[k]} onChange={(e) => onChange({ ...value, [k]: e.target.checked })} /> {l}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 
 function Permits() {
-  const { can, toast } = useStaff();
+  const { can, toast, staff } = useStaff();
   const params = useSearchParams();
   const now = useNow(60_000);
   const run = useRpc();
@@ -98,7 +120,11 @@ function Permits() {
   const [checks, setChecks] = useState<AutoCheck[] | null>(null);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [dlg, setDlg] = useState<Dlg>(null);
-  const [reminded, setReminded] = useState<Set<string>>(new Set());
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [askKinds, setAskKinds] = useState<string[]>([]);
+  const [missingDocs, setMissingDocs] = useState<string[] | null>(null);
+  const [checklist, setChecklist] = useState<Checklist>(ALL_OK);
+  const [kind, setKind] = useState<"all" | "renewal" | "new">("all");
   const [creating, setCreating] = useState(false);
   const [newExpiry, setNewExpiry] = useState("");
   const [form, setForm] = useState(() => ({ tanker: "", permit_no: "", type: "DW" as ServiceType, issued: isoDay(new Date()), expires: isoDay(new Date(Date.now() + 365 * DAY)) }));
@@ -111,19 +137,19 @@ function Permits() {
       db
         .from("permits")
         .select(
-          "id, permit_no, type, issued_at, expires_at, status, effective_status, stage, info_requested, reviewed_at, reason, created_at, applied_by, tanker:tankers(id, plate, service_type, capacity_gal, company:companies(name)), reviewer:profiles!permits_reviewed_by_fkey(full_name)",
+          "id, permit_no, type, issued_at, expires_at, status, effective_status, stage, info_requested, info_response, info_responded_at, reminded_at, reviewed_at, reason, created_at, applied_by, tanker:tankers(id, plate, service_type, capacity_gal, company:companies(name)), reviewer:profiles!permits_reviewed_by_fkey(full_name)",
         )
         .order("created_at", { ascending: false }),
       db.from("tankers").select("id, plate, service_type, capacity_gal, company_id, company:companies(name)").order("plate"),
       db
         .from("penalties")
-        .select("id, penalty_no, rule_code, amount, reason, evidence, state, dispute_text, created_at, tanker:tankers(plate), company:companies(name), order:orders(order_no), rule:penalty_rules(label)")
+        .select("id, penalty_no, rule_code, amount, reason, evidence, state, dispute_text, created_at, tanker:tankers(plate), company:companies(name), order:orders(order_no), rule:penalty_rules(label, party)")
         .order("created_at", { ascending: false })
         .limit(300),
       db.from("penalty_rules").select("code, label, party, amount, amount_kind, active").order("code"),
       db
         .from("inspections")
-        .select("id, tanker_id, permit_id, result, notes, scheduled_for, created_at, tanker:tankers(plate, service_type), permit:permits(permit_no), inspector:profiles(full_name)")
+        .select("id, tanker_id, permit_id, inspector_id, result, notes, scheduled_for, created_at, tanker:tankers(plate, service_type), permit:permits(permit_no), inspector:profiles(full_name)")
         .order("created_at", { ascending: false })
         .limit(200),
       db.from("companies").select("id, name, cr_no, phone, rating, since, status, created_at").order("name"),
@@ -131,7 +157,9 @@ function Permits() {
     const list = (p.data ?? []) as unknown as PermitRow[];
     setRows(list);
     setTankers((t.data ?? []) as unknown as (TankerRef & { company_id: string | null })[]);
-    setPenalties((pe.data ?? []) as unknown as Penalty[]);
+    // Tanker enforcement only: customer and business penalties (late cancel, overdue) live elsewhere.
+    setPenalties(((pe.data ?? []) as unknown as Penalty[]).filter((x) => (one(x.rule)?.party ?? "driver") === "driver"));
+    setLoadErr(p.error ? friendlyError(p.error) : null);
     setRules((r.data ?? []) as Rule[]);
     setInspections((i.data ?? []) as unknown as Inspection[]);
     setCompanies((c.data ?? []) as Company[]);
@@ -145,6 +173,7 @@ function Permits() {
     const t = setTimeout(load, 0);
     return () => clearTimeout(t);
   }, [load]);
+  useRealtime("nws-permits", ["permits", "inspections", "tanker_documents"], load, 1500);
 
   const selected = rows?.find((p) => p.id === sel) ?? null;
   const selTanker = one(selected?.tanker);
@@ -155,7 +184,7 @@ function Permits() {
     const db = supabase();
     const tid = rows?.find((p) => p.id === sel) ? one(rows.find((p) => p.id === sel)!.tanker)?.id : null;
     const drv = tid ? (await db.from("tanker_assignments").select("driver_id").eq("tanker_id", tid).is("unassigned_at", null).maybeSingle()).data?.driver_id : null;
-    const [d, c, a] = await Promise.all([
+    const [d, c, a, m] = await Promise.all([
       tid
         ? db
             .from("tanker_documents")
@@ -165,7 +194,9 @@ function Permits() {
         : Promise.resolve({ data: [] }),
       db.rpc("permit_auto_checks", { p_permit_id: sel }),
       db.from("audit_log").select("id, at, action, actor_email, reason").eq("target_type", "permit").eq("target_id", sel).order("at"),
+      db.rpc("permit_missing_documents", { p_permit_id: sel }),
     ]);
+    setMissingDocs(Array.isArray(m.data) ? (m.data as string[]) : null);
     setDocs((d.data ?? []) as Doc[]);
     setChecks(Array.isArray(c.data) ? (c.data as AutoCheck[]) : []);
     setAudit((a.data ?? []) as Audit[]);
@@ -185,13 +216,28 @@ function Permits() {
   }
 
   const daysLeft = useCallback((iso: string) => Math.ceil((Date.parse(iso) - now) / DAY), [now]);
+  // A renewal is an application for a tanker that already had an approved permit.
+  const isRenewal = useCallback(
+    (p: PermitRow) => (rows ?? []).some((x) => x.id !== p.id && one(x.tanker)?.id === one(p.tanker)?.id && x.status === "approved" && x.created_at < p.created_at),
+    [rows],
+  );
   const apps = useMemo(
-    () => (rows ?? []).filter((p) => (appFilter === "pending" ? p.status === "pending" : appFilter === "all" ? true : p.effective_status === appFilter)),
-    [rows, appFilter],
+    () =>
+      (rows ?? [])
+        .filter((p) => (appFilter === "pending" ? p.status === "pending" : appFilter === "all" ? true : p.effective_status === appFilter))
+        .filter((p) => kind === "all" || (kind === "renewal") === isRenewal(p)),
+    [rows, appFilter, kind, isRenewal],
   );
   const pending = (rows ?? []).filter((p) => p.status === "pending");
-  const expiring = (rows ?? [])
-    .filter((p) => p.status === "approved" && daysLeft(p.expires_at) <= 60 && daysLeft(p.expires_at) > -30)
+  // Latest approved permit per tanker only (a renewed tanker drops off), with any renewal in review.
+  const latestApproved = new Map<string, PermitRow>();
+  for (const p of rows ?? []) {
+    const tid = one(p.tanker)?.id;
+    if (tid && p.status === "approved" && (!latestApproved.has(tid) || latestApproved.get(tid)!.expires_at < p.expires_at)) latestApproved.set(tid, p);
+  }
+  const renewalPending = (p: PermitRow) => pending.some((x) => one(x.tanker)?.id === one(p.tanker)?.id);
+  const expiring = [...latestApproved.values()]
+    .filter((p) => daysLeft(p.expires_at) <= 60 && daysLeft(p.expires_at) > -30)
     .sort((a, b) => a.expires_at.localeCompare(b.expires_at));
   const openPen = penalties.filter((p) => p.state === "issued" || p.state === "disputed");
   const penList = penalties.filter((p) => (penFilter === "open" ? p.state === "issued" || p.state === "disputed" : penFilter === "all" ? true : p.state === penFilter));
@@ -232,10 +278,20 @@ function Permits() {
     return inspections.some((i) => i.tanker_id === tankerId && i.result === "pass" && (i.permit_id === p.id || i.created_at >= p.created_at));
   };
   const approvable = (p: PermitRow) => p.stage === "decision" && (!p.applied_by || passedInspection(p));
+  // Separation of duties (0023): whoever recorded the passed inspection can't also approve.
+  const ownPass = (p: PermitRow) =>
+    !!p.applied_by && inspections.some((i) => i.tanker_id === one(p.tanker)?.id && i.result === "pass" && (i.permit_id === p.id || i.created_at >= p.created_at) && i.inspector_id === staff.id);
 
   async function advance(p: PermitRow) {
-    const next: Record<Stage, string | null> = { submitted: "documents", documents: "inspection", inspection: null, decision: null };
-    if (p.stage === "inspection") return setDlg({ k: "pass" });
+    const next: Record<Stage, string | null> = { submitted: "documents", documents: "inspection", inspection: "decision", decision: null };
+    if (p.stage === "inspection" && !passedInspection(p)) {
+      setChecklist(ALL_OK);
+      return setDlg({ k: "pass" });
+    }
+    if (p.stage === "inspection") {
+      if (!(await rpc("staff_permit_stage", { p_permit_id: p.id, p_stage: "decision", p_note: null }, `${p.permit_no}: ready for decision`))) await load();
+      return;
+    }
     const ok =
       p.stage === "decision"
         ? await rpc("staff_review_permit", { p_permit_id: p.id, p_decision: "approve", p_reason: null }, `${p.permit_no} approved and issued — the owner is notified`)
@@ -245,6 +301,8 @@ function Permits() {
 
   const permInsp = selected ? inspections.filter((i) => i.permit_id === selected.id) : [];
   const lastInsp = permInsp[0] ?? null;
+  const booked = selected ? (inspections.find((i) => i.result === "scheduled" && i.tanker_id === one(selected.tanker)?.id) ?? null) : null;
+  const docsBlocked = selected?.stage === "documents" && (missingDocs?.length ?? 0) > 0;
   const stageIdx = selected ? (selected.status === "approved" ? 5 : STAGE_IDX[selected.stage] ?? 0) : 0;
   const offTitle = officer ? undefined : "Permit officers only";
 
@@ -289,7 +347,7 @@ function Permits() {
           {creating && officer && (
             <form className="panel" onSubmit={create}>
               <h2>New permit <small>starts as a submitted application; take it through the review to issue it</small></h2>
-              <div className="pad" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr)) auto", gap: 12, alignItems: "end" }}>
+              <div className="pad" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, alignItems: "end" }}>
                 <div className="fld" style={{ margin: 0 }}>
                   <label htmlFor="pt">Tanker</label>
                   <select id="pt" className="in" required value={form.tanker} onChange={(e) => setForm({ ...form, tanker: e.target.value, type: tankers.find((t) => t.id === e.target.value)?.service_type ?? form.type })}>
@@ -341,8 +399,25 @@ function Permits() {
                   </button>
                 ))}
               </div>
+              <div className="chips">
+                {(
+                  [
+                    ["all", "All kinds"],
+                    ["renewal", "Renewals"],
+                    ["new", "New permits"],
+                  ] as const
+                ).map(([k, l]) => (
+                  <button key={k} className={`chip ${kind === k ? "on" : ""}`} onClick={() => setKind(k)}>
+                    {l}
+                  </button>
+                ))}
+              </div>
               {!rows && <div className="empty">Loading…</div>}
-              {rows && apps.length === 0 && <div className="empty">{appFilter === "pending" ? "No applications waiting for review." : "No permits."}</div>}
+              {loadErr && <div className="banner badb">Couldn’t load permits: {loadErr}</div>}
+              {rows && !loadErr && params.get("tanker") && !rows.some((x) => one(x.tanker)?.id === params.get("tanker")) && (
+                <div className="banner">No permit or application on file for this tanker.</div>
+              )}
+              {rows && !loadErr && apps.length === 0 && <div className="empty">{appFilter === "pending" ? "No applications waiting for review." : "No permits."}</div>}
               {apps.map((p) => {
                 const t = one(p.tanker);
                 return (
@@ -354,10 +429,10 @@ function Permits() {
                     <span style={{ fontWeight: 600, fontSize: 13.5 }}>{one(t?.company)?.name ?? "Independent operator"}</span>
                     <span className="row">
                       <span>
-                        <span className={`tag ${p.type}`}>{SERVICE_NAME[p.type]}</span> <small className="mut">{t?.plate ?? "—"}</small>
+                        <span className={`tag ${p.type}`}>{SERVICE_NAME[p.type]}</span> <small className="mut">{isRenewal(p) ? "Renewal" : "New permit"} · {t?.plate ?? "—"}</small>
                       </span>
                       {p.status === "pending" ? (
-                        <St tone={p.info_requested ? "warn" : "act"}>{p.info_requested ? "Info requested" : STAGE_LABEL[p.stage]}</St>
+                        <St tone={p.info_requested ? "warn" : "act"}>{p.info_requested ? "Info requested" : p.info_response ? "Owner replied" : STAGE_LABEL[p.stage]}</St>
                       ) : (
                         <St tone={TONE[p.effective_status]}>{LABEL[p.effective_status]}</St>
                       )}
@@ -377,20 +452,22 @@ function Permits() {
                       <div className="ttl">
                         <h2>{selected.permit_no}</h2>
                         {selected.status === "pending" ? (
-                          <St tone={selected.info_requested ? "warn" : "act"}>{selected.info_requested ? "Info requested" : STAGE_LABEL[selected.stage]}</St>
+                          <St tone={selected.info_requested ? "warn" : "act"}>{selected.info_requested ? "Info requested" : selected.info_response ? "Owner replied" : STAGE_LABEL[selected.stage]}</St>
                         ) : (
                           <St tone={TONE[selected.effective_status]}>{LABEL[selected.effective_status]}</St>
                         )}
                       </div>
                       <p>
-                        {selTanker?.plate ?? "—"} · {SERVICE_NAME[selected.type]} · {selTanker?.capacity_gal.toLocaleString() ?? "—"} gal
+                        {isRenewal(selected) ? "Renewal" : "New permit"} · {selTanker?.plate ?? "—"} · {SERVICE_NAME[selected.type]} · {selTanker?.capacity_gal.toLocaleString() ?? "—"} gal
                       </p>
                       <p style={{ color: "var(--ink)", fontWeight: 600 }}>{one(selTanker?.company)?.name ?? "Independent operator"}</p>
                     </div>
                     <small>
                       Submitted {fmtDateTime(selected.created_at)}
                       <br />
-                      Valid {fmtDate(selected.issued_at)} – {fmtDate(selected.expires_at)}
+                      {selected.applied_by ? "Online application (company portal or driver app)" : "Entered by NWS"}
+                      <br />
+                      {selected.status === "approved" || !selected.applied_by ? `Valid ${fmtDate(selected.issued_at)} – ${fmtDate(selected.expires_at)}` : "Valid 12 months from approval"}
                     </small>
                   </div>
 
@@ -406,7 +483,12 @@ function Permits() {
                     ))}
                   </div>
 
-                  {selected.info_requested && selected.status === "pending" && <div className="banner">Documents requested from the owner: {selected.info_requested}</div>}
+                  {selected.info_requested && selected.status === "pending" && <div className="banner">Waiting for the owner — requested: {selected.info_requested}</div>}
+                  {!selected.info_requested && selected.info_response && selected.status === "pending" && (
+                    <div className="banner info">
+                      <b>Owner replied {fmtDateTime(selected.info_responded_at)}:</b> {selected.info_response}
+                    </div>
+                  )}
                   {selTanker && selected.type !== selTanker.service_type && <div className="banner badb">This permit is for {selected.type}, but the tanker is {selTanker.service_type}: it doesn’t count.</div>}
                   {selected.status === "approved" && daysLeft(selected.expires_at) <= 30 && (
                     <div className="banner">{daysLeft(selected.expires_at) < 0 ? `Expired ${-daysLeft(selected.expires_at)} days ago.` : `Expires in ${daysLeft(selected.expires_at)} days.`} The tanker can’t go online without a renewal.</div>
@@ -416,6 +498,15 @@ function Permits() {
                     <div className="pv-box">
                       <h3>Documents</h3>
                       {docs.length === 0 && <div className="pv-r"><small>No documents on file for this tanker or its driver.</small></div>}
+                      {missingDocs?.map((m) => (
+                        <div key={m} className="pv-r">
+                          <span>
+                            <b>{m}</b>
+                            <small>Required — not on file, not approved or out of date</small>
+                          </span>
+                          <St tone="warn">Missing</St>
+                        </div>
+                      ))}
                       {docs.map((d) => (
                         <DocRow
                           key={d.id}
@@ -451,32 +542,42 @@ function Permits() {
                       <div><b>Inspection {lastInsp.result === "pass" ? "passed" : "failed"}</b><small>{fmtDateTime(lastInsp.created_at)} · {one(lastInsp.inspector)?.full_name ?? "Inspector"} · {lastInsp.notes || "no notes"}</small></div>
                       <St tone={lastInsp.result === "pass" ? "ok" : "bad"}>{lastInsp.result === "pass" ? "Passed" : "Failed"}</St>
                     </div>
+                  ) : selected.stage === "inspection" && booked ? (
+                    <div className="pv-ins">
+                      <div>
+                        <b>Field inspection {booked.scheduled_for ? `on ${fmtDate(booked.scheduled_for)}` : "booked"}</b>
+                        <small>{one(booked.inspector)?.full_name ?? "Inspector to be assigned"} · checklist: tank hygiene, valves, IVMS seal, PPE</small>
+                      </div>
+                      <St tone="act">Scheduled</St>
+                    </div>
                   ) : selected.stage === "inspection" ? (
-                    <div className="pv-ins"><div><b>Field inspection</b><small>Al Ghubrah filling station · checklist: tank hygiene, valves, IVMS seal, PPE</small></div><St tone="act">Scheduled</St></div>
+                    <div className="pv-ins"><div><b>Field inspection</b><small>No inspection booked for this tanker — book one from the Inspections tab.</small></div><St tone="warn">Not booked</St></div>
                   ) : (
-                    <div className="pv-ins"><div><b>Field inspection</b><small>Scheduled automatically once the document check is complete</small></div><St>Pending</St></div>
+                    <div className="pv-ins"><div><b>Field inspection</b><small>Booked automatically when the document check is complete</small></div><St>Pending</St></div>
                   )}
 
                   {selected.status === "pending" && (
                     <div className="pv-act">
                       <small>
-                        {selected.stage === "decision" && !approvable(selected)
+                        {docsBlocked
+                          ? `Missing: ${missingDocs!.join(", ")}. Request them from the owner or approve uploaded ones.`
+                          : selected.stage === "decision" && !approvable(selected)
                           ? "No passed inspection is recorded for this application, so it can’t be approved yet. Schedule an inspection from the Inspections tab."
                           : selected.stage === "decision"
-                          ? "All checks complete. Issuing notifies the owner and lets the tanker go online."
+                          ? "All checks complete. Issuing notifies the owner and lets the tanker go online. The inspector who passed the tanker can’t also approve."
                           : selected.stage === "inspection"
                             ? "Approval unlocks after the inspection result is recorded."
                             : "Each step is logged in the audit trail with your name."}
                       </small>
                       <div className="btns">
                         <button className="btn bad" disabled={!officer} title={offTitle} onClick={() => setDlg({ k: "reject" })}>Reject</button>
-                        <button className="btn" disabled={!officer} title={offTitle} onClick={() => setDlg({ k: "info" })}>Request documents</button>
+                        <button className="btn" disabled={!officer} title={offTitle} onClick={() => { setAskKinds(missingDocs ?? []); setDlg({ k: "info" }); }}>Request documents</button>
                         {selected.stage === "inspection" && (
-                          <button className="btn" disabled={!canInspect} onClick={() => setDlg({ k: "fail" })}>Record inspection: failed</button>
+                          <button className="btn" disabled={!canInspect} onClick={() => { setChecklist(ALL_OK); setDlg({ k: "fail" }); }}>Record inspection: failed</button>
                         )}
                         <button
                           className="btn pri"
-                          disabled={selected.stage === "inspection" ? !canInspect : !officer || (selected.stage === "decision" && !approvable(selected))}
+                          disabled={selected.stage === "inspection" ? !canInspect : !officer || docsBlocked || (selected.stage === "decision" && (!approvable(selected) || ownPass(selected)))}
                           title={
                             selected.stage === "inspection"
                               ? canInspect
@@ -484,11 +585,15 @@ function Permits() {
                                 : "Inspectors and permit officers"
                               : selected.stage === "decision" && !approvable(selected)
                                 ? "Needs a passed inspection"
-                                : offTitle
+                                : selected.stage === "decision" && ownPass(selected)
+                                  ? "You recorded the inspection — another officer approves"
+                                : docsBlocked
+                                  ? "Required documents are missing"
+                                  : offTitle
                           }
                           onClick={() => advance(selected)}
                         >
-                          {NEXT_LABEL[selected.stage]}
+                          {selected.stage === "inspection" && passedInspection(selected) ? "Move to decision" : NEXT_LABEL[selected.stage]}
                         </button>
                       </div>
                     </div>
@@ -541,16 +646,11 @@ function Permits() {
                       <td>{fmtDate(p.expires_at)}</td>
                       <td><St tone={dl < 0 ? "bad" : dl < 10 ? "warn" : "ok"}>{dl < 0 ? `Expired ${-dl} d ago` : `${dl} days`}</St></td>
                       <td>
-                        {reminded.has(p.id) ? (
-                          <St tone="ok">Reminder sent</St>
+                        {renewalPending(p) && <St tone="act">Renewal in review</St>}{" "}
+                        {p.reminded_at && now - Date.parse(p.reminded_at) < 3 * DAY ? (
+                          <St tone="ok">Reminder sent {fmtDate(p.reminded_at)}</St>
                         ) : (
-                          <button
-                            className="btn sm"
-                            onClick={() => {
-                              setReminded((s) => new Set(s).add(p.id));
-                              toast("Reminder sent (simulated)");
-                            }}
-                          >
+                          <button className="btn sm" disabled={!officer} title={offTitle} onClick={() => rpc("staff_permit_remind", { p_permit_id: p.id }, `Reminder sent to the owner of ${t?.plate ?? "the tanker"}`)}>
                             Send SMS and app reminder
                           </button>
                         )}
@@ -561,7 +661,7 @@ function Permits() {
               </tbody>
             </table>
           </div>
-          <p className="note">Automatic reminders go to owners at 30, 14 and 3 days, and to the NWS permits team daily. Expired tankers are blocked from jobs and from filling at NWS stations.</p>
+          <p className="note">Reminders go to the tanker’s owners and the applicant by push and SMS (the SMS gateway is simulated). Expired tankers are blocked from jobs and from filling at NWS stations.</p>
         </div>
       )}
 
@@ -657,11 +757,11 @@ function Permits() {
                               className="btn sm"
                               disabled={!canInspect || early}
                               title={early ? "Complete the application’s document check first" : canInspect ? undefined : "Inspectors and permit officers"}
-                              onClick={() => setDlg({ k: "insp", row: i, result: "pass" })}
+                              onClick={() => { setChecklist(ALL_OK); setDlg({ k: "insp", row: i, result: "pass" }); }}
                             >
                               Pass
                             </button>
-                            <button className="btn sm bad" disabled={!canInspect} title={canInspect ? undefined : "Inspectors and permit officers"} onClick={() => setDlg({ k: "insp", row: i, result: "fail" })}>Fail</button>
+                            <button className="btn sm bad" disabled={!canInspect} title={canInspect ? undefined : "Inspectors and permit officers"} onClick={() => { setChecklist(ALL_OK); setDlg({ k: "insp", row: i, result: "fail" }); }}>Fail</button>
                           </div>
                         ) : (
                           <St tone={i.result === "pass" ? "ok" : "bad"}>{i.result === "pass" ? "Pass" : "Fail"}</St>
@@ -725,26 +825,44 @@ function Permits() {
       {dlg?.k === "info" && selected && (
         <ReasonDialog
           title={`Request documents — ${selected.permit_no}`}
-          body="The owner is asked for the missing or corrected documents. The application stays at its current stage."
+          body="The owner and applicant are notified and can reply from the company portal. The application stays at its current stage."
           confirm="Send request"
+          extra={
+            <fieldset className="fld" style={{ border: 0, padding: 0, margin: "0 0 10px" }}>
+              <legend style={{ fontSize: 13, color: "var(--muted)", marginBottom: 4 }}>Documents needed</legend>
+              {ASK_KINDS.map((k) => (
+                <label key={k} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, padding: "2px 0" }}>
+                  <input type="checkbox" checked={askKinds.includes(k)} onChange={(e) => setAskKinds((a) => (e.target.checked ? [...a, k] : a.filter((x) => x !== k)))} /> {k}
+                </label>
+              ))}
+            </fieldset>
+          }
           onCancel={() => setDlg(null)}
-          onConfirm={async (reason) => void (await rpc("staff_permit_stage", { p_permit_id: selected.id, p_stage: "request_info", p_note: reason }, "Documents requested from the owner"))}
+          onConfirm={async (reason) =>
+            void (await rpc(
+              "staff_permit_stage",
+              { p_permit_id: selected.id, p_stage: "request_info", p_note: askKinds.length ? `${askKinds.join(", ")} — ${reason}` : reason },
+              "Request sent — the owner is notified",
+            ))
+          }
         />
       )}
       {(dlg?.k === "pass" || dlg?.k === "fail") && selected && selTanker && (
         <ReasonDialog
           title={`Record inspection: ${dlg.k === "pass" ? "passed" : "failed"}`}
-          body={`${selTanker.plate} · ${selected.permit_no}. Add the inspector’s notes (tank hygiene, valves, IVMS seal, PPE).`}
+          body={`${selTanker.plate} · ${selected.permit_no}. Tick the checklist and add the inspector’s notes.`}
+          extra={<ChecklistFields value={checklist} onChange={setChecklist} />}
           confirm={dlg.k === "pass" ? "Record pass" : "Record fail"}
           danger={dlg.k === "fail"}
           onCancel={() => setDlg(null)}
-          onConfirm={async (notes) =>
+          onConfirm={async (notes) => {
+            if (dlg.k === "pass" && !Object.values(checklist).every(Boolean)) return toast("A pass needs every checklist item ticked — record a fail instead", true);
             void (await rpc(
               "staff_record_inspection",
-              { p_tanker_id: selTanker.id, p_permit_id: selected.id, p_result: dlg.k, p_notes: notes, p_checklist: { tank_hygiene: dlg.k === "pass", valves: true, ivms_seal: true, ppe: true } },
-              dlg.k === "pass" ? "Inspection passed — ready for decision" : "Inspection failure recorded",
-            ))
-          }
+              { p_tanker_id: selTanker.id, p_permit_id: selected.id, p_result: dlg.k, p_notes: notes, p_checklist: checklist, p_inspection_id: booked?.id ?? null },
+              dlg.k === "pass" ? "Inspection passed — ready for decision" : "Inspection failure recorded — the owner is notified",
+            ));
+          }}
         />
       )}
       {dlg?.k === "resubmit" && selected && (
@@ -799,17 +917,19 @@ function Permits() {
       {dlg?.k === "insp" && (
         <ReasonDialog
           title={`Record result: ${dlg.result === "pass" ? "pass" : "fail"} — ${one(dlg.row.tanker)?.plate ?? ""}`}
-          body="Adds the result to the tanker’s inspection record."
+          body="Adds the result to the tanker’s inspection record. Tick the checklist and add notes."
+          extra={<ChecklistFields value={checklist} onChange={setChecklist} />}
           confirm={dlg.result === "pass" ? "Record pass" : "Record fail"}
           danger={dlg.result === "fail"}
           onCancel={() => setDlg(null)}
-          onConfirm={async (notes) =>
+          onConfirm={async (notes) => {
+            if (dlg.result === "pass" && !Object.values(checklist).every(Boolean)) return toast("A pass needs every checklist item ticked — record a fail instead", true);
             void (await rpc(
               "staff_record_inspection",
-              { p_tanker_id: dlg.row.tanker_id, p_permit_id: dlg.row.permit_id, p_result: dlg.result, p_notes: notes, p_checklist: {} },
+              { p_tanker_id: dlg.row.tanker_id, p_permit_id: dlg.row.permit_id, p_result: dlg.result, p_notes: notes, p_checklist: checklist, p_inspection_id: dlg.row.id },
               dlg.result === "pass" ? "Inspection passed" : "Inspection failure recorded",
-            ))
-          }
+            ));
+          }}
         />
       )}
       {dlg?.k === "co" && (
@@ -871,7 +991,7 @@ function Permits() {
       )}
       {dlg?.k === "schedule" && (
         <Modal title="Schedule inspection" onClose={() => setDlg(null)}>
-          <p>Books a field inspection for today. Record the result from the Inspections list.</p>
+          <p>Books a field inspection for tomorrow. Record the result from the Inspections list.</p>
           <ScheduleForm
             tankers={tankers}
             permits={rows ?? []}
