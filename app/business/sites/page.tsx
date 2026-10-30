@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBiz, type BizProperty } from "@/components/business/BizContext";
 import { Map as PinMap } from "@/components/Map";
+import { Sparkline } from "@/components/nws/admin/charts";
 import { Dialog, fmtShort, gal, useAction, useLive } from "@/components/portal/kit";
 import { DEFAULT_CENTER } from "@/lib/geo";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type LngLat } from "@/lib/types";
 
 type SiteStats = { contract: string | null; last: string | null; deliveries: number; first: string | null };
+/** org_sites_trends (0029): weekly gallons per site for the last 12 weeks (F5), within the member's sites. */
+type Trend = { property_id: string; weeks: number[]; total_gal: number; deliveries: number; avg_gap_days: number | null; next_due_at: string | null };
 
 export default function BusinessSites() {
   const { org, canOrder } = useBiz();
@@ -18,15 +21,18 @@ export default function BusinessSites() {
   const [edit, setEdit] = useState<BizProperty | "new" | null>(null);
   const [del, setDel] = useState<BizProperty | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [trends, setTrends] = useState<Map<string, Trend>>(new Map());
   const { busy, run } = useAction();
 
   const load = useCallback(async () => {
     const db = supabase();
-    const [p, c, o] = await Promise.all([
+    const [p, c, o, tr] = await Promise.all([
       db.from("properties").select("id, label, address, area, lat, lng, tank_gal, created_at").eq("org_id", org.id).order("label"),
       db.from("contracts").select("property_id, contract_no, status").eq("org_id", org.id).in("status", ["pending_owner", "active", "paused"]),
       db.from("orders").select("property_id, delivered_at").eq("org_id", org.id).eq("status", "delivered").order("delivered_at", { ascending: false }).limit(1000),
+      db.rpc("org_sites_trends", { p_weeks: 12 }),
     ]);
+    setTrends(new Map(((tr.data ?? []) as Trend[]).map((x) => [x.property_id, x])));
     setLoadError(p.error?.message ?? o.error?.message ?? null);
     if (p.error) return setLoaded(true); // keep what is on screen
     const s: Record<string, SiteStats> = {};
@@ -73,6 +79,7 @@ export default function BusinessSites() {
                 <th className="num">Tank (gal)</th>
                 <th className="num">Deliveries</th>
                 <th>Last delivery</th>
+                <th>Last 12 weeks</th>
                 <th>Usual interval</th>
                 <th>Next refill (predicted)</th>
                 <th>Contract</th>
@@ -90,6 +97,14 @@ export default function BusinessSites() {
                   <td className="num">{gal(s.tank_gal)}</td>
                   <td className="num">{stats[s.id]?.deliveries ?? 0}</td>
                   <td>{fmtShort(stats[s.id]?.last)}</td>
+                  <td>
+                    {trends.get(s.id) ? (
+                      <span title={trends.get(s.id)!.weeks.map((g) => gal(Number(g))).join(" · ")}>
+                        <Sparkline values={trends.get(s.id)!.weeks.map(Number)} width={90} />{" "}
+                        <small className="mut">{gal(Math.round(Number(trends.get(s.id)!.total_gal) / 12))} / wk</small>
+                      </span>
+                    ) : <span className="mut">—</span>}
+                  </td>
                   {(() => {
                     // Average days between deliveries; the next refill is expected one interval after the last.
                     const st = stats[s.id];
@@ -118,7 +133,7 @@ export default function BusinessSites() {
               ))}
               {loaded && !sites.length && (
                 <tr>
-                  <td className="empty" colSpan={9}>
+                  <td className="empty" colSpan={10}>
                     No sites yet. Add your hotel, compound, farm or office to start ordering.
                   </td>
                 </tr>

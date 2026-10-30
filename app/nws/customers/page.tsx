@@ -3,9 +3,10 @@
 import "../ops.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { downloadCsv, Kpi, maskPhone, n3, omr3, one, pct, St, Tabs, useNow, useRealtime, useRpc } from "@/components/nws/ops";
 import { Phone, RevealButton, usePrivacy } from "@/components/nws/Privacy";
+import { PropertyTrend } from "@/components/nws/PropertyTrend";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { statusText } from "@/components/OrderBits";
 import { Loading } from "@/components/Shell";
@@ -274,6 +275,7 @@ type Detail = {
 function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: number; onClose: () => void; reload: () => Promise<void> }) {
   const { can } = useStaff();
   const privacy = usePrivacy();
+  const [trend, setTrend] = useState<string | null>(null);
   const run = useRpc();
   const [c, setC] = useState<Customer | null>(null);
   const [d, setD] = useState<Detail | null>(null);
@@ -391,14 +393,20 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                       <tbody>
                         {d?.props.length === 0 && <tr><td colSpan={3} className="mut">No saved properties.</td></tr>}
                         {d?.props.map((p) => (
-                          <tr key={p.id}>
+                          <Fragment key={p.id}>
+                          <tr>
                             <td><b>{p.label}</b><small style={{ display: "block" }}>{[p.address, p.area].filter(Boolean).join(" · ") || "—"}</small></td>
                             <td className="num">{p.tank_gal.toLocaleString()} gal</td>
                             <td>
                               {p.interval ? `Every ~${p.interval} days` : <span className="mut">Not enough deliveries</span>}
                               {p.next && <small style={{ display: "block" }}>Next refill ≈ {fmtDate(p.next)}</small>}
+                              <button className="btn sm ghost" onClick={() => setTrend(trend === p.id ? null : p.id)} aria-expanded={trend === p.id}>{trend === p.id ? "Hide trend" : "Consumption trend"}</button>
                             </td>
                           </tr>
+                          {trend === p.id && (
+                            <tr><td colSpan={3}><PropertyTrend propertyId={p.id} /></td></tr>
+                          )}
+                          </Fragment>
                         ))}
                       </tbody>
                     </table>

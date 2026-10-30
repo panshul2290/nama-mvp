@@ -1,67 +1,58 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { cappedNote, Chips, PageHead, Tabs } from "@/components/nws/admin/ui";
-import { useStaff } from "@/components/nws/StaffContext";
-import { friendlyError } from "@/lib/errors";
+import { Chips, PageHead, Tabs, useRun } from "@/components/nws/admin/ui";
+import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
+import { supabase } from "@/lib/supabase/client";
 import Builder from "./_tabs/Builder";
 import Consumption from "./_tabs/Consumption";
-import { loadOrders, loadRef, RANGES, ROW_CAP, type ORow, type Ref } from "./_tabs/data";
+import { loadRef, RANGES, type Ref } from "./_tabs/data";
 import Feedback from "./_tabs/Feedback";
 import Operations from "./_tabs/Operations";
 
 type Tab = "ops" | "cons" | "fb" | "build";
 
 export default function ReportsPage() {
-  const { toast } = useStaff();
+  const { staff } = useStaff();
+  const run = useRun();
   const [tab, setTab] = useState<Tab>("ops");
   const [range, setRange] = useState("30");
-  const [rows, setRows] = useState<ORow[] | null>(null);
-  const [truncated, setTruncated] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [refData, setRefData] = useState<Ref | null>(null);
+  const [refreshed, setRefreshed] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     loadRef().then(setRefData);
-  }, []);
-
-  useEffect(() => {
-    let live = true;
-    loadOrders(Number(range)).then(({ rows: r, error, truncated: cut }) => {
-      if (!live) return;
-      setLoadError(error ? friendlyError(error) : null);
-      if (error) toast(friendlyError(error), true);
-      setRows(r);
-      setTruncated(cut);
-    });
-    return () => { live = false; };
-  }, [range, toast]);
+    supabase().from("report_refresh_log").select("refreshed_at").eq("view_name", "mv_orders_daily").maybeSingle<{ refreshed_at: string }>().then(({ data }) => setRefreshed(data?.refreshed_at ?? null));
+  }, [tick]);
 
   const days = Number(range);
   return (
     <>
-      <PageHead title="Reports" sub="Operations, consumption, segmentation and feedback analytics, plus a report builder for custom web reports in standard formats." />
+      <PageHead title="Reports" sub="Operations, consumption, segmentation and feedback analytics — counted in the database over every order — plus a report builder for custom web reports in standard formats.">
+        {staff.staff_role !== "viewer" && (
+          <button className="btn" onClick={async () => { if (await run(supabase().rpc("staff_refresh_reports"), "Report views refreshed")) setTick((n) => n + 1); }}>
+            Refresh BI views
+          </button>
+        )}
+      </PageHead>
       <Tabs<Tab> tabs={[["ops", "Operations"], ["cons", "Consumption and refill"], ["fb", "Feedback"], ["build", "Report builder"]]} value={tab} onChange={setTab} />
       {tab !== "build" && (
         <div className="rangebar">
-          <Chips items={RANGES.map(([v, l]) => [v, l] as [string, string])} value={range} onChange={(v) => { setRows(null); setRange(v); }} />
+          <Chips items={RANGES.map(([v, l]) => [v, l] as [string, string])} value={range} onChange={setRange} />
           <span className="mut" style={{ fontSize: 12.5 }}>
-            {rows ? `${rows.length.toLocaleString()} orders` : "Loading…"}
+            Live figures · test-zone orders excluded{refreshed ? ` · BI daily view refreshed ${fmtDateTime(refreshed)}` : ""}
           </span>
         </div>
       )}
-      {tab !== "build" && loadError && <div className="banner badb" role="alert">Couldn’t load all orders: {loadError}. Figures below are incomplete.</div>}
-      {tab !== "build" && rows && cappedNote(truncated, ROW_CAP, "orders") && <div className="banner info" role="status">{cappedNote(truncated, ROW_CAP, "orders")}</div>}
       {tab === "build" ? (
         <Builder refData={refData} />
-      ) : !rows ? (
-        <div className="panel"><div className="empty">Loading…</div></div>
       ) : tab === "ops" ? (
-        <Operations rows={rows} refData={refData} days={days} />
+        <Operations key={`o${tick}`} days={days} />
       ) : tab === "cons" ? (
-        <Consumption rows={rows} />
+        <Consumption key={`c${tick}`} days={days} />
       ) : (
-        <Feedback rows={rows} days={days} />
+        <Feedback key={`f${tick}`} days={days} />
       )}
     </>
   );

@@ -3,9 +3,9 @@ import type { ServiceType } from "@/lib/pricing";
 import { fetchPaged, sinceIso } from "@/components/nws/admin/ui";
 import { isOnTime } from "@/lib/sla";
 
-// Report rows. Aggregation is client-side over a capped, date-bounded query
-// (fine for demo volumes; a BI extract would replace this in production).
-// Test-zone orders (0020, is_test) are never part of a report.
+// Report rows for the report builder's exports (Builder.tsx). The Operations, Consumption
+// and Feedback tabs are aggregated in the database instead (0029, report.tsx), and BI tools
+// read GET /api/v1/reports/{dataset}. Test-zone orders (0020, is_test) are never part of a report.
 
 export const ROW_CAP = 5000;
 

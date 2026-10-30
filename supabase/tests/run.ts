@@ -22,6 +22,7 @@ import { portal2Suite } from "./suites/portal2";
 import { deliverySuite } from "./suites/delivery";
 import { privacy2Suite } from "./suites/privacy2";
 import { integrationsSuite } from "./suites/integrations";
+import { analyticsSuite } from "./suites/analytics";
 import { mobile2Suite } from "./suites/mobile2";
 
 const which = (process.argv[2] ?? "pglite") as "pglite" | "supabase";
@@ -75,7 +76,7 @@ async function main() {
   const before = t.name === "supabase" ? (await fingerprint())[0] : null;
   if (before) out(`non-test data before: ${before.users} users, ${before.rows} rows, md5 ${before.md5}`);
   try {
-    for (const suite of [migrationsSuite, lifecycleSuite, pricingSuite, authzSuite, concurrencySuite, gpsSuite, privacySuite, assignmentsSuite, staffSuite, platformSuite, phoneSuite, testZoneSuite, portalSuite, portal2Suite, mobile2Suite, deliverySuite, privacy2Suite, integrationsSuite]) {
+    for (const suite of [migrationsSuite, lifecycleSuite, pricingSuite, authzSuite, concurrencySuite, gpsSuite, privacySuite, assignmentsSuite, staffSuite, platformSuite, phoneSuite, testZoneSuite, portalSuite, portal2Suite, mobile2Suite, deliverySuite, privacy2Suite, integrationsSuite, analyticsSuite]) {
       try {
         await suite(t, r);
       } catch (e) {

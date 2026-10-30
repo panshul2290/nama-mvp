@@ -1,73 +1,62 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { BarList, Donut, LineChart, SERVICE_COLOR } from "@/components/nws/admin/charts";
-import { dayKey, dayKeys, dayLabel, groupBy, int, Kpi, median, pct } from "@/components/nws/admin/ui";
+import { dayKeys, dayLabel, int, Kpi, pct } from "@/components/nws/admin/ui";
 import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
-import { supabase } from "@/lib/supabase/client";
-import { assignMinutes, CHANNEL_LABEL, onTime, zoneName, type ORow, type Ref } from "./data";
+import { CHANNEL_LABEL } from "./data";
+import { ReportState, useReport } from "./report";
 
 const SERVICES: ServiceType[] = ["DW", "WW", "TE"];
 // Annual trips in the tender's tables; drinking water is still to be confirmed by NWS.
 const TENDER_ANNUAL: Record<ServiceType, number | null> = { DW: null, WW: 718745, TE: 77668 };
 
-export default function Operations({ rows, refData, days }: { rows: ORow[]; refData: Ref | null; days: number }) {
-  const [year, setYear] = useState<Record<ServiceType, number> | null>(null);
+/** report_operations (0029): counted in the database over every order in range. */
+type Ops = {
+  placed: number; delivered: number; cancelled: number; on_time: number; timed: number; median_assign_min: number | null;
+  per_day: { day: string; service_type: ServiceType; n: number }[];
+  by_service: Partial<Record<ServiceType, number>>;
+  by_zone: { zone: string; n: number; on_time: number; timed: number }[];
+  by_channel: { channel: string; n: number }[];
+  year: Record<ServiceType, number>;
+};
 
-  // Platform trips over the last 365 days, counted in the database (no row transfer).
-  useEffect(() => {
-    const db = supabase();
-    const from = new Date(Date.now() - 365 * 86400_000).toISOString();
-    Promise.all(
-      SERVICES.map((s) => db.from("orders").select("id", { count: "exact", head: true }).eq("is_test", false).eq("service_type", s).eq("status", "delivered").gte("delivered_at", from)),
-    ).then((res) => setYear({ DW: res[0].count ?? 0, WW: res[1].count ?? 0, TE: res[2].count ?? 0 }));
-  }, []);
+export default function Operations({ days }: { days: number }) {
+  const { data: s, error } = useReport<Ops>("report_operations", days);
+  if (!s) return <ReportState error={error} what="operations" />;
 
-  const s = useMemo(() => {
-    const delivered = rows.filter((o) => o.status === "delivered");
-    const timed = delivered.map(onTime).filter((v): v is boolean => v != null);
-    const cancelled = rows.filter((o) => o.status === "cancelled").length;
-    const assign = median(rows.map(assignMinutes).filter((v): v is number => v != null && v >= 0));
-    const keys = dayKeys(days);
-    const perDay = groupBy(delivered, (o) => `${dayKey(o.delivered_at ?? o.created_at)}|${o.service_type}`, () => ({ n: 0 }), (a) => a.n++);
-    const series = SERVICES.map((sv) => ({ name: SERVICE_LABEL[sv], color: SERVICE_COLOR[sv], values: keys.map((k) => perDay.get(`${k}|${sv}`)?.n ?? 0) }));
-    const total = { name: "All trips", color: "var(--accent)", values: keys.map((_, i) => series.reduce((a, x) => a + (x.values[i] ?? 0), 0)) };
-    const byZone = groupBy(delivered, (o) => zoneName(refData, o.zone_id), () => ({ n: 0, on: 0, timed: 0 }), (a, o) => {
-      a.n++;
-      const t = onTime(o);
-      if (t != null) { a.timed++; if (t) a.on++; }
-    });
-    const byChannel = groupBy(rows, (o) => CHANNEL_LABEL[o.channel] ?? o.channel, () => ({ n: 0 }), (a) => a.n++);
-    return { delivered, timed, cancelled, assign, keys, series: [total, ...series], byZone, byChannel };
-  }, [rows, refData, days]);
+  const keys = dayKeys(days);
+  const at = new Map(s.per_day.map((d) => [`${d.day}|${d.service_type}`, d.n]));
+  const series = SERVICES.map((sv) => ({ name: SERVICE_LABEL[sv], color: SERVICE_COLOR[sv], values: keys.map((k) => at.get(`${k}|${sv}`) ?? 0) }));
+  const total = { name: "All trips", color: "var(--accent)", values: keys.map((_, i) => series.reduce((a, x) => a + (x.values[i] ?? 0), 0)) };
+  const onPct = s.timed ? s.on_time / s.timed : null;
+  const assign = s.median_assign_min;
 
-  const onPct = s.timed.length ? s.timed.filter(Boolean).length / s.timed.length : null;
   return (
     <>
       <div className="okpis">
-        <Kpi label="Trips completed" value={int(s.delivered.length)} sub={`of ${int(rows.length)} orders placed`} />
+        <Kpi label="Trips completed" value={int(s.delivered)} sub={`of ${int(s.placed)} orders placed`} />
         <Kpi label="On-time delivery" value={onPct == null ? "—" : pct(onPct)} sub="delivered (wastewater: collected) by the slot end, or within 2 h" tone={onPct == null ? undefined : onPct >= 0.9 ? "ok" : "warn"} />
-        <Kpi label="Median time to assign" value={s.assign == null ? "—" : s.assign < 60 ? `${Math.round(s.assign)} min` : `${(s.assign / 60).toFixed(1)} h`} sub="request to tanker accepted" />
-        <Kpi label="Cancellations" value={int(s.cancelled)} sub={rows.length ? `${pct(s.cancelled / rows.length)} of orders` : "—"} tone={rows.length && s.cancelled / rows.length > 0.1 ? "bad" : undefined} />
+        <Kpi label="Median time to assign" value={assign == null ? "—" : assign < 60 ? `${Math.round(assign)} min` : `${(assign / 60).toFixed(1)} h`} sub="request to tanker accepted" />
+        <Kpi label="Cancellations" value={int(s.cancelled)} sub={s.placed ? `${pct(s.cancelled / s.placed)} of orders` : "—"} tone={s.placed && s.cancelled / s.placed > 0.1 ? "bad" : undefined} />
       </div>
 
       <div className="panel">
         <h2>Trips per day <small>delivered, by service</small></h2>
-        <LineChart labels={s.keys.map(dayLabel)} series={s.series} />
+        <LineChart labels={keys.map(dayLabel)} series={[total, ...series]} />
       </div>
 
       <div className="grid3">
         <div className="panel">
           <h2>Trips by service</h2>
-          <Donut slices={SERVICES.map((sv) => ({ label: SERVICE_LABEL[sv], value: s.delivered.filter((o) => o.service_type === sv).length, color: SERVICE_COLOR[sv] }))} sub="trips" />
+          <Donut slices={SERVICES.map((sv) => ({ label: SERVICE_LABEL[sv], value: s.by_service[sv] ?? 0, color: SERVICE_COLOR[sv] }))} sub="trips" />
         </div>
         <div className="panel">
           <h2>Trips by zone</h2>
-          <BarList rows={[...s.byZone].sort((a, b) => b[1].n - a[1].n).map(([z, v]) => ({ label: z, value: v.n }))} />
+          <BarList rows={s.by_zone.map((z) => ({ label: z.zone, value: z.n }))} />
         </div>
         <div className="panel">
           <h2>Orders by channel</h2>
-          <BarList rows={[...s.byChannel].sort((a, b) => b[1].n - a[1].n).map(([c, v]) => ({ label: c, value: v.n }))} />
+          <BarList rows={s.by_channel.map((c) => ({ label: CHANNEL_LABEL[c.channel] ?? c.channel, value: c.n }))} />
         </div>
       </div>
 
@@ -77,7 +66,7 @@ export default function Operations({ rows, refData, days }: { rows: ORow[]; refD
           <BarList
             max={100}
             fmt={(v) => `${v.toFixed(1)}%`}
-            rows={[...s.byZone].filter(([, v]) => v.timed > 0).sort((a, b) => b[1].on / b[1].timed - a[1].on / a[1].timed).map(([z, v]) => ({ label: z, value: (v.on / v.timed) * 100, color: v.on / v.timed >= 0.9 ? "var(--ok)" : "var(--warn)" }))}
+            rows={s.by_zone.filter((z) => z.timed > 0).sort((a, b) => b.on_time / b.timed - a.on_time / a.timed).map((z) => ({ label: z.zone, value: (z.on_time / z.timed) * 100, color: z.on_time / z.timed >= 0.9 ? "var(--ok)" : "var(--warn)" }))}
           />
         </div>
         <div className="panel">
@@ -97,7 +86,7 @@ export default function Operations({ rows, refData, days }: { rows: ORow[]; refD
                   <tr key={sv}>
                     <td><span className={`tag ${sv}`}>{SERVICE_LABEL[sv]}</span></td>
                     <td className="num">{TENDER_ANNUAL[sv] == null ? <span className="st warn">TBC</span> : int(TENDER_ANNUAL[sv]!)}</td>
-                    <td className="num">{year ? int(year[sv]) : "…"}</td>
+                    <td className="num">{int(s.year[sv] ?? 0)}</td>
                   </tr>
                 ))}
               </tbody>
