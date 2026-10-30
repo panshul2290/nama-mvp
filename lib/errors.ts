@@ -110,10 +110,25 @@ const MESSAGES: Record<string, string> = {
   documents_incomplete: "The document check can't be completed — these required documents aren't approved and in date:",
   separation_of_duties: "You recorded the passed inspection for this application, so another permit officer has to approve it.",
   driver_other_company: "That driver belongs to a different company (or none). Assign a driver of the tanker's own company.",
+  // 0026–0029 (batch A)
+  offered_to_another_tanker: "This request is on offer to another tanker for a few more seconds. It comes to the open list if they pass.",
+  insufficient_fill_credit: "Not enough filling credit for this fill. Top up your filling credit first:",
+  card_declined: "The card was declined. Try another card.",
+  company_driver: "Your company tops up filling credit from the company portal.",
+  not_retryable: "Only failed messages with a destination can be retried.",
+  cannot_restrict_self: "You can't limit your own access — ask another account admin.",
+  has_open_orders: "Finish or cancel the customer's open orders first.",
+  wallet_not_empty: "Settle the customer's wallet balance first:",
+  has_contract: "End the customer's contracts first.",
+  manual_request: "Correct the record by hand, then mark the request completed.",
+  inaccurate_fix: "Location too inaccurate — wait for a better GPS fix.",
+  api_unauthorized: "Invalid or revoked API key.",
+  api_forbidden: "This API key doesn't have that permission.",
+  api_rate_limited: "Too many requests for this API key — try again in a minute.",
 };
 
 // Codes whose detail (after "code: ") is worth showing, e.g. which documents are missing.
-const WITH_DETAIL = new Set(["documents_incomplete"]);
+const WITH_DETAIL = new Set(["documents_incomplete", "insufficient_fill_credit", "wallet_not_empty", "invalid_value"]);
 
 export function errorCode(error: { message?: string } | null | undefined): string | null {
   if (!error?.message) return null;
