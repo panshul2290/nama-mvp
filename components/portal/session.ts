@@ -57,3 +57,6 @@ export const APP_KEYS: AppKey[] = ["nws", "customer", "business", "driver", "com
 export const asApp = (v: string | null | undefined): AppKey | null => (APP_KEYS.includes(v as AppKey) ? (v as AppKey) : null);
 /** Desktop (web) apps get the full-screen sign-in; the phone apps keep the in-frame one. */
 export const isDesktopApp = (a: AppKey | null) => a === "nws" || a === "business" || a === "company";
+/** The app each role signs in to. */
+export const appFor = (role: Role): AppKey =>
+  role === "nws_staff" ? "nws" : role === "owner" ? "company" : role === "business" ? "business" : role === "driver" ? "driver" : "customer";

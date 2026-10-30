@@ -100,6 +100,17 @@ export const AUTH: Dict = {
   e_weak_password: { en: "Choose a longer password (at least 6 characters).", ar: "اختر كلمة مرور أطول (٦ أحرف على الأقل)." },
   e_sms_failed: { en: "We couldn’t send the SMS. Check the number and try again.", ar: "تعذّر إرسال الرسالة. تحقق من الرقم وحاول مجدداً." },
   e_phone_disabled: { en: "Sign-in by mobile number isn’t switched on for this project yet.", ar: "الدخول برقم الهاتف غير مفعّل في هذا المشروع بعد." },
+
+  // Signed in with another kind of account (/switch)
+  switchTitle: { en: "You’re signed in with another account", ar: "أنت مسجّل الدخول بحساب آخر" },
+  switchBody: { en: "{name} is signed in as {role}. {app} needs its own account.", ar: "{name} مسجّل الدخول بصفة {role}. يحتاج {app} إلى حسابه الخاص." },
+  switchSignOut: { en: "Sign out and sign in to {app}", ar: "تسجيل الخروج والدخول إلى {app}" },
+  switchStay: { en: "Go to my app", ar: "الذهاب إلى تطبيقي" },
+  role_customer: { en: "a customer", ar: "عميل" },
+  role_driver: { en: "a driver", ar: "سائق" },
+  role_owner: { en: "a tanker company owner", ar: "مالك شركة صهاريج" },
+  role_business: { en: "a business user", ar: "مستخدم أعمال" },
+  role_nws_staff: { en: "NWS staff", ar: "موظف في نماء" },
 };
 
 const CODES: Record<string, string> = {

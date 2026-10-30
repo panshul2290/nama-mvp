@@ -29,7 +29,7 @@ export default function NwsLayout({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     await supabase().auth.signOut();
-    router.replace("/login");
+    router.replace("/login?app=nws");
   }
 
   return (

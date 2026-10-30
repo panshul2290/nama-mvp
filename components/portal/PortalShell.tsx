@@ -9,7 +9,7 @@ import { Icon, NamaLogo, type IconName } from "@/components/icons";
 import { supabase } from "@/lib/supabase/client";
 import type { OrgRole, Profile, Role } from "@/lib/types";
 import { ToastProvider } from "./kit";
-import { enforceSessionChoice, homeFor } from "./session";
+import { appFor, enforceSessionChoice } from "./session";
 
 export type PortalProfile = Profile & { company_id: string | null; org_id: string | null; org_role: OrgRole | null };
 
@@ -28,11 +28,11 @@ export function usePortalProfile(expected: Role) {
       if (await enforceSessionChoice()) return router.replace("/");
       const db = supabase();
       const { data: auth } = await db.auth.getUser();
-      if (!auth.user) return router.replace(`/login?app=${expected === "owner" ? "company" : "business"}`);
+      if (!auth.user) return router.replace(`/login?app=${appFor(expected)}`);
       const { data } = await db.from("profiles").select("id, role, full_name, phone, company_id, org_id, org_role").eq("id", auth.user.id).single();
       if (cancelled) return;
-      if (!data) return router.replace("/login");
-      if (data.role !== expected) return router.replace(homeFor(data.role as Role));
+      if (!data) return router.replace(`/login?app=${appFor(expected)}`);
+      if (data.role !== expected) return router.replace(`/switch?app=${appFor(expected)}`);
       setProfile(data as PortalProfile);
     })();
     return () => {
