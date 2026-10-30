@@ -4,6 +4,18 @@ import type { Dict } from "@/lib/i18n";
 import { withCommon } from "@/components/portal/dict";
 
 export const PERMITS: Dict = withCommon({
+  // Automatic checks: names and fixed details come from permit_auto_checks (English in the database).
+  "ac:ROP vehicle record": { en: "ROP vehicle record", ar: "سجل المركبة لدى شرطة عُمان السلطانية" },
+  "ac:IVMS device": { en: "IVMS device", ar: "جهاز تتبع المركبة (IVMS)" },
+  "ac:Water quality test": { en: "Water quality test", ar: "فحص جودة المياه" },
+  "ac:Violations in the last 12 months": { en: "Violations in the last 12 months", ar: "المخالفات خلال آخر 12 شهراً" },
+  "ac:Insurance": { en: "Insurance", ar: "التأمين" },
+  "ac:Plate, chassis and owner match": { en: "Plate, chassis and owner match", ar: "اللوحة والشاصي والمالك متطابقة" },
+  "ac:Owner name mismatch on ROP record": { en: "Owner name mismatch on ROP record", ar: "اسم المالك لا يطابق سجل شرطة عُمان السلطانية" },
+  "ac:No device installed": { en: "No device installed", ar: "لا يوجد جهاز مركّب" },
+  "ac:No test on file": { en: "No test on file", ar: "لا يوجد فحص مسجّل" },
+  "ac:upheld": { en: "{n} upheld or open", ar: "{n} مؤكدة أو مفتوحة" },
+  "ac:No policy on file": { en: "No policy on file", ar: "لا توجد وثيقة تأمين مسجّلة" },
   // Page
   title: { en: "Permits", ar: "التصاريح" },
   lead: {

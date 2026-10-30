@@ -304,7 +304,7 @@ function NewKey({ onClose, onDone }: { onClose: () => void; onDone: (key: string
         <label>{t("scopes")}</label>
         <div className="checks" style={{ display: "grid", gap: 4 }}>
           {SCOPES.map(([s, l]) => (
-            <label key={s}><input type="checkbox" checked={scopes.includes(s)} onChange={(e) => setScopes(e.target.checked ? [...scopes, s] : scopes.filter((x) => x !== s))} /> {t(l)} <code dir="ltr">{s}</code></label>
+            <label key={s} style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400 }}><input type="checkbox" style={{ width: "auto", flex: "none", margin: 0 }} checked={scopes.includes(s)} onChange={(e) => setScopes(e.target.checked ? [...scopes, s] : scopes.filter((x) => x !== s))} /> {t(l)} <code dir="ltr">{s}</code></label>
           ))}
         </div>
       </div>
@@ -354,7 +354,7 @@ function NewHook({ onClose, onDone }: { onClose: () => void; onDone: (secret: st
         <label>{t("events")}</label>
         <div className="checks" style={{ display: "grid", gap: 4 }}>
           {EVENTS.map((e) => (
-            <label key={e}><input type="checkbox" checked={events.includes(e)} onChange={(x) => setEvents(x.target.checked ? [...events, e] : events.filter((y) => y !== e))} /> <code dir="ltr">{e}</code></label>
+            <label key={e} style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400 }}><input type="checkbox" style={{ width: "auto", flex: "none", margin: 0 }} checked={events.includes(e)} onChange={(x) => setEvents(x.target.checked ? [...events, e] : events.filter((y) => y !== e))} /> <code dir="ltr">{e}</code></label>
           ))}
         </div>
       </div>

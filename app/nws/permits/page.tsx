@@ -574,8 +574,8 @@ function Permits() {
                       {checks?.map((c) => (
                         <div key={c.check} className="pv-r">
                           <span>
-                            <b>{c.check}</b>
-                            <small>{c.detail}</small>
+                            <b>{PERMITS[`ac:${c.check}`] ? t(`ac:${c.check}`) : c.check}</b>
+                            <small>{PERMITS[`ac:${c.detail}`] ? t(`ac:${c.detail}`) : /^\d+ upheld or open$/.test(c.detail) ? t("ac:upheld", { n: parseInt(c.detail, 10) }) : c.detail}</small>
                           </span>
                           <St tone={c.ok ? "ok" : "bad"}>{c.ok ? t("pass") : t("check")}</St>
                         </div>
