@@ -4,58 +4,65 @@ import "./auth.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
+import { useLang, useT } from "@/lib/i18n";
 import { APP_INFO, Brand, Credits, Ripples } from "./AuthChrome";
+import { AUTH } from "./authI18n";
+import { LAUNCHER } from "./dict";
+import { PortalLangToggle } from "./i18n";
 import type { AppKey } from "./session";
 
-const GROUPS: { title: string; apps: { key: AppKey; meta: string }[] }[] = [
-  { title: "Nama Water Services", apps: [{ key: "nws", meta: "Control room, live map and alerts" }] },
+// Keys of LAUNCHER (components/portal/dict.ts): group title, and per app its meta and blurb.
+const GROUPS: { title: string; apps: { key: AppKey; meta: string; blurb: string }[] }[] = [
+  { title: "gNws", apps: [{ key: "nws", meta: "mNws", blurb: "bNws" }] },
   {
-    title: "Customers",
+    title: "gCustomers",
     apps: [
-      { key: "customer", meta: "Order, pay and track live" },
-      { key: "business", meta: "Bulk orders on account" },
+      { key: "customer", meta: "mCustomer", blurb: "bCustomer" },
+      { key: "business", meta: "mBusiness", blurb: "bBusiness" },
     ],
   },
   {
-    title: "Tanker companies",
+    title: "gCompanies",
     apps: [
-      { key: "driver", meta: "Jobs near you, upfront earnings" },
-      { key: "company", meta: "Fleet, permits and payouts" },
+      { key: "driver", meta: "mDriver", blurb: "bDriver" },
+      { key: "company", meta: "mCompany", blurb: "bCompany" },
     ],
   },
 ];
 
 export function Launcher() {
   const router = useRouter();
+  const { lang, dir } = useLang();
+  const t = useT(LAUNCHER);
+  const ta = useT(AUTH);
   // Opens an app in its own phone-sized window, so two can sit side by side.
   const openWindow = (app: AppKey, left: number) => {
     const w = window.open(`/login?app=${app}`, `nama-${app}`, `popup,width=460,height=900,left=${left},top=40`);
     if (!w) router.push(`/login?app=${app}`);
   };
   return (
-    <div className="si lch">
+    <div className="si lch" dir={dir} lang={lang}>
       <div className="glow" />
       <Ripples />
       <div className="lc-wrap">
         <div className="lc-top">
-          <Brand sub="Integrated digital platform" />
+          <Brand sub={t("platform")} />
+          <PortalLangToggle />
         </div>
         <div className="lc-hero">
           <div className="si-eb">
             <i />
-            Five connected apps, one live system
+            {t("eyebrow")}
           </div>
-          <h1>Choose an app to sign in</h1>
-          <p className="si-lead">
-            Place an order in the customer app and watch it reach a driver, the NWS control room and the tanker company in real time. Every app works on the same live data.
-          </p>
+          <h1>{t("title")}</h1>
+          <p className="si-lead">{t("lead")}</p>
         </div>
         <div className="lc-groups">
           {GROUPS.map((g) => (
             <section className="lc-g" key={g.title} style={{ "--n": g.apps.length } as React.CSSProperties}>
-              <h2>{g.title}</h2>
+              <h2>{t(g.title)}</h2>
               <div className="lc-cards">
-                {g.apps.map(({ key, meta }) => {
+                {g.apps.map(({ key, meta, blurb }) => {
                   const a = APP_INFO[key];
                   return (
                     <Link key={key} className="lc-card" href={`/login?app=${key}`}>
@@ -63,15 +70,15 @@ export function Launcher() {
                         <Icon name={a.icon} size={22} />
                       </span>
                       <span className="lc-t">
-                        <b>{a.name}</b>
-                        <em>{a.platform}</em>
+                        <b>{ta(`app_${key}`)}</b>
+                        <em>{t(a.platform === "Web" ? "web" : "mobile")}</em>
                       </span>
-                      <span className="lc-d">{a.blurb}</span>
+                      <span className="lc-d">{t(blurb)}</span>
                       <span className="lc-meta">
                         <i />
-                        {meta}
+                        {t(meta)}
                       </span>
-                      <span className="lc-go">Open</span>
+                      <span className="lc-go">{t("open")}</span>
                     </Link>
                   );
                 })}
@@ -80,41 +87,40 @@ export function Launcher() {
           ))}
         </div>
 
-        <section className="lc-live" aria-label="Watch an order end to end">
+        <section className="lc-live" aria-label={t("watch")}>
           <div className="lc-main">
             <span className="lc-ic">
               <Icon name="route" size={22} />
             </span>
             <div>
-              <b>Watch an order end to end</b>
-              <p>The customer app and the driver app side by side, updating live as the tanker is dispatched, fills, drives and delivers. The NWS control room and the company portal see the same job.</p>
+              <b>{t("watch")}</b>
+              <p>{t("watchBody")}</p>
               <div className="btns">
                 <button className="si-btn" style={{ height: 40, padding: "0 16px" }} onClick={() => openWindow("customer", 40)}>
-                  Open the Customer app
+                  {t("openCustomer")}
                 </button>
                 <button className="si-btn gh" style={{ height: 40, padding: "0 16px" }} onClick={() => openWindow("driver", 520)}>
-                  Open the Driver app
+                  {t("openDriver")}
                 </button>
               </div>
             </div>
           </div>
           <aside>
-            <h3>How to run it</h3>
+            <h3>{t("howTo")}</h3>
             <ol>
+              <li>{t("how1")}</li>
+              <li>{t("how2")}</li>
+              <li>{t("how3")}</li>
               <li>
-                Open the <b>Customer app</b> and the <b>Driver app</b> side by side in two browser windows. Each app keeps its own sign-in, so both (and the web portals) can be signed in at once in the same browser.
-              </li>
-              <li>In the driver app, go online. In the customer app, request a tanker and pay.</li>
-              <li>The driver accepts, fills at an NWS station, drives and captures proof of delivery — both apps update live.</li>
-              <li>
-                No second person? Run <code>npm run demo</code> — it plays the seeded customer and driver through a full order (request, accept, drive, deliver) on the live system.
+                {/* i18n-ignore: a command */}
+                {t("how4a")} <code dir="ltr">npm run demo</code> {t("how4b")}
               </li>
             </ol>
           </aside>
         </section>
 
         <div className="lc-foot">
-          <Credits copy="© 2026 Nama Water Services · Demonstration system" />
+          <Credits copy={t("copy")} />
         </div>
       </div>
     </div>

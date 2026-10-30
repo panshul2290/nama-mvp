@@ -139,5 +139,52 @@ export const PORTAL: Dict = {
   cappedNote: { en: "Showing the latest {n} {what} in this period — totals cover only these.", ar: "عرض أحدث {n} من {what} في هذه الفترة — الإجماليات تشمل هذه فقط." },
 };
 
+/** The app launcher at "/" (components/portal/Launcher.tsx). */
+export const LAUNCHER: Dict = {
+  platform: { en: "Integrated digital platform", ar: "المنصة الرقمية المتكاملة" },
+  eyebrow: { en: "Five connected apps, one live system", ar: "خمسة تطبيقات مترابطة ونظام مباشر واحد" },
+  title: { en: "Choose an app to sign in", ar: "اختر تطبيقاً لتسجيل الدخول" },
+  lead: {
+    en: "Place an order in the customer app and watch it reach a driver, the NWS control room and the tanker company in real time. Every app works on the same live data.",
+    ar: "قدّم طلباً في تطبيق العملاء وتابع وصوله إلى السائق وغرفة التحكم في نماء وشركة الصهاريج لحظة بلحظة. جميع التطبيقات تعمل على البيانات المباشرة نفسها.",
+  },
+  gNws: { en: "Nama Water Services", ar: "نماء لخدمات المياه" },
+  gCustomers: { en: "Customers", ar: "العملاء" },
+  gCompanies: { en: "Tanker companies", ar: "شركات الصهاريج" },
+  mNws: { en: "Control room, live map and alerts", ar: "غرفة التحكم والخريطة المباشرة والتنبيهات" },
+  mCustomer: { en: "Order, pay and track live", ar: "اطلب وادفع وتتبّع مباشرة" },
+  mBusiness: { en: "Bulk orders on account", ar: "طلبات بالجملة على الحساب" },
+  mDriver: { en: "Jobs near you, upfront earnings", ar: "مهام قريبة منك وأرباح معروضة مسبقاً" },
+  mCompany: { en: "Fleet, permits and payouts", ar: "الأسطول والتصاريح والمستحقات" },
+  web: { en: "Web", ar: "الويب" },
+  mobile: { en: "iOS and Android", ar: "iOS وAndroid" },
+  bNws: { en: "Control room, permits and enforcement, customers, complaints, reports and settings.", ar: "غرفة التحكم والتصاريح والرقابة والعملاء والشكاوى والتقارير والإعدادات." },
+  bCustomer: { en: "Households order water, pay, track the tanker live and rate every delivery.", ar: "تطلب الأسر المياه وتدفع وتتتبّع الصهريج مباشرة وتقيّم كل توصيلة." },
+  bBusiness: { en: "Hotels, compounds, farms and government sites order in bulk on credit.", ar: "تطلب الفنادق والمجمعات والمزارع والمواقع الحكومية بالجملة بالآجل." },
+  bDriver: { en: "Drivers go online, accept jobs, fill at NWS stations and prove every delivery.", ar: "يتصل السائقون ويقبلون المهام ويعبّئون من محطات نماء ويثبتون كل توصيلة." },
+  bCompany: { en: "Owners register tankers and drivers, renew permits, accept contracts and track earnings.", ar: "يسجّل المالكون الصهاريج والسائقين ويجدّدون التصاريح ويقبلون العقود ويتابعون الأرباح." },
+  open: { en: "Open", ar: "فتح" },
+  watch: { en: "Watch an order end to end", ar: "تابع طلباً من البداية إلى النهاية" },
+  watchBody: {
+    en: "The customer app and the driver app side by side, updating live as the tanker is dispatched, fills, drives and delivers. The NWS control room and the company portal see the same job.",
+    ar: "تطبيق العملاء وتطبيق السائقين جنباً إلى جنب، يتحدّثان مباشرة عند إسناد الصهريج وتعبئته وتحرّكه والتوصيل. وترى غرفة التحكم في نماء وبوابة الشركات المهمة نفسها.",
+  },
+  openCustomer: { en: "Open the Customer app", ar: "افتح تطبيق العملاء" },
+  openDriver: { en: "Open the Driver app", ar: "افتح تطبيق السائقين" },
+  howTo: { en: "How to run it", ar: "طريقة التشغيل" },
+  how1: {
+    en: "Open the Customer app and the Driver app side by side in two browser windows. Each app keeps its own sign-in, so both (and the web portals) can be signed in at once in the same browser.",
+    ar: "افتح تطبيق العملاء وتطبيق السائقين جنباً إلى جنب في نافذتين من المتصفح. لكل تطبيق تسجيل دخول خاص، لذا يمكن تسجيل الدخول إليهما (وإلى البوابات الإلكترونية) معاً في المتصفح نفسه.",
+  },
+  how2: { en: "In the driver app, go online. In the customer app, request a tanker and pay.", ar: "في تطبيق السائقين، اتصل بالشبكة. وفي تطبيق العملاء، اطلب صهريجاً وادفع." },
+  how3: { en: "The driver accepts, fills at an NWS station, drives and captures proof of delivery — both apps update live.", ar: "يقبل السائق المهمة ويعبّئ من محطة نماء ويتوجّه ويلتقط إثبات التسليم — ويتحدّث التطبيقان مباشرة." },
+  how4a: { en: "No second person? Run", ar: "لا يوجد شخص ثانٍ؟ شغّل" },
+  how4b: {
+    en: "— it plays the seeded customer and driver through a full order (request, accept, drive, deliver) on the live system.",
+    ar: "— ينفّذ طلباً كاملاً بالعميل والسائق التجريبيين (الطلب والقبول والتحرّك والتوصيل) على النظام المباشر.",
+  },
+  copy: { en: "© 2026 Nama Water Services · Demonstration system", ar: "© 2026 نماء لخدمات المياه · نظام تجريبي" },
+};
+
 /** An area dictionary with the shared portal words underneath (area keys win on a clash). */
 export const withCommon = (d: Dict): Dict => ({ ...PORTAL, ...d });
