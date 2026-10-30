@@ -6,6 +6,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import pg from "pg";
 
@@ -84,10 +85,14 @@ const SUPABASE_STUB = `
   alter default privileges in schema public grant all on functions to anon, authenticated;
   alter default privileges in schema public grant all on sequences to anon, authenticated;
   create publication supabase_realtime;
+  -- Supabase keeps pgcrypto in the extensions schema (field encryption, 0027; API key hashes, 0028).
+  create schema extensions;
+  create extension pgcrypto with schema extensions;
+  grant usage on schema extensions to anon, authenticated;
 `;
 
 export async function pgliteTarget(opts: { beforeMigration?: Record<string, (db: PGlite, t: Target) => Promise<void>> } = {}): Promise<Target> {
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { pgcrypto } });
   // PGlite has one connection: serialise every transaction so roles never interleave.
   let chain: Promise<unknown> = Promise.resolve();
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {

@@ -64,7 +64,10 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
     { href: "/business/invoices", label: "Invoices" },
     { href: "/business/team", label: "Team" },
     { href: "/business/sla", label: "Service levels" },
-  ].filter((t) => role !== "finance" || !financeHides.includes(t.href));
+  ]
+    .filter((t) => role !== "finance" || !financeHides.includes(t.href))
+    // Members limited to some sites (Team → Sites): invoices are organisation-wide.
+    .filter((t) => !org.sites_restricted || t.href !== "/business/invoices");
   const banner =
     org.status === "pending" ? (
       <div className="banner">

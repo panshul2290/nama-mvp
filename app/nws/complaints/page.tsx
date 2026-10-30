@@ -1,5 +1,6 @@
 "use client";
 
+import { Phone, RevealButton, usePrivacy } from "@/components/nws/Privacy";
 import "../ops.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -248,6 +249,7 @@ const MODE_TEXT: Record<Mode, [label: string, button: string, min: number]> = {
 };
 
 function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; teams: string[]; now: number; reload: () => Promise<void> }) {
+  const privacy = usePrivacy();
   const { can } = useStaff();
   const run = useRpc();
   const photo = useSignedUrl(c.photo_path);
@@ -323,7 +325,7 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
           ) : (
             "—"
           )}
-          {cu?.phone ? <small className="mut"> · {cu.phone}</small> : null}
+          {cu?.phone ? <small className="mut"> · <Phone value={cu.phone} maskPhones={privacy.maskPhones} /> {c.customer_id && <RevealButton profileId={c.customer_id} kind="contact" privileged={privacy.privileged} />}</small> : null}
         </dd>
         <dt>Category</dt>
         <dd>{label}</dd>
@@ -489,6 +491,7 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
 
 type Caller = { id: string; full_name: string; phone: string | null };
 function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => void; onDone: (id: string) => Promise<void> }) {
+  const privacy = usePrivacy();
   const { toast } = useStaff();
   const [q, setQ] = useState("");
   const [found, setFound] = useState<Caller[]>([]);
@@ -546,13 +549,13 @@ function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => v
             {cust && !found.some((f) => f.id === cust.id) && (
               <button className="pickrow on" type="button">
                 <span>{cust.full_name}</span>
-                <small className="mut">{cust.phone}</small>
+                <small className="mut"><Phone value={cust.phone} maskPhones={privacy.maskPhones} /></small>
               </button>
             )}
             {found.map((p) => (
               <button key={p.id} type="button" className={`pickrow ${cust?.id === p.id ? "on" : ""}`} onClick={() => choose(p)}>
                 <span>{p.full_name || "Unnamed"}</span>
-                <small className="mut">{p.phone || "—"}</small>
+                <small className="mut"><Phone value={p.phone} maskPhones={privacy.maskPhones} /></small>
               </button>
             ))}
             {q.trim().length >= 2 && found.length === 0 && <small className="mut">No customer matches.</small>}

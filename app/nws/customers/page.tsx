@@ -4,7 +4,8 @@ import "../ops.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { downloadCsv, Kpi, n3, omr3, one, pct, St, Tabs, useNow, useRealtime, useRpc } from "@/components/nws/ops";
+import { downloadCsv, Kpi, maskPhone, n3, omr3, one, pct, St, Tabs, useNow, useRealtime, useRpc } from "@/components/nws/ops";
+import { Phone, RevealButton, usePrivacy } from "@/components/nws/Privacy";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { statusText } from "@/components/OrderBits";
 import { Loading } from "@/components/Shell";
@@ -168,9 +169,8 @@ function CustomersTab({
   contracts: Contract[];
   onOpen: (id: string) => void;
 }) {
-  const { staff } = useStaff();
-  // Read-only staff (BI) don't take ID numbers out in exports.
-  const readOnly = staff.staff_role === "viewer";
+  // ID numbers are masked for everyone (encrypted at rest); phones for roles outside the privacy reveal list.
+  const privacy = usePrivacy();
   const [seg, setSeg] = useState<Segment | "all">("all");
   const [q, setQ] = useState("");
   const all = useMemo(() => customers ?? [], [customers]);
@@ -207,7 +207,7 @@ function CustomersTab({
               onClick={() =>
                 downloadCsv("customers", [
                   ["Reference", "Name", "Account", "Segment", "ID type", "ID number", "ID verified", "Mobile", "Wallet (OMR)", "Orders", "Status"],
-                  ...list.map((c) => [custRef(c.id), c.full_name, c.role === "business" ? `Business (B2B) ${orgName.get(c.org_id ?? "") ?? ""}`.trim() : "Customer", SEG_LABEL[c.segment] ?? c.segment, c.id_type, readOnly ? "(hidden)" : c.id_no, c.id_verified ? "yes" : "no", c.phone, n3(wallet.get(c.id)), orderCount.get(c.id) ?? 0, c.account_blocked ? "Blocked" : "Active"]),
+                  ...list.map((c) => [custRef(c.id), c.full_name, c.role === "business" ? `Business (B2B) ${orgName.get(c.org_id ?? "") ?? ""}`.trim() : "Customer", SEG_LABEL[c.segment] ?? c.segment, c.id_type, c.id_no, c.id_verified ? "yes" : "no", privacy.maskPhones ? maskPhone(c.phone) : c.phone, n3(wallet.get(c.id)), orderCount.get(c.id) ?? 0, c.account_blocked ? "Blocked" : "Active"]),
                 ])
               }
             >
@@ -249,7 +249,7 @@ function CustomersTab({
                     {c.id_type ? `${ID_LABEL[c.id_type] ?? c.id_type} ${c.id_no ?? ""}` : <span className="mut">Not provided</span>}{" "}
                     <St tone={c.id_verified ? "ok" : "warn"}>{c.id_verified ? "Verified" : "Unverified"}</St>
                   </td>
-                  <td>{c.phone || "—"}</td>
+                  <td><Phone value={c.phone} maskPhones={privacy.maskPhones} /></td>
                   <td className="num">{n3(wallet.get(c.id))}</td>
                   <td className="num">{orderCount.get(c.id) ?? 0}</td>
                   <td><St tone={c.account_blocked ? "bad" : "ok"}>{c.account_blocked ? "Blocked" : "Active"}</St></td>
@@ -273,6 +273,7 @@ type Detail = {
 
 function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: number; onClose: () => void; reload: () => Promise<void> }) {
   const { can } = useStaff();
+  const privacy = usePrivacy();
   const run = useRpc();
   const [c, setC] = useState<Customer | null>(null);
   const [d, setD] = useState<Detail | null>(null);
@@ -346,10 +347,11 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
             <div className="panel">
               <dl className="kv" style={{ paddingTop: 14 }}>
                 <dt>Mobile</dt>
-                <dd>{c.phone || "—"} {c.phone && <St tone="ok">OTP verified</St>}</dd>
+                <dd><Phone value={c.phone} maskPhones={privacy.maskPhones} /> {c.phone && <St tone="ok">OTP verified</St>} {c.phone && <RevealButton profileId={c.id} kind="contact" privileged={privacy.privileged} />}</dd>
                 <dt>ID</dt>
                 <dd>
                   {c.id_type ? `${ID_LABEL[c.id_type] ?? c.id_type} ${c.id_no ?? ""}` : "Not provided"} <St tone={c.id_verified ? "ok" : "warn"}>{c.id_verified ? "Verified" : "Unverified"}</St>
+                  {c.id_no && <RevealButton profileId={c.id} kind="identity" privileged={privacy.privileged} />}
                 </dd>
                 <dt>Segment</dt>
                 <dd>{SEG_LABEL[c.segment]}</dd>

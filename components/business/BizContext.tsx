@@ -20,6 +20,9 @@ export type OrgSummary = {
   created_at: string;
   credit_used: number | string;
   my_role: OrgRole | null;
+  /** F9 (0027): the caller is limited to some sites (empty list = the whole organisation). */
+  sites_restricted?: boolean;
+  site_ids?: string[];
 };
 
 type Ctx = { profile: PortalProfile; org: OrgSummary; reloadOrg: () => void };
@@ -38,7 +41,9 @@ export function useBiz() {
     role,
     isAdmin: role === "admin",
     canOrder: role === "admin" || role === "site_manager",
-    canPay: role === "admin" || role === "finance",
+    // Invoices cover every site, so members limited to some sites don't see or pay them.
+    canPay: (role === "admin" || role === "finance") && !v.org.sites_restricted,
+    restricted: Boolean(v.org.sites_restricted),
   };
 }
 
