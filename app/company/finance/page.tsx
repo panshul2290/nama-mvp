@@ -2,12 +2,16 @@
 
 import { useCallback, useState } from "react";
 import { useCompany, useCompanyTx, useFleet } from "@/components/company/CompanyContext";
-import { Bars, Columns, Dialog, Kpis, St, dayStart, downloadCsv, fmtDate, fmtDateTime, n3, omr, useAction, useLive, weekStart } from "@/components/portal/kit";
+import { CO } from "@/components/company/i18n";
+import { useFmt } from "@/components/portal/i18n";
+import { Bars, Columns, Dialog, Kpis, St, dayStart, downloadCsv, useAction, useLive, weekStart } from "@/components/portal/kit";
+import { useLang, useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
-import { fmtOman, omanToday } from "@/lib/time";
-import { PENALTY_STATE } from "@/lib/labels";
+import { omanToday } from "@/lib/time";
+import { penaltyState } from "@/lib/labels";
 import { ref, type Penalty } from "@/lib/types";
 
+// English ledger kinds for the CSV statement; the screen shows CO "kind_*" in the viewer's language.
 const KIND_LABEL: Record<string, string> = {
   earning: "Job earnings",
   tip: "Tip",
@@ -30,6 +34,11 @@ export default function CompanyFinance() {
   const [penalties, setPenalties] = useState<(Penalty & { label: string; order?: { order_no: number } | null })[]>([]);
   const [topup, setTopup] = useState(false);
   const [dispute, setDispute] = useState<(Penalty & { label: string }) | null>(null);
+  const t = useT(CO);
+  const f = useFmt();
+  const { lang } = useLang();
+  const kindText = (k: string) => (CO[`kind_${k}`] ? t(`kind_${k}`) : k);
+  const pref = (no: number | string) => <bdi dir="ltr">{ref.penalty(no)}</bdi>;
 
   const loadPenalties = useCallback(async () => {
     const db = supabase();
@@ -56,7 +65,7 @@ export default function CompanyFinance() {
     const from = dayStart().getTime() - (6 - i) * 86_400_000; // Muscat days (no DST)
     const to = from + 86_400_000;
     return {
-      label: fmtOman(from, { weekday: "short" }),
+      label: f.fmt(from, { weekday: "short" }),
       value: sum(tx.filter((x) => x.bucket === "earnings" && Date.parse(x.created_at) >= from && Date.parse(x.created_at) < to), ["earning", "tip", "cancel_fee"]),
     };
   });
@@ -65,7 +74,7 @@ export default function CompanyFinance() {
   const statement = tx.filter((x) => Date.parse(x.created_at) >= since30);
   const plate = (id: string | null) => fleet.tankers.find((t) => t.id === id)?.plate ?? "";
   const iban = company.iban ? `•••• ${company.iban.slice(-4)}` : "";
-  const bank = company.bank_name ? `${company.bank_name}${iban ? ` ${iban}` : ""}` : "your bank (add details with NWS finance)";
+  const bank = company.bank_name ? `${company.bank_name}${iban ? ` ${iban}` : ""}` : t("bankMissing");
 
   function exportCsv() {
     downloadCsv(`statement-${company.cr_no}-${omanToday()}.csv`, [
@@ -78,66 +87,69 @@ export default function CompanyFinance() {
     <>
       <Kpis
         items={[
-          { label: "Earned this week", value: omr(earned), sub: `Balance due ${omr(company.earnings_balance)}` },
-          { label: "Tips", value: omr(tips), sub: "Paid in full to your company" },
-          { label: "Penalties", value: omr(fines), sub: penalties.filter((p) => p.state === "issued").length ? `${penalties.filter((p) => p.state === "issued").length} can be disputed` : "None open", tone: fines < 0 ? "bad" : "ok" },
-          { label: "Filling credit", value: omr(company.fill_credit), sub: Number(company.fill_credit) < 20 ? "Low — top up to keep filling" : "Used at NWS filling stations", tone: Number(company.fill_credit) < 20 ? "warn" : undefined },
+          { label: t("kEarnedWeek"), value: f.omr(earned), sub: t("balanceDue", { v: f.omr(company.earnings_balance) }) },
+          { label: t("tips"), value: f.omr(tips), sub: t("tipsSub") },
+          {
+            label: t("penalties"),
+            value: f.omr(fines),
+            sub: penalties.filter((p) => p.state === "issued").length ? t("canDisputeN", { n: f.n(penalties.filter((p) => p.state === "issued").length) }) : t("noneOpen"),
+            tone: fines < 0 ? "bad" : "ok",
+          },
+          { label: t("acctFill"), value: f.omr(company.fill_credit), sub: Number(company.fill_credit) < 20 ? t("fillLow") : t("fillUsed"), tone: Number(company.fill_credit) < 20 ? "warn" : undefined },
         ]}
       />
       <div className="half">
         <div className="panel">
           <h2>
-            Earnings by tanker <small>this week, incl. tips</small>
+            {t("byTanker")} <small>{t("byTankerSub")}</small>
           </h2>
-          <Bars rows={byTanker} empty="No tankers yet." />
+          <Bars rows={byTanker} empty={t("noTankersYet")} />
           <h2 style={{ paddingTop: 4 }}>
-            Last 7 days <small>OMR per day</small>
+            {t("last7")} <small>{t("perDay")}</small>
           </h2>
-          <Columns rows={days} format={(v) => n3(v)} />
+          <Columns rows={days} format={(v) => f.n3(v)} />
         </div>
         <div className="panel">
-          <h2>Payouts</h2>
+          <h2>{t("payoutsTitle")}</h2>
           <dl className="kv wide">
-            <dt>Bank account</dt>
+            <dt>{t("bankAcct")}</dt>
             <dd>{bank}</dd>
-            <dt>Schedule</dt>
-            <dd>Weekly on Sunday to {company.bank_name ?? "your bank"}</dd>
-            <dt>Next payout</dt>
-            <dd>
-              {omr(Math.max(0, Number(company.earnings_balance)))} on {fmtDate(nextSunday().toISOString())}
-            </dd>
-            <dt>Filling credit</dt>
-            <dd>{omr(company.fill_credit)}</dd>
+            <dt>{t("schedule")}</dt>
+            <dd>{t("weeklyTo", { bank: company.bank_name ?? t("yourBank") })}</dd>
+            <dt>{t("nextPayout")}</dt>
+            <dd>{t("payoutOn", { amt: f.omr(Math.max(0, Number(company.earnings_balance))), date: f.date(nextSunday().toISOString()) })}</dd>
+            <dt>{t("acctFill")}</dt>
+            <dd>{f.omr(company.fill_credit)}</dd>
           </dl>
           <div className="pad btns">
             <button className="btn pri" onClick={() => setTopup(true)}>
-              Top up filling credit
+              {t("topupBtn")}
             </button>
             <button className="btn" onClick={exportCsv} disabled={!statement.length}>
-              Download statement (CSV)
+              {t("dlStatement")}
             </button>
           </div>
           <div className="tblwrap">
             <table>
               <thead>
                 <tr>
-                  <th>Paid</th>
-                  <th>Reference</th>
-                  <th className="num">Amount (OMR)</th>
+                  <th>{t("paidCol")}</th>
+                  <th>{t("reference")}</th>
+                  <th className="num">{t("amountOmr")}</th>
                 </tr>
               </thead>
               <tbody>
                 {payouts.slice(0, 8).map((x) => (
                   <tr key={x.id}>
-                    <td>{fmtDate(x.created_at)}</td>
-                    <td>{x.memo || "Weekly payout"}</td>
-                    <td className="num">{n3(Math.abs(Number(x.amount)))}</td>
+                    <td>{f.date(x.created_at)}</td>
+                    <td>{x.memo || t("weeklyPayout")}</td>
+                    <td className="num">{f.n3(Math.abs(Number(x.amount)))}</td>
                   </tr>
                 ))}
                 {!payouts.length && (
                   <tr>
                     <td colSpan={3} className="empty">
-                      No payouts in the last 90 days.
+                      {t("noPayouts")}
                     </td>
                   </tr>
                 )}
@@ -148,43 +160,43 @@ export default function CompanyFinance() {
       </div>
 
       <div className="panel">
-        <h2>Penalties</h2>
+        <h2>{t("penalties")}</h2>
         <div className="tblwrap">
           <table>
             <thead>
               <tr>
-                <th>Penalty</th>
-                <th>Rule</th>
-                <th>Tanker</th>
-                <th>Reason</th>
-                <th>Issued</th>
-                <th className="num">Amount (OMR)</th>
-                <th>Status</th>
+                <th>{t("penaltyCol")}</th>
+                <th>{t("ruleCol")}</th>
+                <th>{t("tanker")}</th>
+                <th>{t("reason")}</th>
+                <th>{t("issuedCol")}</th>
+                <th className="num">{t("amountOmr")}</th>
+                <th>{t("status")}</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {penalties.map((p) => {
-                const [s, tone] = PENALTY_STATE[p.state];
+                const [s, tone] = penaltyState(p.state, lang);
                 return (
                   <tr key={p.id}>
-                    <td>{ref.penalty(p.penalty_no)}</td>
+                    <td>{pref(p.penalty_no)}</td>
                     <td>{p.label}</td>
                     <td className="tk-plate">{plate(p.tanker_id) || "—"}</td>
                     <td style={{ maxWidth: 300 }}>
                       {p.reason}
-                      {p.order && <small className="docmeta">Order {ref.order(p.order.order_no)}</small>}
-                      {p.dispute_text && <small className="docmeta">Your dispute: {p.dispute_text}</small>}
+                      {p.order && <small className="docmeta">{t("orderX", { no: `\u2066${ref.order(p.order.order_no)}\u2069` })}</small>}
+                      {p.dispute_text && <small className="docmeta">{t("yourDispute", { text: p.dispute_text })}</small>}
                     </td>
-                    <td>{fmtDate(p.created_at)}</td>
-                    <td className="num">{n3(p.amount)}</td>
+                    <td>{f.date(p.created_at)}</td>
+                    <td className="num">{f.n3(p.amount)}</td>
                     <td>
                       <St tone={tone}>{s}</St>
                     </td>
                     <td className="num">
                       {p.state === "issued" && (
                         <button className="btn sm" onClick={() => setDispute(p)}>
-                          Dispute
+                          {t("disputeBtn")}
                         </button>
                       )}
                     </td>
@@ -194,7 +206,7 @@ export default function CompanyFinance() {
               {!penalties.length && (
                 <tr>
                   <td colSpan={8} className="empty">
-                    No penalties. Keep it up.
+                    {t("noPenalties")}
                   </td>
                 </tr>
               )}
@@ -205,41 +217,43 @@ export default function CompanyFinance() {
 
       <div className="panel">
         <h2>
-          Statement <small>last 30 days</small>
+          {t("statement")} <small>{t("last30")}</small>
           <button className="btn sm" onClick={exportCsv} disabled={!statement.length}>
-            Export CSV
+            {t("exportCsv")}
           </button>
         </h2>
         <div className="tblwrap">
           <table>
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Account</th>
-                <th>Tanker</th>
-                <th>Reference</th>
-                <th className="num">Amount (OMR)</th>
+                <th>{t("date")}</th>
+                <th>{t("type")}</th>
+                <th>{t("account")}</th>
+                <th>{t("tanker")}</th>
+                <th>{t("reference")}</th>
+                <th className="num">{t("amountOmr")}</th>
               </tr>
             </thead>
             <tbody>
               {statement.slice(0, 200).map((x) => (
                 <tr key={x.id}>
-                  <td>{fmtDateTime(x.created_at)}</td>
-                  <td>{KIND_LABEL[x.kind] ?? x.kind}</td>
-                  <td className="mut">{x.bucket === "fill_credit" ? "Filling credit" : "Earnings"}</td>
+                  <td>{f.dateTime(x.created_at)}</td>
+                  <td>{kindText(x.kind)}</td>
+                  <td className="mut">{x.bucket === "fill_credit" ? t("acctFill") : t("acctEarn")}</td>
                   <td className="tk-plate">{plate(x.tanker_id) || "—"}</td>
                   <td>{x.memo}</td>
                   <td className="num" style={{ color: Number(x.amount) < 0 ? "var(--bad)" : undefined }}>
-                    {Number(x.amount) > 0 ? "+" : ""}
-                    {n3(x.amount)}
+                    <bdi dir="ltr">
+                      {Number(x.amount) > 0 ? "+" : ""}
+                      {f.n3(x.amount)}
+                    </bdi>
                   </td>
                 </tr>
               ))}
               {!statement.length && (
                 <tr>
                   <td colSpan={6} className="empty">
-                    No transactions in the last 30 days.
+                    {t("noTx")}
                   </td>
                 </tr>
               )}
@@ -257,12 +271,14 @@ export default function CompanyFinance() {
 function TopUp({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { busy, run } = useAction();
   const [amount, setAmount] = useState(50);
+  const t = useT(CO);
+  const f = useFmt();
   return (
-    <Dialog title="Top up filling credit" body="Filling credit pays for water at NWS filling stations. Top-ups are by bank transfer (simulated) and show immediately." onClose={onClose}>
+    <Dialog title={t("topTitle")} body={t("topBody")} onClose={onClose}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          await run("top", () => supabase().rpc("owner_topup_fill_credit", { p_amount: amount }), `Filling credit topped up by ${omr(amount)}`, () => {
+          await run("top", () => supabase().rpc("owner_topup_fill_credit", { p_amount: amount }), t("toppedUp", { amt: f.omr(amount) }), () => {
             onDone();
             onClose();
           });
@@ -271,20 +287,20 @@ function TopUp({ onClose, onDone }: { onClose: () => void; onDone: () => void })
         <div className="chips" style={{ marginBottom: 12 }}>
           {[10, 50, 100, 250].map((v) => (
             <button type="button" key={v} className={`chip ${amount === v ? "on" : ""}`} onClick={() => setAmount(v)}>
-              {v} OMR
+              {f.ar ? `${f.n(v)} ر.ع.` : `${v} OMR`}
             </button>
           ))}
         </div>
         <div className="fld">
-          <label htmlFor="tuA">Amount (OMR, 10 to 10,000)</label>
-          <input id="tuA" className="in" type="number" min={10} max={10000} step={1} required value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
+          <label htmlFor="tuA">{t("amountRange")}</label>
+          <input id="tuA" className="in" dir="ltr" type="number" min={10} max={10000} step={1} required value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
         </div>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </button>
           <button className="btn pri" disabled={busy === "top"}>
-            {busy === "top" ? "Topping up…" : `Top up ${omr(amount)}`}
+            {busy === "top" ? t("toppingUp") : t("topUpX", { amt: f.omr(amount) })}
           </button>
         </div>
       </form>
@@ -295,27 +311,33 @@ function TopUp({ onClose, onDone }: { onClose: () => void; onDone: () => void })
 function Dispute({ penalty, onClose, onDone }: { penalty: Penalty & { label: string }; onClose: () => void; onDone: () => void }) {
   const { busy, run } = useAction();
   const [text, setText] = useState("");
+  const t = useT(CO);
+  const f = useFmt();
   return (
-    <Dialog title={`Dispute ${ref.penalty(penalty.penalty_no)}`} body={`${penalty.label} — ${omr(penalty.amount)}. NWS reviews your explanation (describe any evidence, such as IVMS logs or photos, and how to get it); the amount is refunded if the penalty is cancelled.`} onClose={onClose}>
+    <Dialog
+      title={t("dispTitle", { no: `\u2066${ref.penalty(penalty.penalty_no)}\u2069` })}
+      body={t("dispBody", { label: penalty.label, amt: f.omr(penalty.amount) })}
+      onClose={onClose}
+    >
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          await run("disp", () => supabase().rpc("dispute_penalty", { p_penalty_id: penalty.id, p_text: text.trim() }), "Dispute sent to NWS", () => {
+          await run("disp", () => supabase().rpc("dispute_penalty", { p_penalty_id: penalty.id, p_text: text.trim() }), t("dispSent"), () => {
             onDone();
             onClose();
           });
         }}
       >
         <div className="fld">
-          <label htmlFor="dpT">Why should this penalty be cancelled?</label>
+          <label htmlFor="dpT">{t("dispWhy")}</label>
           <textarea id="dpT" className="in" rows={4} required minLength={3} maxLength={1000} value={text} onChange={(e) => setText(e.target.value)} autoFocus />
         </div>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </button>
           <button className="btn pri" disabled={busy === "disp" || text.trim().length < 3}>
-            {busy === "disp" ? "Sending…" : "Send dispute"}
+            {busy === "disp" ? t("sending") : t("sendDispute")}
           </button>
         </div>
       </form>

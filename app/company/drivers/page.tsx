@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 import { currentDoc, tankerOf, useCompany, useCompanyOrders, useFleet } from "@/components/company/CompanyContext";
+import { CO } from "@/components/company/i18n";
 import { isOnTime } from "@/lib/sla";
-import { Dialog, St, daysUntil, fmtDate, useAction } from "@/components/portal/kit";
+import { useFmt } from "@/components/portal/i18n";
+import { Dialog, St, daysUntil, useAction } from "@/components/portal/kit";
 import { SERVICE_SHORT } from "@/components/OrderBits";
+import { useLang, useT } from "@/lib/i18n";
+import { label } from "@/lib/labels";
 import { useSentInvitations } from "@/components/useInvitations";
 import { formatPhone } from "@/lib/phone";
 import { supabase } from "@/lib/supabase/client";
@@ -16,39 +20,42 @@ export default function CompanyDrivers() {
   const sent = useSentInvitations("driver", company.id);
   const { busy, run } = useAction();
   const [adding, setAdding] = useState(false);
+  const t = useT(CO);
+  const f = useFmt();
+  const { lang } = useLang();
 
   async function assign(driverId: string, tankerId: string) {
     const current = tankerOf(fleet, driverId);
     if (tankerId === "") {
       if (!current) return;
-      await run(driverId, () => supabase().rpc("owner_unassign", { p_tanker_id: current.id }), `Driver unassigned from ${current.plate}`, fleet.reload);
+      await run(driverId, () => supabase().rpc("owner_unassign", { p_tanker_id: current.id }), t("unassignedFrom", { plate: current.plate }), fleet.reload);
       return;
     }
-    const t = fleet.tankers.find((x) => x.id === tankerId);
-    await run(driverId, () => supabase().rpc("owner_assign_driver", { p_driver_id: driverId, p_tanker_id: tankerId }), `Assigned to ${t?.plate ?? "tanker"}`, fleet.reload);
+    const tk = fleet.tankers.find((x) => x.id === tankerId);
+    await run(driverId, () => supabase().rpc("owner_assign_driver", { p_driver_id: driverId, p_tanker_id: tankerId }), t("assignedTo", { plate: tk?.plate ?? t("tanker") }), fleet.reload);
   }
 
   return (
     <div className="panel">
       <div className="toolbar">
         <span className="mut" style={{ fontSize: 13 }}>
-          Drivers sign up in the Driver app, then you invite them here by mobile number and assign a tanker once they accept
+          {t("drIntro")}
         </span>
         <button className="btn pri" onClick={() => setAdding(true)}>
-          Invite driver
+          {t("inviteDriver")}
         </button>
       </div>
       <div className="tblwrap">
         <table>
           <thead>
             <tr>
-              <th>Driver</th>
-              <th>Tanker</th>
-              <th>Heavy licence</th>
-              <th className="num">Jobs (90 d)</th>
-              <th className="num">Rating</th>
-              <th className="num">On time</th>
-              <th>Status</th>
+              <th>{t("driver")}</th>
+              <th>{t("tanker")}</th>
+              <th>{t("heavyLicence")}</th>
+              <th className="num">{t("jobs90")}</th>
+              <th className="num">{t("rating")}</th>
+              <th className="num">{t("onTime")}</th>
+              <th>{t("status")}</th>
             </tr>
           </thead>
           <tbody>
@@ -62,18 +69,18 @@ export default function CompanyDrivers() {
               return (
                 <tr key={d.id}>
                   <td>
-                    <b>{d.full_name || "Unnamed driver"}</b>
-                    <small className="docmeta">{d.phone ?? "No phone"}</small>
+                    <b>{d.full_name || t("unnamedDriver")}</b>
+                    <small className="docmeta">{d.phone ? <bdi dir="ltr">{d.phone}</bdi> : t("noPhone")}</small>
                   </td>
                   <td>
-                    <select className="inl" aria-label={`Tanker for ${d.full_name}`} value={tk?.id ?? ""} disabled={busy === d.id} onChange={(e) => assign(d.id, e.target.value)}>
-                      <option value="">— Not assigned</option>
-                      {fleet.tankers.map((t) => {
-                        const other = fleet.assignments.find((a) => a.tanker_id === t.id && a.driver_id !== d.id);
+                    <select className="inl" aria-label={t("tankerFor", { name: d.full_name })} value={tk?.id ?? ""} disabled={busy === d.id} onChange={(e) => assign(d.id, e.target.value)}>
+                      <option value="">{t("notAssigned")}</option>
+                      {fleet.tankers.map((tn) => {
+                        const other = fleet.assignments.find((a) => a.tanker_id === tn.id && a.driver_id !== d.id);
                         return (
-                          <option key={t.id} value={t.id}>
-                            {t.plate} · {SERVICE_SHORT[t.service_type]}
-                            {other ? ` (replaces ${fleet.drivers.find((x) => x.id === other.driver_id)?.full_name ?? "driver"})` : ""}
+                          <option key={tn.id} value={tn.id}>
+                            {tn.plate} · {label("svcShort", tn.service_type, lang, SERVICE_SHORT[tn.service_type])}
+                            {other ? t("replaces", { name: fleet.drivers.find((x) => x.id === other.driver_id)?.full_name ?? t("driver") }) : ""}
                           </option>
                         );
                       })}
@@ -81,24 +88,24 @@ export default function CompanyDrivers() {
                   </td>
                   <td>
                     {!lic ? (
-                      <St tone="bad">Missing</St>
+                      <St tone="bad">{t("missing")}</St>
                     ) : lic.status === "pending_review" ? (
-                      <St tone="act">In review · {fmtDate(lic.valid_to)}</St>
+                      <St tone="act">{t("inReviewD", { date: f.date(lic.valid_to) })}</St>
                     ) : (
-                      <St tone={licDays! < 0 ? "bad" : licDays! <= 30 ? "warn" : "ok"}>{licDays! < 0 ? "Expired" : fmtDate(lic.valid_to)}</St>
+                      <St tone={licDays! < 0 ? "bad" : licDays! <= 30 ? "warn" : "ok"}>{licDays! < 0 ? t("expired") : f.date(lic.valid_to)}</St>
                     )}
                   </td>
-                  <td className="num">{mine.length}</td>
-                  <td className="num">{rated.length ? `${(rated.reduce((s, o) => s + (o.rating ?? 0), 0) / rated.length).toFixed(1)} ★` : "—"}</td>
-                  <td className="num">{timed.length ? `${Math.round((timed.filter(Boolean).length / timed.length) * 100)}%` : "—"}</td>
-                  <td>{!tk ? <St tone="warn">No tanker</St> : tk.blocked ? <St tone="bad">Tanker blocked</St> : tk.is_online ? <St tone="ok">Online</St> : <St>Offline</St>}</td>
+                  <td className="num">{f.n(mine.length)}</td>
+                  <td className="num">{rated.length ? `${f.n(rated.reduce((s, o) => s + (o.rating ?? 0), 0) / rated.length, 1)} ★` : "—"}</td>
+                  <td className="num">{timed.length ? f.pct(Math.round((timed.filter(Boolean).length / timed.length) * 100) / 100, 0) : "—"}</td>
+                  <td>{!tk ? <St tone="warn">{t("noTanker")}</St> : tk.blocked ? <St tone="bad">{t("tankerBlocked")}</St> : tk.is_online ? <St tone="ok">{t("online")}</St> : <St>{t("offline")}</St>}</td>
                 </tr>
               );
             })}
             {fleet.loaded && !fleet.drivers.length && (
               <tr>
                 <td colSpan={7} className="empty">
-                  No drivers yet. Ask each driver to create an account in the Driver app, then invite them here with the mobile number they signed up with.
+                  {t("drEmpty")}
                 </td>
               </tr>
             )}
@@ -108,27 +115,29 @@ export default function CompanyDrivers() {
       {sent.invitations.length > 0 && (
         <>
           <h2 style={{ paddingTop: 12 }}>
-            Pending invitations <small>the driver accepts in the Driver app</small>
+            {t("pendingInv")} <small>{t("pendingInvSub")}</small>
           </h2>
           <div className="tblwrap">
             <table>
               <thead>
                 <tr>
-                  <th>Mobile / email</th>
-                  <th>Sent</th>
-                  <th>Expires</th>
+                  <th>{t("mobileEmail")}</th>
+                  <th>{t("sentCol")}</th>
+                  <th>{t("expiresCol")}</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {sent.invitations.map((i) => (
                   <tr key={i.id}>
-                    <td dir="ltr">{i.phone ? formatPhone(i.phone) : i.email}</td>
-                    <td>{fmtDate(i.created_at)}</td>
-                    <td>{i.expired ? <St tone="bad">Expired</St> : fmtDate(i.expires_at)}</td>
+                    <td>
+                      <bdi dir="ltr">{i.phone ? formatPhone(i.phone) : i.email}</bdi>
+                    </td>
+                    <td>{f.date(i.created_at)}</td>
+                    <td>{i.expired ? <St tone="bad">{t("expired")}</St> : f.date(i.expires_at)}</td>
                     <td className="num">
-                      <button className="btn sm" disabled={busy === i.id} onClick={() => run(i.id, () => supabase().rpc("revoke_invitation", { p_id: i.id }), "Invitation revoked", sent.reload)}>
-                        Revoke
+                      <button className="btn sm" disabled={busy === i.id} onClick={() => run(i.id, () => supabase().rpc("revoke_invitation", { p_id: i.id }), t("invRevoked"), sent.reload)}>
+                        {t("revoke")}
                       </button>
                     </td>
                   </tr>
@@ -141,18 +150,20 @@ export default function CompanyDrivers() {
       {sent.recent.length > 0 && (
         <>
           <h2 style={{ paddingTop: 12 }}>
-            Recent answers <small>last 14 days</small>
+            {t("recentAnswers")} <small>{t("last14")}</small>
           </h2>
           <div className="tblwrap">
             <table>
               <tbody>
                 {sent.recent.map((i) => (
                   <tr key={i.id}>
-                    <td dir="ltr">{i.phone ? formatPhone(i.phone) : i.email}</td>
                     <td>
-                      <St tone={i.status === "accepted" ? "ok" : "bad"}>{i.status === "accepted" ? "Joined your company" : "Declined"}</St>
+                      <bdi dir="ltr">{i.phone ? formatPhone(i.phone) : i.email}</bdi>
                     </td>
-                    <td>{fmtDate(i.decided_at)}</td>
+                    <td>
+                      <St tone={i.status === "accepted" ? "ok" : "bad"}>{i.status === "accepted" ? t("joined") : t("declinedSt")}</St>
+                    </td>
+                    <td>{f.date(i.decided_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -160,7 +171,7 @@ export default function CompanyDrivers() {
           </div>
         </>
       )}
-      <p className="note">A driver can drive one tanker at a time. Changing a tanker takes it offline until the driver goes online again; it isn’t possible while either is on a job.</p>
+      <p className="note">{t("drNote")}</p>
       {adding && <InviteDriver onClose={() => setAdding(false)} onDone={sent.reload} />}
     </div>
   );
@@ -169,31 +180,28 @@ export default function CompanyDrivers() {
 function InviteDriver({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { busy, run } = useAction();
   const [contact, setContact] = useState("");
+  const t = useT(CO);
   return (
-    <Dialog
-      title="Invite driver"
-      body="Enter the mobile number the driver signed up with in the Driver app (or their email, for older accounts). They join your company when they accept the invitation in the app; a tanker they registered themselves joins with them. Only an account that has verified this number by SMS can see the invitation."
-      onClose={onClose}
-    >
+    <Dialog title={t("inviteDriver")} body={t("inviteBody")} onClose={onClose}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          await run("add", () => supabase().rpc("owner_add_driver", { p_contact: contact.trim() }), `Invitation sent to ${contact.trim()}`, () => {
+          await run("add", () => supabase().rpc("owner_add_driver", { p_contact: contact.trim() }), t("invSent", { c: `\u2066${contact.trim()}\u2069` }), () => {
             onDone();
             onClose();
           });
         }}
       >
         <div className="fld">
-          <label htmlFor="drE">Driver’s mobile number or email</label>
+          <label htmlFor="drE">{t("drContact")}</label>
           <input id="drE" className="in" type="text" inputMode="tel" dir="ltr" required value={contact} onChange={(e) => setContact(e.target.value)} placeholder="+968 9123 4567" autoFocus />
         </div>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </button>
           <button className="btn pri" disabled={busy === "add"}>
-            {busy === "add" ? "Sending…" : "Send invitation"}
+            {busy === "add" ? t("sending") : t("sendInvitation")}
           </button>
         </div>
       </form>

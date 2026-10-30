@@ -4,6 +4,9 @@ import { createContext, use, useCallback, useEffect, useState } from "react";
 import type { PortalProfile } from "@/components/portal/PortalShell";
 import { useLive } from "@/components/portal/kit";
 import { permitSummary, type Permit } from "@/components/nws/fleetData";
+import { CO } from "@/components/company/i18n";
+import { fmtFor, useFmt } from "@/components/portal/i18n";
+import { useT, type Lang } from "@/lib/i18n";
 import { PERMIT_STAGE } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import type { ServiceType } from "@/lib/pricing";
@@ -16,8 +19,12 @@ export type OwnerCompany = {
   earnings_balance: number | string; fill_credit: number | string;
 };
 
-/** A load problem shown above the page: a failed query, or a list cut off at its cap. */
-type Issue = { tone: "bad" | "info"; text: string };
+/**
+ * A load problem shown above the page: a failed query, or a list cut off at its cap. `key` and `vars`
+ * are a CO dictionary entry, translated when shown; `text` identifies the issue (dedupe, no-op updates).
+ */
+type Issue = { tone: "bad" | "info"; key: string; vars: Record<string, string | number>; text: string };
+const issueOf = (tone: Issue["tone"], key: string, vars: Record<string, string | number>): Issue => ({ tone, key, vars, text: JSON.stringify([key, vars]) });
 type Report = (key: string, issue: Issue | null) => void;
 
 const Ctx = createContext<{ profile: PortalProfile; company: OwnerCompany; reloadCompany: () => Promise<void>; issues: Issue[]; report: Report } | null>(null);
@@ -47,11 +54,17 @@ export function useCompany() {
 /** Banners for failed or truncated company queries; rendered once by the layout. */
 export function CompanyIssues() {
   const { issues } = useCompany();
-  return issues.map((i) => (
-    <div key={i.text} className={`banner ${i.tone === "bad" ? "badb" : "info"}`} role={i.tone === "bad" ? "alert" : "status"}>
-      {i.text}
-    </div>
-  ));
+  const t = useT(CO);
+  const f = useFmt();
+  return issues.map((i) => {
+    const v = i.vars;
+    const vars = { ...v, what: t(String(v.what)), ...(typeof v.shown === "number" ? { shown: f.n(v.shown), total: f.n(v.total), days: f.n(v.days) } : {}) };
+    return (
+      <div key={i.text} className={`banner ${i.tone === "bad" ? "badb" : "info"}`} role={i.tone === "bad" ? "alert" : "status"}>
+        {t(i.key, vars)}
+      </div>
+    );
+  });
 }
 
 /** Report this hook's issues under `key`, and clear them when the page goes away. */
@@ -61,7 +74,8 @@ function useIssue(key: string) {
   return useCallback((issue: Issue | null) => report(key, issue), [key, report]);
 }
 
-const loadFailed = (what: string, message: string): Issue => ({ tone: "bad", text: `Couldn’t load ${what}: ${message}. Showing the last data received; it will retry automatically.` });
+// `what` is a CO key (wFleet, wJobs, …).
+const loadFailed = (what: string, message: string): Issue => issueOf("bad", "loadFailed", { what, msg: message });
 
 // ---------------------------------------------------------------- fleet data
 export type FTanker = {
@@ -78,7 +92,7 @@ export type FPermit = Permit & {
 export type FContract = Contract & {
   customer: { full_name: string } | null; org: { name: string } | null; property: { label: string; area: string } | null;
 };
-export const contractCustomer = (c: FContract) => c.org?.name ?? (c.customer?.full_name || (c.org_id ? "Business account" : "Household"));
+export const contractCustomer = (c: FContract, lang: Lang = "en") => c.org?.name ?? (c.customer?.full_name || CO[c.org_id ? "bizAccount" : "household"][lang]);
 export const contractSite = (c: FContract) => (c.property ? [c.property.label, c.property.area].filter(Boolean).join(" · ") : "");
 export type FOrder = {
   id: string; order_no: number; status: string; service_type: ServiceType; gallons: number; area: string; tanker_id: string | null; driver_id: string | null;
@@ -122,7 +136,7 @@ export function useFleet(key: string, extraTables: string[] = []) {
     ]);
     // A failed query keeps what was loaded before instead of showing an empty fleet.
     const failed = [t, d, a, p, dv, doc, al, c].find((r) => r.error)?.error;
-    issue(failed ? loadFailed("your fleet", failed.message) : null);
+    issue(failed ? loadFailed("wFleet", failed.message) : null);
     setFleet((prev) => ({
       tankers: t.error ? prev.tankers : ((t.data ?? []) as FTanker[]),
       drivers: d.error ? prev.drivers : ((d.data ?? []) as FDriver[]),
@@ -154,13 +168,34 @@ export function tankerPermit(t: FTanker, permits: FPermit[]) {
   return permitSummary({ service_type: t.service_type, permits: permits.filter((p) => p.tanker_id === t.id) });
 }
 
-/** One-word fleet status, as in the prototype's Tankers table. A suspended company's tankers can't work. */
-export function tankerStatus(t: FTanker, permits: FPermit[], suspended = false): [string, "ok" | "warn" | "bad" | ""] {
-  if (suspended) return ["Company suspended", "bad"];
-  if (t.blocked) return ["Blocked", "bad"];
+/**
+ * The permit summary's text in a language (permitSummary in components/nws/fleetData is English).
+ * Same judgement as permitSummary: the newest approved, unexpired permit of the tanker's service.
+ */
+export function permitText(t: FTanker, permits: FPermit[], lang: Lang, now = Date.now()): string {
   const p = tankerPermit(t, permits);
-  if (!p.valid) return [p.text === "Pending review" ? "Pending permit" : "No valid permit", p.text === "Pending review" ? "warn" : "bad"];
-  return t.is_online ? ["Online", "ok"] : ["Offline", ""];
+  if (lang === "en") return p.text;
+  const c = (k: string) => CO[k][lang];
+  if (p.valid) {
+    const mine = permits.filter((x) => x.tanker_id === t.id).sort((a, b) => b.expires_at.localeCompare(a.expires_at));
+    const v = mine.find((x) => x.status === "approved" && x.type === t.service_type && Date.parse(x.expires_at) > now);
+    if (!v) return p.text;
+    const days = Math.ceil((Date.parse(v.expires_at) - now) / 86_400_000);
+    const f = fmtFor(lang);
+    return p.tone === "warn" ? (days === 1 ? c("pmExpiresIn1") : c("pmExpiresIn").replace("{n}", f.n(days))) : c("pmValidTo").replace("{date}", f.date(v.expires_at));
+  }
+  const key: Record<string, string> = { "Pending review": "pmPending", Expired: "pmExpired", Rejected: "pmRejected", "Wrong service type": "pmWrongType", "No permit": "pmNone" };
+  return key[p.text] ? c(key[p.text]) : p.text;
+}
+
+/** One-word fleet status, as in the prototype's Tankers table. A suspended company's tankers can't work. */
+export function tankerStatus(t: FTanker, permits: FPermit[], suspended = false, lang: Lang = "en"): [string, "ok" | "warn" | "bad" | ""] {
+  const c = (k: string) => CO[k][lang];
+  if (suspended) return [c("stSuspended"), "bad"];
+  if (t.blocked) return [c("stBlocked"), "bad"];
+  const p = tankerPermit(t, permits);
+  if (!p.valid) return [p.text === "Pending review" ? c("stPendingPermit") : c("stNoValidPermit"), p.text === "Pending review" ? "warn" : "bad"];
+  return t.is_online ? [c("online"), "ok"] : [c("offline"), ""];
 }
 
 export const DOC_KINDS = [
@@ -172,6 +207,8 @@ export const DOC_KINDS = [
   { kind: "water_test", label: "Water test" },
 ] as const;
 export const DOC_LABEL: Record<string, string> = { ...Object.fromEntries(DOC_KINDS.map((d) => [d.kind, d.label])), heavy_licence: "Heavy vehicle licence" };
+/** A document kind's name in a language (DOC_LABEL stays English for exports). */
+export const docLabel = (kind: string, lang: Lang = "en") => CO[`doc_${kind}`]?.[lang] ?? DOC_LABEL[kind] ?? kind;
 
 /**
  * A rejected upload that is newer than the document that counts (so the owner sees "Rejected — re-upload"
@@ -201,11 +238,9 @@ const ORDER_COLS =
 export const ORDER_CAP = 1000;
 export const TX_CAP = 2000; // the API may return fewer (its max-rows); `count` reveals any shortfall
 
-/** "Showing the latest N" when a capped query matched more rows than it returned. */
+/** "Showing the latest N" when a capped query matched more rows than it returned (`what` is a CO key). */
 const capped = (what: string, shown: number, total: number | null, days: number): Issue | null =>
-  total != null && total > shown
-    ? { tone: "info", text: `Showing the latest ${shown.toLocaleString("en-GB")} of ${total.toLocaleString("en-GB")} ${what} from the last ${days} days — totals on this page cover only those.` }
-    : null;
+  total != null && total > shown ? issueOf("info", "capped", { what, shown, total, days }) : null;
 
 /**
  * Deliveries generated from the company's accepted contracts that no driver has taken yet
@@ -224,7 +259,7 @@ export function useContractDeliveries(key: string) {
       .in("status", ["scheduled", "requested"])
       .order("slot_start", { ascending: true })
       .limit(200);
-    if (error) issue(loadFailed("contract deliveries", error.message));
+    if (error) issue(loadFailed("wContractDeliveries", error.message));
     else {
       issue(null);
       setOrders((data ?? []) as FOrder[]);
@@ -243,10 +278,10 @@ export function useCompanyOrders(key: string, days = 30) {
   const load = useCallback(async () => {
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     const { data, error, count } = await supabase().from("orders").select(ORDER_COLS, { count: "exact" }).not("tanker_id", "is", null).gte("created_at", since).order("created_at", { ascending: false }).limit(ORDER_CAP);
-    if (error) issue(loadFailed("jobs", error.message));
+    if (error) issue(loadFailed("wJobs", error.message));
     else {
       setOrders((data ?? []) as FOrder[]);
-      issue(capped("jobs", data?.length ?? 0, count, days));
+      issue(capped("wJobs", data?.length ?? 0, count, days));
     }
     setLoaded(true);
   }, [days, issue]);
@@ -269,10 +304,10 @@ export function useCompanyTx(key: string, days = 90) {
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(TX_CAP);
-    if (error) issue(loadFailed("the ledger", error.message));
+    if (error) issue(loadFailed("wLedger", error.message));
     else {
       setTx((data ?? []) as FTx[]);
-      issue(capped("ledger entries", data?.length ?? 0, count, days));
+      issue(capped("wLedgerEntries", data?.length ?? 0, count, days));
     }
     setLoaded(true);
   }, [days, issue]);

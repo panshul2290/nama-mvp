@@ -3,29 +3,30 @@
 import "./company.css";
 import { useCallback, useEffect, useState } from "react";
 import { CompanyIssues, CompanyProvider, type OwnerCompany } from "@/components/company/CompanyContext";
+import { CO } from "@/components/company/i18n";
 import { RegisterCompany } from "@/components/company/RegisterCompany";
 import { useLive } from "@/components/portal/kit";
 import { PortalLoading, PortalShell, usePortalProfile, type PortalTab } from "@/components/portal/PortalShell";
+import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 
+// Labels are CO dictionary keys (components/company/i18n.ts), translated at render.
 const TABS: PortalTab[] = [
-  { href: "/company", label: "Overview" },
-  { href: "/company/tankers", label: "Tankers" },
-  { href: "/company/drivers", label: "Drivers" },
-  { href: "/company/compliance", label: "Compliance" },
-  { href: "/company/permits", label: "Permits" },
-  { href: "/company/jobs", label: "Jobs and contracts" },
-  { href: "/company/finance", label: "Finance" },
-  { href: "/company/shifts", label: "Shifts" },
+  { href: "/company", label: "tabOverview" },
+  { href: "/company/tankers", label: "tabTankers" },
+  { href: "/company/drivers", label: "tabDrivers" },
+  { href: "/company/compliance", label: "tabCompliance" },
+  { href: "/company/permits", label: "tabPermits" },
+  { href: "/company/jobs", label: "tabJobs" },
+  { href: "/company/finance", label: "tabFinance" },
+  { href: "/company/shifts", label: "tabShifts" },
 ];
-
-const DESCRIPTION =
-  "For tanker companies: register tankers and drivers, keep documents and permits current, accept contracts, track jobs and earnings, and plan shifts.";
 
 export default function CompanyLayout({ children }: { children: React.ReactNode }) {
   const { profile, reload } = usePortalProfile("owner");
   const [company, setCompany] = useState<OwnerCompany | null | undefined>(undefined);
   const [offers, setOffers] = useState(0);
+  const t = useT(CO);
 
   const loadCompany = useCallback(async () => {
     const db = supabase();
@@ -51,11 +52,11 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
   useLive("company-offers", ["contracts"], loadOffers, 60_000);
 
   if (!profile || company === undefined) return <PortalLoading />;
-  const who = `Signed in as ${profile.full_name || "owner"}${company ? ` · ${company.name}` : ""}`;
+  const who = `${t("signedInAs", { name: profile.full_name || t("ownerFallback") })}${company ? ` · ${company.name}` : ""}`;
 
   if (!company) {
     return (
-      <PortalShell app="Company portal" who={who} title="Register your fleet" description="Tell NWS about your tanker company. Once NWS approves it, you can register tankers, add drivers and apply for permits.">
+      <PortalShell app={t("appName")} who={who} title={t("registerTitle")} description={t("registerDesc")}>
         <RegisterCompany
           onDone={() => {
             reload();
@@ -69,17 +70,24 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
   const banner =
     company.status === "pending" ? (
       <div className="banner">
-        <b>Waiting for NWS approval.</b> NWS is reviewing {company.name} (CR {company.cr_no}). You can register tankers, add drivers and upload documents now; tankers take jobs once the company is approved and each has a valid permit.
+        <b>{t("pendingB")}</b> {t("pendingBody", { name: company.name, cr: company.cr_no })}
       </div>
     ) : company.status === "suspended" ? (
       <div className="banner badb">
-        <b>Company suspended by NWS.</b> Your tankers can’t take jobs. Contact the NWS permits team on 1442.
+        <b>{t("suspendedB")}</b> {t("suspendedBody", { phone: "\u20661442\u2069" })}
       </div>
     ) : null;
 
   return (
     <CompanyProvider profile={profile} company={company} reloadCompany={loadCompany}>
-      <PortalShell app="Company portal" who={who} title={company.name} description={DESCRIPTION} banner={banner} tabs={TABS.map((t) => (t.href === "/company/jobs" ? { ...t, badge: offers } : t))}>
+      <PortalShell
+        app={t("appName")}
+        who={who}
+        title={company.name}
+        description={t("description")}
+        banner={banner}
+        tabs={TABS.map((tab) => ({ ...tab, label: t(tab.label), ...(tab.href === "/company/jobs" ? { badge: offers } : {}) }))}
+      >
         <CompanyIssues />
         {children}
       </PortalShell>

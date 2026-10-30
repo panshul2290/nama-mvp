@@ -1,9 +1,12 @@
 "use client";
 
-import { contractCustomer, contractSite, FREQ_LABEL, useCompany, useCompanyOrders, useContractDeliveries, useFleet, type FContract } from "@/components/company/CompanyContext";
+import { contractCustomer, contractSite, useCompany, useCompanyOrders, useContractDeliveries, useFleet, type FContract } from "@/components/company/CompanyContext";
+import { CO } from "@/components/company/i18n";
 import { StatusPill, TypeTag } from "@/components/OrderBits";
-import { St, dayStart, fmtDate, fmtDateTime, fmtTime, gal, n3, useAction } from "@/components/portal/kit";
-import { contractStatus } from "@/lib/labels";
+import { useFmt } from "@/components/portal/i18n";
+import { St, dayStart, useAction } from "@/components/portal/kit";
+import { useLang, useT } from "@/lib/i18n";
+import { contractStatus, freqLabel } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type OrderStatus } from "@/lib/types";
 
@@ -13,6 +16,11 @@ export default function CompanyJobs() {
   const { orders, loaded } = useCompanyOrders("jobs", 2);
   const upcoming = useContractDeliveries("jobs");
   const { busy, run } = useAction();
+  const t = useT(CO);
+  const f = useFmt();
+  const { lang } = useLang();
+  const cref = (no: number | string) => <bdi dir="ltr">{ref.contract(no)}</bdi>;
+  const oref = (no: number | string) => <bdi dir="ltr">{ref.order(no)}</bdi>;
 
   const today = dayStart().getTime();
   const jobs = orders.filter((o) => Date.parse(o.created_at) >= today || (o.slot_start && Date.parse(o.slot_start) >= today && Date.parse(o.slot_start) < today + 86_400_000));
@@ -20,35 +28,35 @@ export default function CompanyJobs() {
   const others = fleet.contracts.filter((c) => c.status !== "pending_owner");
 
   const decide = (c: FContract, accept: boolean) =>
-    run(c.id, () => supabase().rpc("owner_decide_contract", { p_contract_id: c.id, p_accept: accept }), accept ? `${ref.contract(c.contract_no)} accepted — deliveries are scheduled` : `${ref.contract(c.contract_no)} declined`, () => {
+    run(c.id, () => supabase().rpc("owner_decide_contract", { p_contract_id: c.id, p_accept: accept }), t(accept ? "ctAccepted" : "ctDeclined", { ref: `\u2066${ref.contract(c.contract_no)}\u2069` }), () => {
       fleet.reload();
       reloadCompany();
     });
 
   const contractRow = (c: FContract) => {
-    const [s, tone] = contractStatus(c.status, "company");
+    const [s, tone] = contractStatus(c.status, "company", lang);
     return (
       <tr key={c.id}>
         <td>
-          <b>{ref.contract(c.contract_no)}</b>
-          <small className="docmeta">Received {fmtDate(c.created_at)}</small>
+          <b>{cref(c.contract_no)}</b>
+          <small className="docmeta">{t("received", { date: f.date(c.created_at) })}</small>
         </td>
         <td>
-          {contractCustomer(c)}
-          <small className="docmeta">{[c.org_id ? "Business" : "Household", contractSite(c)].filter(Boolean).join(" · ")}</small>
+          {contractCustomer(c, lang)}
+          <small className="docmeta">{[c.org_id ? t("business") : t("household"), contractSite(c)].filter(Boolean).join(" · ")}</small>
         </td>
         <td>
-          <TypeTag type={c.service_type} /> {gal(c.gallons)} gal
+          <TypeTag type={c.service_type} /> {f.gal(c.gallons)}
         </td>
         <td>
-          {FREQ_LABEL[c.frequency]}
-          <small className="docmeta">{c.slot === "evening" ? "6–8 pm" : "8–10 am"}</small>
+          {freqLabel(c.frequency, lang)}
+          <small className="docmeta">{c.slot === "evening" ? t("slotEvening") : t("slotMorning")}</small>
         </td>
         <td>
-          {fmtDate(c.start_date)} – {fmtDate(c.end_date)}
-          <small className="docmeta">{c.plan === "yearly" ? "Yearly plan" : "Monthly plan"}</small>
+          {f.date(c.start_date)} – {f.date(c.end_date)}
+          <small className="docmeta">{c.plan === "yearly" ? t("yearlyPlan") : t("monthlyPlan")}</small>
         </td>
-        <td className="num">{n3(c.monthly_est)}</td>
+        <td className="num">{f.n3(c.monthly_est)}</td>
         <td>
           <St tone={tone}>{s}</St>
         </td>
@@ -56,10 +64,10 @@ export default function CompanyJobs() {
           {c.status === "pending_owner" && (
             <div className="btns" style={{ justifyContent: "flex-end" }}>
               <button className="btn sm pri" disabled={busy === c.id} onClick={() => decide(c, true)}>
-                Accept
+                {t("accept")}
               </button>
               <button className="btn sm" disabled={busy === c.id} onClick={() => decide(c, false)}>
-                Decline
+                {t("decline")}
               </button>
             </div>
           )}
@@ -71,13 +79,13 @@ export default function CompanyJobs() {
   const head = (
     <thead>
       <tr>
-        <th>Contract</th>
-        <th>Customer</th>
-        <th>Service</th>
-        <th>Frequency</th>
-        <th>Term</th>
-        <th className="num">Monthly (OMR)</th>
-        <th>Status</th>
+        <th>{t("contract")}</th>
+        <th>{t("customer")}</th>
+        <th>{t("service")}</th>
+        <th>{t("frequency")}</th>
+        <th>{t("term")}</th>
+        <th className="num">{t("monthlyOmr")}</th>
+        <th>{t("status")}</th>
         <th />
       </tr>
     </thead>
@@ -87,7 +95,7 @@ export default function CompanyJobs() {
     <>
       <div className="panel">
         <h2>
-          Contract offers <small>{offers.length ? `${offers.length} waiting for your decision` : "No offers waiting"}</small>
+          {t("offersTitle")} <small>{offers.length ? t("waitingN", { n: f.n(offers.length) }) : t("noOffers")}</small>
         </h2>
         <div className="tblwrap">
           <table>
@@ -97,18 +105,18 @@ export default function CompanyJobs() {
               {fleet.loaded && !offers.length && (
                 <tr>
                   <td colSpan={8} className="empty">
-                    New offers from households and businesses appear here.
+                    {t("offersEmpty")}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <p className="note">Accepting a contract books its deliveries for the next 7 days; they are offered first to your tankers. Monthly amounts include VAT and the plan discount.</p>
+        <p className="note">{t("offersNote")}</p>
       </div>
 
       <div className="panel">
-        <h2>Contracts</h2>
+        <h2>{t("contractsTitle")}</h2>
         <div className="tblwrap">
           <table>
             {head}
@@ -117,7 +125,7 @@ export default function CompanyJobs() {
               {fleet.loaded && !others.length && (
                 <tr>
                   <td colSpan={8} className="empty">
-                    No active contracts yet.
+                    {t("noContracts")}
                   </td>
                 </tr>
               )}
@@ -128,19 +136,19 @@ export default function CompanyJobs() {
 
       <div className="panel">
         <h2>
-          Upcoming contract deliveries <small>{upcoming.orders.length ? `${upcoming.orders.length} booked, not yet taken by a driver` : "None booked"}</small>
+          {t("upcomingTitle")} <small>{upcoming.orders.length ? t("bookedN", { n: f.n(upcoming.orders.length) }) : t("noneBooked")}</small>
         </h2>
         <div className="tblwrap">
           <table>
             <thead>
               <tr>
-                <th>When</th>
-                <th>Order</th>
-                <th>Contract</th>
-                <th>Area</th>
-                <th>Service</th>
-                <th className="num">Gallons</th>
-                <th>Status</th>
+                <th>{t("when")}</th>
+                <th>{t("order")}</th>
+                <th>{t("contract")}</th>
+                <th>{t("area")}</th>
+                <th>{t("service")}</th>
+                <th className="num">{t("gallons")}</th>
+                <th>{t("status")}</th>
               </tr>
             </thead>
             <tbody>
@@ -148,17 +156,20 @@ export default function CompanyJobs() {
                 const k = fleet.contracts.find((c) => c.id === o.contract_id);
                 return (
                   <tr key={o.id}>
-                    <td>{o.slot_start ? fmtDateTime(o.slot_start) : "—"}{o.slot_label && <small className="docmeta">{o.slot_label}</small>}</td>
-                    <td>{ref.order(o.order_no)}</td>
                     <td>
-                      {k ? ref.contract(k.contract_no) : "—"}
-                      {k && <small className="docmeta">{contractCustomer(k)}</small>}
+                      {o.slot_start ? f.dateTime(o.slot_start) : "—"}
+                      {o.slot_label && <small className="docmeta">{o.slot_label}</small>}
+                    </td>
+                    <td>{oref(o.order_no)}</td>
+                    <td>
+                      {k ? cref(k.contract_no) : "—"}
+                      {k && <small className="docmeta">{contractCustomer(k, lang)}</small>}
                     </td>
                     <td>{o.area}</td>
                     <td>
                       <TypeTag type={o.service_type} />
                     </td>
-                    <td className="num">{gal(o.gallons)}</td>
+                    <td className="num">{f.n(o.gallons)}</td>
                     <td>
                       <StatusPill status={o.status as OrderStatus} type={o.service_type} />
                     </td>
@@ -168,7 +179,7 @@ export default function CompanyJobs() {
               {upcoming.loaded && !upcoming.orders.length && (
                 <tr>
                   <td colSpan={7} className="empty">
-                    Deliveries from accepted contracts appear here as soon as they are booked; your drivers see them first, 90 minutes before the window.
+                    {t("upcomingEmpty")}
                   </td>
                 </tr>
               )}
@@ -179,31 +190,31 @@ export default function CompanyJobs() {
 
       <div className="panel">
         <h2>
-          Jobs today <small>{jobs.length} job{jobs.length === 1 ? "" : "s"}</small>
+          {t("jobsToday")} <small>{jobs.length === 1 ? t("jobs1") : t("jobsN", { n: f.n(jobs.length) })}</small>
         </h2>
         <div className="tblwrap">
           <table>
             <thead>
               <tr>
-                <th>Time</th>
-                <th>Order</th>
-                <th>Tanker</th>
-                <th>Driver</th>
-                <th>Area</th>
-                <th>Service</th>
-                <th className="num">Gallons</th>
-                <th>Status</th>
-                <th className="num">Earned (OMR)</th>
-                <th className="num">Rating</th>
+                <th>{t("time")}</th>
+                <th>{t("order")}</th>
+                <th>{t("tanker")}</th>
+                <th>{t("driver")}</th>
+                <th>{t("area")}</th>
+                <th>{t("service")}</th>
+                <th className="num">{t("gallons")}</th>
+                <th>{t("status")}</th>
+                <th className="num">{t("earnedOmr")}</th>
+                <th className="num">{t("rating")}</th>
               </tr>
             </thead>
             <tbody>
               {jobs.map((o) => (
                 <tr key={o.id}>
-                  <td>{o.slot_label ?? fmtTime(o.created_at)}</td>
+                  <td>{o.slot_label ?? f.time(o.created_at)}</td>
                   <td>
-                    {ref.order(o.order_no)}
-                    {o.contract_id && <small className="docmeta">Contract</small>}
+                    {oref(o.order_no)}
+                    {o.contract_id && <small className="docmeta">{t("contract")}</small>}
                   </td>
                   <td className="tk-plate">{o.tanker_plate ?? fleet.tankers.find((t) => t.id === o.tanker_id)?.plate ?? "—"}</td>
                   <td>{o.driver_name ?? "—"}</td>
@@ -211,18 +222,18 @@ export default function CompanyJobs() {
                   <td>
                     <TypeTag type={o.service_type} />
                   </td>
-                  <td className="num">{gal(o.gallons)}</td>
+                  <td className="num">{f.n(o.gallons)}</td>
                   <td>
                     <StatusPill status={o.status as OrderStatus} type={o.service_type} />
                   </td>
-                  <td className="num">{o.status === "delivered" ? n3(Number(o.driver_earnings) + Number(o.tip)) : o.status === "cancelled" ? <span className="mut">—</span> : <span className="mut">{n3(o.driver_earnings)}</span>}</td>
-                  <td className="num">{o.rating ? `${o.rating} ★` : "—"}</td>
+                  <td className="num">{o.status === "delivered" ? f.n3(Number(o.driver_earnings) + Number(o.tip)) : o.status === "cancelled" ? <span className="mut">—</span> : <span className="mut">{f.n3(o.driver_earnings)}</span>}</td>
+                  <td className="num">{o.rating ? `${f.n(o.rating)} ★` : "—"}</td>
                 </tr>
               ))}
               {loaded && !jobs.length && (
                 <tr>
                   <td colSpan={10} className="empty">
-                    No jobs yet today. Jobs appear here as soon as one of your drivers accepts one.
+                    {t("jobsEmpty")}
                   </td>
                 </tr>
               )}

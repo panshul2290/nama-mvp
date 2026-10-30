@@ -1,29 +1,35 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DOC_KINDS, DOC_LABEL, currentDoc, rejectedDoc, useCompany, useFleet } from "@/components/company/CompanyContext";
-import { Dialog, St, daysUntil, fmtDate, fmtShort, useAction } from "@/components/portal/kit";
+import { DOC_KINDS, currentDoc, docLabel, rejectedDoc, useCompany, useFleet } from "@/components/company/CompanyContext";
+import { CO } from "@/components/company/i18n";
+import { useFmt, type Fmt } from "@/components/portal/i18n";
+import { Dialog, St, daysUntil, useAction } from "@/components/portal/kit";
+import { useLang, useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { omanToday } from "@/lib/time";
 import type { TankerDocument } from "@/lib/types";
 
 type Target = { kind: string; tankerId?: string; driverId?: string; label: string };
 
-function cell(doc: TankerDocument | null, rejected: TankerDocument | null = null): [string, "ok" | "warn" | "bad" | "act" | ""] {
+function cell(doc: TankerDocument | null, rejected: TankerDocument | null, t: (k: string) => string, f: Fmt): [string, "ok" | "warn" | "bad" | "act" | ""] {
   // The newest upload was rejected: the owner must upload again, whatever older document is on file.
-  if (rejected) return ["Rejected — re-upload", "bad"];
-  if (!doc) return ["Missing", "bad"];
+  if (rejected) return [t("rejReupload"), "bad"];
+  if (!doc) return [t("missing"), "bad"];
   const n = daysUntil(doc.valid_to);
-  if (n < 0) return ["Expired", "bad"];
-  if (doc.status === "pending_review") return ["In review", "act"];
-  if (n <= 30) return [fmtShort(doc.valid_to), "warn"];
-  return ["Valid", "ok"];
+  if (n < 0) return [t("expired"), "bad"];
+  if (doc.status === "pending_review") return [t("inReview"), "act"];
+  if (n <= 30) return [f.day(doc.valid_to), "warn"];
+  return [t("valid"), "ok"];
 }
 
 export default function CompanyCompliance() {
   const fleet = useFleet("compliance", ["water_tests"]);
   const [target, setTarget] = useState<Target | null>(null);
   const [tests, setTests] = useState<Record<string, { cert_no: string; tested_at: string; passed: boolean }>>({});
+  const t = useT(CO);
+  const f = useFmt();
+  const { lang } = useLang();
 
   // Latest lab certificate per tanker (water_tests from the LIMS — simulated).
   useEffect(() => {
@@ -47,44 +53,53 @@ export default function CompanyCompliance() {
     <>
       <div className="panel">
         <h2>
-          Documents and standard checks <small>Select a cell to upload a new document</small>
+          {t("docsTitle")} <small>{t("docsSub")}</small>
         </h2>
         <div className="tblwrap">
           <table className="matrix">
             <thead>
               <tr>
-                <th>Tanker</th>
+                <th>{t("tanker")}</th>
                 {DOC_KINDS.map((d) => (
-                  <th key={d.kind}>{d.label}</th>
+                  <th key={d.kind}>{docLabel(d.kind, lang)}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {fleet.tankers.map((t) => (
-                <tr key={t.id}>
-                  <td className="tk-plate">{t.plate}</td>
+              {fleet.tankers.map((tk) => (
+                <tr key={tk.id}>
+                  <td className="tk-plate">{tk.plate}</td>
                   {DOC_KINDS.map((d) => {
-                    if (d.kind === "water_test" && t.service_type !== "DW")
+                    if (d.kind === "water_test" && tk.service_type !== "DW")
                       return (
                         <td key={d.kind}>
-                          <St>n/a</St>
+                          <St>{t("na")}</St>
                         </td>
                       );
-                    const doc = currentDoc(fleet.docs, d.kind, { tanker: t.id });
-                    const rej = rejectedDoc(fleet.docs, d.kind, { tanker: t.id });
-                    const [s, tone] = cell(doc, rej);
-                    const lab = d.kind === "water_test" ? tests[t.id] : undefined;
+                    const doc = currentDoc(fleet.docs, d.kind, { tanker: tk.id });
+                    const rej = rejectedDoc(fleet.docs, d.kind, { tanker: tk.id });
+                    const [s, tone] = cell(doc, rej, t, f);
+                    const lab = d.kind === "water_test" ? tests[tk.id] : undefined;
+                    const name = docLabel(d.kind, lang);
                     return (
                       <td key={d.kind}>
                         <button
                           className="cellbtn"
-                          title={rej ? `Rejected by NWS${rej.review_note ? `: ${rej.review_note}` : ""}. Upload a corrected document.` : doc ? `${doc.ref_no || "No reference"} · valid to ${fmtDate(doc.valid_to)}` : `Upload ${d.label}`}
-                          onClick={() => setTarget({ kind: d.kind, tankerId: t.id, label: `${d.label} · ${t.plate}` })}
+                          title={
+                            rej
+                              ? rej.review_note
+                                ? t("rejTitleN", { note: rej.review_note })
+                                : t("rejTitle")
+                              : doc
+                                ? t("docTitle", { ref: doc.ref_no || t("noRef"), date: f.date(doc.valid_to) })
+                                : t("uploadX", { doc: name })
+                          }
+                          onClick={() => setTarget({ kind: d.kind, tankerId: tk.id, label: `${name} · ${tk.plate}` })}
                         >
                           <St tone={tone}>{s}</St>
                         </button>
                         {rej?.review_note && <small className="docmeta" style={{ color: "var(--bad)" }}>{rej.review_note}</small>}
-                        {lab && <small className="docmeta">Lab {lab.passed ? "pass" : "FAIL"} · {fmtShort(lab.tested_at)}</small>}
+                        {lab && <small className="docmeta">{t(lab.passed ? "labPass" : "labFail", { date: f.day(lab.tested_at) })}</small>}
                       </td>
                     );
                   })}
@@ -93,26 +108,26 @@ export default function CompanyCompliance() {
               {fleet.loaded && !fleet.tankers.length && (
                 <tr>
                   <td colSpan={DOC_KINDS.length + 1} className="empty">
-                    Register a tanker first.
+                    {t("registerTankerFirst")}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <p className="note">Documents are checked by NWS when uploaded. You get alerts 30, 14 and 3 days before any document expires. The water test applies to drinking-water tankers only.</p>
+        <p className="note">{t("compNote")}</p>
       </div>
 
       <div className="panel">
-        <h2>Driver heavy vehicle licences</h2>
+        <h2>{t("licTitle")}</h2>
         <div className="tblwrap">
           <table>
             <thead>
               <tr>
-                <th>Driver</th>
-                <th>Licence number</th>
-                <th>Valid to</th>
-                <th>Status</th>
+                <th>{t("driver")}</th>
+                <th>{t("licNo")}</th>
+                <th>{t("validTo")}</th>
+                <th>{t("status")}</th>
                 <th />
               </tr>
             </thead>
@@ -120,18 +135,18 @@ export default function CompanyCompliance() {
               {fleet.drivers.map((d) => {
                 const doc = currentDoc(fleet.docs, "heavy_licence", { driver: d.id });
                 const rej = rejectedDoc(fleet.docs, "heavy_licence", { driver: d.id });
-                const [s, tone] = cell(doc, rej);
+                const [s, tone] = cell(doc, rej, t, f);
                 return (
                   <tr key={d.id}>
                     <td>{d.full_name}</td>
-                    <td>{doc?.ref_no || <span className="mut">—</span>}</td>
-                    <td>{fmtDate(doc?.valid_to)}</td>
+                    <td>{doc?.ref_no ? <bdi dir="ltr">{doc.ref_no}</bdi> : <span className="mut">—</span>}</td>
+                    <td>{f.date(doc?.valid_to)}</td>
                     <td>
-                      <St tone={tone}>{s === "Valid" || tone === "warn" ? (tone === "warn" ? `Expires ${s}` : "Valid") : s}</St>
+                      <St tone={tone}>{tone === "warn" ? t("expiresD", { date: s }) : s}</St>
                     </td>
                     <td className="num">
-                      <button className="btn sm" onClick={() => setTarget({ kind: "heavy_licence", driverId: d.id, label: `${DOC_LABEL.heavy_licence} · ${d.full_name}` })}>
-                        Upload
+                      <button className="btn sm" onClick={() => setTarget({ kind: "heavy_licence", driverId: d.id, label: `${docLabel("heavy_licence", lang)} · ${d.full_name}` })}>
+                        {t("upload")}
                       </button>
                     </td>
                   </tr>
@@ -140,7 +155,7 @@ export default function CompanyCompliance() {
               {fleet.loaded && !fleet.drivers.length && (
                 <tr>
                   <td colSpan={5} className="empty">
-                    No drivers yet.
+                    {t("noDriversYet")}
                   </td>
                 </tr>
               )}
@@ -161,6 +176,7 @@ function UploadDoc({ target, onClose, onDone }: { target: Target; onClose: () =>
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const today = omanToday();
+  const t = useT(CO);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -174,7 +190,7 @@ function UploadDoc({ target, onClose, onDone }: { target: Target; onClose: () =>
           path = `${profile.id}/${crypto.randomUUID()}`;
           const up = await supabase().storage.from("evidence").upload(path, file, { contentType: file.type || "application/octet-stream" });
           if (up.error) {
-            setError(`Upload failed: ${up.error.message}`);
+            setError(t("uploadFailed", { msg: up.error.message }));
             return { error: { message: up.error.message } };
           }
         }
@@ -187,7 +203,7 @@ function UploadDoc({ target, onClose, onDone }: { target: Target; onClose: () =>
           p_driver_id: target.driverId ?? null,
         });
       },
-      "Document uploaded — NWS will review it",
+      t("docUploaded"),
       () => {
         onDone();
         onClose();
@@ -196,27 +212,27 @@ function UploadDoc({ target, onClose, onDone }: { target: Target; onClose: () =>
   }
 
   return (
-    <Dialog title={`Upload ${target.label}`} body="The new document replaces the current one once NWS has reviewed it." onClose={onClose}>
+    <Dialog title={t("uploadX", { doc: target.label })} body={t("uploadBody")} onClose={onClose}>
       <form onSubmit={submit}>
         {error && <div className="banner badb">{error}</div>}
         <div className="fld">
-          <label htmlFor="dcR">Reference / certificate number</label>
-          <input id="dcR" className="in" maxLength={60} value={refNo} onChange={(e) => setRefNo(e.target.value)} autoFocus />
+          <label htmlFor="dcR">{t("refNo")}</label>
+          <input id="dcR" className="in" dir="ltr" maxLength={60} value={refNo} onChange={(e) => setRefNo(e.target.value)} autoFocus />
         </div>
         <div className="fld">
-          <label htmlFor="dcV">Valid to</label>
+          <label htmlFor="dcV">{t("validTo")}</label>
           <input id="dcV" className="in" type="date" min={today} required value={validTo} onChange={(e) => setValidTo(e.target.value)} />
         </div>
         <div className="fld">
-          <label htmlFor="dcF">Scan or photo (PDF or image)</label>
+          <label htmlFor="dcF">{t("scan")}</label>
           <input id="dcF" className="in" type="file" accept="application/pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </div>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </button>
           <button className="btn pri" disabled={busy === "up"}>
-            {busy === "up" ? "Uploading…" : "Upload"}
+            {busy === "up" ? t("uploading") : t("upload")}
           </button>
         </div>
       </form>

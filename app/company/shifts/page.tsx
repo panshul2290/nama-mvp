@@ -2,7 +2,10 @@
 
 import { useCallback, useState } from "react";
 import { tankerOf, useFleet } from "@/components/company/CompanyContext";
+import { CO } from "@/components/company/i18n";
+import { useFmt } from "@/components/portal/i18n";
 import { St, useAction, useLive } from "@/components/portal/kit";
+import { useT } from "@/lib/i18n";
 import { SHIFT_KEYS, shiftHours, type Shift } from "@/lib/shifts";
 import { supabase } from "@/lib/supabase/client";
 import { omanToday, omanWeekday } from "@/lib/time";
@@ -10,8 +13,8 @@ import { omanToday, omanWeekday } from "@/lib/time";
 type Avail = { driver_id: string; weekday: number; available: boolean; shift: Shift };
 type Emergency = { on: boolean; zone: string | null; reason: string | null };
 
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const SHIFT_NAME: Record<Shift, string> = { day: "Day", evening: "Evening", night: "Night" };
+// Weekdays 0 (Sunday) to 6 and shift names are CO keys (d0…d6, sh_day…), translated at render.
+const DAYS = ["d0", "d1", "d2", "d3", "d4", "d5", "d6"];
 
 // Today's weekday in Muscat (0 = Sunday), as the database stores it.
 const muscatWeekday = () => omanWeekday();
@@ -22,6 +25,9 @@ export default function CompanyShifts() {
   const [avail, setAvail] = useState<Avail[]>([]);
   const [checks, setChecks] = useState<Set<string>>(new Set());
   const [emergency, setEmergency] = useState<Emergency | null>(null);
+  const t = useT(CO);
+  const f = useFmt();
+  const shiftName = (s: Shift) => t(`sh_${s}`);
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -58,20 +64,21 @@ export default function CompanyShifts() {
   return (
     <div className="panel">
       <h2>
-        Driver availability <small>Tap a day to switch a driver on or off; choose the shift underneath</small>
+        {t("availTitle")} <small>{t("availSub")}</small>
       </h2>
       <div className="pad">
         {emergency?.on && (
           <div className="banner badb">
-            <b>Emergency mode{emergency.zone ? ` in ${emergency.zone}` : ""}.</b> NWS has overridden today’s shifts — all drivers are on call.{emergency.reason ? ` Reason: ${emergency.reason}` : ""}
+            <b>{emergency.zone ? t("emBIn", { zone: emergency.zone }) : t("emB")}</b> {t("emBody")}
+            {emergency.reason ? ` ${t("emReason", { r: emergency.reason })}` : ""}
           </div>
         )}
         <div className="grid-week">
           <div />
           {DAYS.map((d, i) => (
             <div key={d} className={`h ${i === today ? "today" : ""}`}>
-              {d}
-              {i === today ? " · today" : ""}
+              {t(d)}
+              {i === today ? t("todaySfx") : ""}
             </div>
           ))}
           {fleet.drivers.map((d) => {
@@ -80,8 +87,8 @@ export default function CompanyShifts() {
               <div className="l" key={`${d.id}-l`}>
                 <b>{d.full_name}</b>
                 <small>
-                  {tk?.plate ?? "No tanker"}
-                  {checks.has(d.id) ? " · pre-trip check done" : ""}
+                  {tk?.plate ?? t("noTanker")}
+                  {checks.has(d.id) ? t("preTripDone") : ""}
                 </small>
               </div>,
               ...DAYS.map((_, day) => {
@@ -90,13 +97,13 @@ export default function CompanyShifts() {
                 const k = `${d.id}${day}`;
                 return (
                   <div key={k} className={`shift ${ovr ? "ovr" : a.available ? "on" : ""}`}>
-                    <button className="tg" disabled={busy === k} aria-pressed={a.available} onClick={() => save({ ...a, available: !a.available })} aria-label={`${d.full_name}, ${DAYS[day]}: ${a.available ? "on" : "off"}`}>
-                      {ovr ? "NWS" : a.available ? "On" : "Off"}
+                    <button className="tg" disabled={busy === k} aria-pressed={a.available} onClick={() => save({ ...a, available: !a.available })} aria-label={t("avAria", { name: d.full_name, day: t(DAYS[day]), state: a.available ? t("avOn") : t("avOff") })}>
+                      {ovr ? t("avNws") : a.available ? t("avOn") : t("avOff")}
                     </button>
-                    <select aria-label={`${d.full_name}, ${DAYS[day]} shift`} value={a.shift} disabled={!a.available || busy === k} onChange={(e) => save({ ...a, shift: e.target.value as Avail["shift"] })}>
+                    <select aria-label={t("avShiftAria", { name: d.full_name, day: t(DAYS[day]) })} value={a.shift} disabled={!a.available || busy === k} onChange={(e) => save({ ...a, shift: e.target.value as Avail["shift"] })}>
                       {SHIFT_KEYS.map((s) => (
                         <option key={s} value={s}>
-                          {SHIFT_NAME[s]} {shiftHours(s, true)}
+                          {shiftName(s)} {f.d(shiftHours(s, true))}
                         </option>
                       ))}
                     </select>
@@ -106,14 +113,14 @@ export default function CompanyShifts() {
             ];
           })}
         </div>
-        {fleet.loaded && !fleet.drivers.length && <div className="empty">Add drivers first, then plan their week here.</div>}
+        {fleet.loaded && !fleet.drivers.length && <div className="empty">{t("shiftsEmpty")}</div>}
         <p className="mut" style={{ fontSize: 13, margin: "14px 0 0" }}>
           {fleet.drivers.length > 0 && (
             <>
-              <St tone="ok">{onDuty} on duty today</St>{" "}
+              <St tone="ok">{t("onDutyN", { n: f.n(onDuty) })}</St>{" "}
             </>
           )}
-          Shifts (Muscat time): {SHIFT_KEYS.map((s) => `${SHIFT_NAME[s]} ${shiftHours(s)}`).join(" · ")}. NWS can override shifts in emergency mode and call every driver on duty. Drivers see their week in the Driver app and can change it too.
+          {t("shiftsNote", { list: SHIFT_KEYS.map((s) => `${shiftName(s)} ${f.d(shiftHours(s))}`).join(" · ") })}
         </p>
       </div>
     </div>
