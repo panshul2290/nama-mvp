@@ -17,8 +17,13 @@ export const STATUS_TEXT: Record<OrderStatus, [string, "act" | "ok" | "warn" | "
 
 export const SERVICE_SHORT: Record<ServiceType, string> = { DW: "Drinking water", WW: "Wastewater", TE: "Treated water" };
 
-export function StatusPill({ status }: { status: OrderStatus }) {
-  const [text, tone] = STATUS_TEXT[status];
+/** Status text and tone; a wastewater job that reached "delivered" (discharged) reads "Completed". */
+export function statusText(status: OrderStatus, type?: ServiceType): [string, "act" | "ok" | "warn" | "bad"] {
+  return status === "delivered" && type === "WW" ? ["Completed", "ok"] : STATUS_TEXT[status];
+}
+
+export function StatusPill({ status, type }: { status: OrderStatus; type?: ServiceType }) {
+  const [text, tone] = statusText(status, type);
   return <span className={`st ${tone}`}>{text}</span>;
 }
 

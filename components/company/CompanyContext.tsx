@@ -4,6 +4,7 @@ import { createContext, use, useCallback, useEffect, useState } from "react";
 import type { PortalProfile } from "@/components/portal/PortalShell";
 import { useLive } from "@/components/portal/kit";
 import { permitSummary, type Permit } from "@/components/nws/fleetData";
+import { PERMIT_STAGE } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import type { ServiceType } from "@/lib/pricing";
 import type { Alert, Contract, Device, TankerDocument } from "@/lib/types";
@@ -190,15 +191,9 @@ export function currentDoc(docs: TankerDocument[], kind: string, by: { tanker?: 
   );
 }
 
-export const STAGE_LABEL: Record<string, string> = { submitted: "Submitted", documents: "Document check", inspection: "Inspection", decision: "Decision" };
+export const STAGE_LABEL = PERMIT_STAGE;
 export const FREQ_LABEL: Record<string, string> = { weekly: "Weekly", biweekly: "Every 2 weeks", monthly: "Monthly" };
-export const CONTRACT_STATUS: Record<string, [string, "ok" | "warn" | "bad" | "act" | ""]> = {
-  pending_owner: ["Awaiting your decision", "warn"],
-  active: ["Active", "ok"],
-  paused: ["Paused", ""],
-  ended: ["Ended", ""],
-  declined: ["Declined", "bad"],
-};
+
 
 const ORDER_COLS =
   "id, order_no, status, service_type, gallons, area, tanker_id, driver_id, driver_name, tanker_plate, created_at, released_at, accepted_at, collected_at, delivered_at, slot_start, slot_end, slot_label, rating, tip, driver_earnings, contract_id, org_id, channel";

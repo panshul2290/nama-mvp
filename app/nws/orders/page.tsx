@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CallerOrderModal } from "@/components/nws/CallerOrderModal";
 import { CHANNEL_LABEL, downloadCsv, Kpi, n3, one, orderSla, useNow, useRealtime } from "@/components/nws/ops";
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
-import { STATUS_TEXT } from "@/components/OrderBits";
+import { statusText } from "@/components/OrderBits";
 import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
 import { type ServiceType } from "@/lib/pricing";
@@ -158,7 +158,7 @@ export default function OrdersPage() {
                 ["Order", "Customer", "Service", "Gallons", "Plan", "Zone", "Area", "Status", "Tanker", "Driver", "Total OMR", "SLA", "Created", "Test"],
                 ...(rows ?? []).map((o) => [
                   orderNo(o.order_no), o.customer?.full_name ?? one(o.org)?.name ?? "", o.service_type, o.gallons, plan(o), one(o.zone)?.name ?? "", o.area,
-                  STATUS_TEXT[o.status][0], o.tanker_plate ?? "", o.driver_name ?? "", n3(o.total), orderSla(o, now).text, o.created_at, o.is_test ? "TEST" : "",
+                  statusText(o.status, o.service_type)[0], o.tanker_plate ?? "", o.driver_name ?? "", n3(o.total), orderSla(o, now).text, o.created_at, o.is_test ? "TEST" : "",
                 ]),
               ])
             }
@@ -236,7 +236,7 @@ export default function OrdersPage() {
                       <small style={{ display: "block" }}>{o.area}</small>
                     </td>
                     <td>
-                      <span className={`st ${STATUS_TEXT[o.status][1]}`}>{STATUS_TEXT[o.status][0]}</span>
+                      <span className={`st ${statusText(o.status, o.service_type)[1]}`}>{statusText(o.status, o.service_type)[0]}</span>
                       {o.slot_label && ["scheduled", "requested"].includes(o.status) && <small style={{ display: "block" }}>{o.slot_label}</small>}
                     </td>
                     <td>{o.tanker_plate || "—"}</td>

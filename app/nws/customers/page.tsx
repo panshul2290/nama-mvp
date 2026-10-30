@@ -6,9 +6,10 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { downloadCsv, Kpi, n3, omr3, one, pct, St, Tabs, useNow, useRealtime, useRpc } from "@/components/nws/ops";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
-import { STATUS_TEXT } from "@/components/OrderBits";
+import { statusText } from "@/components/OrderBits";
 import { Loading } from "@/components/Shell";
 import { orderNo } from "@/lib/format";
+import { contractStatus } from "@/lib/labels";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import type { OrderStatus } from "@/lib/types";
@@ -45,8 +46,7 @@ const SEG_LABEL: Record<string, string> = { household: "Residential", commercial
 /** Short customer reference for calls and exports (the prototype's C-1001 style). */
 const custRef = (id: string) => `C-${id.slice(0, 6).toUpperCase()}`;
 const ID_LABEL: Record<string, string> = { civil_id: "Civil ID", resident_card: "Resident card", passport: "Passport" };
-const CONTRACT_TONE: Record<string, string> = { active: "ok", pending_owner: "warn", paused: "warn", ended: "", declined: "bad" };
-const CONTRACT_LABEL: Record<string, string> = { active: "Active", pending_owner: "Pending owner", paused: "Paused", ended: "Ended", declined: "Declined" };
+
 const ORG_TONE = { pending: "warn", active: "ok", suspended: "bad" } as const;
 
 type Tab = "cust" | "b2b" | "contracts" | "notif";
@@ -412,7 +412,7 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                           <tr key={k.id}>
                             <td>CT-{k.contract_no}</td>
                             <td><span className={`tag ${k.service_type}`}>{k.service_type}</span> {k.gallons.toLocaleString()} gal · {k.frequency}</td>
-                            <td><St tone={CONTRACT_TONE[k.status]}>{CONTRACT_LABEL[k.status] ?? k.status}</St></td>
+                            <td><St tone={contractStatus(k.status)[1]}>{contractStatus(k.status)[0]}</St></td>
                           </tr>
                         ))}
                       </tbody>
@@ -449,7 +449,7 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                           <tr key={o.id}>
                             <td className={`stripe ${o.service_type}`}><Link className="lk" href={`/nws/orders/${o.id}`}>{orderNo(o.order_no)}</Link><small style={{ display: "block" }}>{fmtDate(o.created_at)}</small></td>
                             <td>{o.gallons.toLocaleString()} gal</td>
-                            <td><St tone={STATUS_TEXT[o.status][1]}>{STATUS_TEXT[o.status][0]}</St></td>
+                            <td><St tone={statusText(o.status, o.service_type)[1]}>{statusText(o.status, o.service_type)[0]}</St></td>
                             <td className="num">{n3(o.total)}</td>
                           </tr>
                         ))}
@@ -615,7 +615,7 @@ function ContractsTab({ contracts }: { contracts: Contract[] | null }) {
         <div className="chips">
           {["all", "active", "pending_owner", "paused", "ended", "declined"].map((k) => (
             <button key={k} className={`chip ${f === k ? "on" : ""}`} onClick={() => setF(k)}>
-              {k === "all" ? "All" : CONTRACT_LABEL[k]}
+              {k === "all" ? "All" : contractStatus(k)[0]}
               <span className="tc">{(contracts ?? []).filter((x) => k === "all" || x.status === k).length}</span>
             </button>
           ))}
@@ -651,7 +651,7 @@ function ContractsTab({ contracts }: { contracts: Contract[] | null }) {
                   <td>{k.frequency[0].toUpperCase() + k.frequency.slice(1)} · {k.slot}<small style={{ display: "block" }}>{k.plan} plan</small></td>
                   <td><small>{fmtDate(k.start_date)} – {fmtDate(k.end_date)}</small></td>
                   <td className="num">{n3(k.monthly_est)}</td>
-                  <td><St tone={CONTRACT_TONE[k.status]}>{CONTRACT_LABEL[k.status] ?? k.status}</St></td>
+                  <td><St tone={contractStatus(k.status)[1]}>{contractStatus(k.status)[0]}</St></td>
                 </tr>
               );
             })}

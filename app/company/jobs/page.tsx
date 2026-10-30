@@ -1,8 +1,9 @@
 "use client";
 
-import { CONTRACT_STATUS, contractCustomer, contractSite, FREQ_LABEL, useCompany, useCompanyOrders, useContractDeliveries, useFleet, type FContract } from "@/components/company/CompanyContext";
+import { contractCustomer, contractSite, FREQ_LABEL, useCompany, useCompanyOrders, useContractDeliveries, useFleet, type FContract } from "@/components/company/CompanyContext";
 import { StatusPill, TypeTag } from "@/components/OrderBits";
 import { St, dayStart, fmtDate, fmtDateTime, fmtTime, gal, n3, useAction } from "@/components/portal/kit";
+import { contractStatus } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type OrderStatus } from "@/lib/types";
 
@@ -25,7 +26,7 @@ export default function CompanyJobs() {
     });
 
   const contractRow = (c: FContract) => {
-    const [s, tone] = CONTRACT_STATUS[c.status] ?? [c.status, ""];
+    const [s, tone] = contractStatus(c.status, "company");
     return (
       <tr key={c.id}>
         <td>
@@ -159,7 +160,7 @@ export default function CompanyJobs() {
                     </td>
                     <td className="num">{gal(o.gallons)}</td>
                     <td>
-                      <StatusPill status={o.status as OrderStatus} />
+                      <StatusPill status={o.status as OrderStatus} type={o.service_type} />
                     </td>
                   </tr>
                 );
@@ -212,7 +213,7 @@ export default function CompanyJobs() {
                   </td>
                   <td className="num">{gal(o.gallons)}</td>
                   <td>
-                    <StatusPill status={o.status as OrderStatus} />
+                    <StatusPill status={o.status as OrderStatus} type={o.service_type} />
                   </td>
                   <td className="num">{o.status === "delivered" ? n3(Number(o.driver_earnings) + Number(o.tip)) : o.status === "cancelled" ? <span className="mut">—</span> : <span className="mut">{n3(o.driver_earnings)}</span>}</td>
                   <td className="num">{o.rating ? `${o.rating} ★` : "—"}</td>

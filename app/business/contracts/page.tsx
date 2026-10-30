@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useBiz, type BizProperty } from "@/components/business/BizContext";
-import { CONTRACT_STATUS, FREQ_LABEL, muscatToday } from "@/components/business/data";
+import { FREQ_LABEL, muscatToday } from "@/components/business/data";
+import { contractStatus } from "@/lib/labels";
 import { TypeTag } from "@/components/OrderBits";
 import { Dialog, St, fmtShort, gal, n3, useAction, useLive } from "@/components/portal/kit";
 import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
@@ -81,7 +82,7 @@ export default function BusinessContracts() {
             </thead>
             <tbody>
               {contracts.map((c) => {
-                const [label, tone] = CONTRACT_STATUS[c.status] ?? [c.status, ""];
+                const [label, tone] = contractStatus(c.status);
                 return (
                   <tr key={c.id}>
                     <td>

@@ -85,7 +85,7 @@ export default function BusinessOrderDetail() {
         <div className="panel">
           <h2>
             <span>
-              {ref.order(o.order_no)} <StatusPill status={o.status} />
+              {ref.order(o.order_no)} <StatusPill status={o.status} type={o.service_type} />
             </span>
             <small>{o.contract_id ? "Contract delivery" : o.po_number ? `PO ${o.po_number}` : "Bulk order"}</small>
           </h2>

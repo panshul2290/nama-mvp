@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useCompany, useCompanyTx, useFleet } from "@/components/company/CompanyContext";
 import { Bars, Columns, Dialog, Kpis, St, dayStart, downloadCsv, fmtDate, fmtDateTime, n3, omr, useAction, useLive, weekStart } from "@/components/portal/kit";
 import { supabase } from "@/lib/supabase/client";
+import { PENALTY_STATE } from "@/lib/labels";
 import { ref, type Penalty } from "@/lib/types";
 
 const KIND_LABEL: Record<string, string> = {
@@ -15,12 +16,6 @@ const KIND_LABEL: Record<string, string> = {
   payout: "Payout to bank",
   fill_topup: "Filling credit top-up",
   fill_charge: "Filling station charge",
-};
-const PENALTY_STATE: Record<Penalty["state"], [string, "ok" | "warn" | "bad" | "act" | ""]> = {
-  issued: ["Issued", "bad"],
-  disputed: ["Disputed — NWS reviewing", "act"],
-  upheld: ["Upheld", "bad"],
-  cancelled: ["Cancelled", "ok"],
 };
 
 function nextSunday(now = new Date()) {

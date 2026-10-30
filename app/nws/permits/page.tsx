@@ -7,6 +7,7 @@ import { DAY, Kpi, Modal, n3, one, St, Tabs, useNow, useRealtime, useRpc, useSig
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { Loading } from "@/components/Shell";
 import { friendlyError } from "@/lib/errors";
+import { PENALTY_STATE, PERMIT_STAGE } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import type { ServiceType } from "@/lib/pricing";
 
@@ -61,14 +62,14 @@ const TONE: Record<Status, string> = { pending: "warn", approved: "ok", rejected
 const LABEL: Record<Status, string> = { pending: "Pending review", approved: "Approved", rejected: "Rejected", expired: "Expired" };
 const STAGES = ["Submitted", "Documents", "Inspection", "Decision", "Issued"];
 const STAGE_IDX: Record<Stage, number> = { submitted: 0, documents: 1, inspection: 2, decision: 3 };
-const STAGE_LABEL: Record<Stage, string> = { submitted: "New submission", documents: "Document check", inspection: "Inspection", decision: "Awaiting decision" };
+const STAGE_LABEL = PERMIT_STAGE as Record<Stage, string>;
 const NEXT_LABEL: Record<Stage, string> = { submitted: "Accept submission", documents: "Complete document check", inspection: "Record inspection: passed", decision: "Approve and issue permit" };
 const DOC_LABEL: Record<string, string> = {
   mulkiya: "Mulkiya (registration)", tank_cleanliness: "Tank cleanliness certificate", rop_inspection: "ROP vehicle inspection", insurance: "Insurance",
   ivms_certificate: "IVMS installation certificate", heavy_licence: "Driver heavy-vehicle licence", water_test: "Water quality test",
 };
-const PEN_TONE: Record<Penalty["state"], string> = { issued: "warn", disputed: "bad", upheld: "ok", cancelled: "" };
-const PEN_LABEL: Record<Penalty["state"], string> = { issued: "Open", disputed: "Disputed", upheld: "Upheld", cancelled: "Cancelled" };
+const PEN_TONE = Object.fromEntries(Object.entries(PENALTY_STATE).map(([k, v]) => [k, v[1]])) as Record<Penalty["state"], string>;
+const PEN_LABEL = Object.fromEntries(Object.entries(PENALTY_STATE).map(([k, v]) => [k, v[0]])) as Record<Penalty["state"], string>;
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 const CHECKLIST: [keyof Checklist, string][] = [["tank_hygiene", "Tank hygiene"], ["valves", "Valves and hoses"], ["ivms_seal", "IVMS seal intact"], ["ppe", "Driver PPE"]];
 type Checklist = { tank_hygiene: boolean; valves: boolean; ivms_seal: boolean; ppe: boolean };

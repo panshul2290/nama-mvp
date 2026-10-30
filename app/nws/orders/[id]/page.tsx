@@ -13,7 +13,7 @@ import { PodLocation } from "@/components/PodLocation";
 import { SignatureSvg } from "@/components/SignatureSvg";
 import { PenaltyDialog } from "@/components/nws/PenaltyDialog";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
-import { OrderBill, STATUS_TEXT } from "@/components/OrderBits";
+import { OrderBill, STATUS_TEXT, statusText } from "@/components/OrderBits";
 import { usePricingRules } from "@/components/usePricingRules";
 import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
@@ -236,7 +236,7 @@ export default function OrderDetail() {
       <div className="vhead">
         <div>
           <h1>
-            {orderNo(o.order_no)} <span className={`st ${STATUS_TEXT[o.status][1]}`}>{STATUS_TEXT[o.status][0]}</span> {o.is_emergency && <span className="st bad">Priority</span>}{" "}
+            {orderNo(o.order_no)} <span className={`st ${statusText(o.status, o.service_type)[1]}`}>{statusText(o.status, o.service_type)[0]}</span> {o.is_emergency && <span className="st bad">Priority</span>}{" "}
             {o.is_test && <span className="st warn" title="Test zone order: not counted in KPIs, reports or invoices; no penalties">TEST</span>}
           </h1>
           <p>

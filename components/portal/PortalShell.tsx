@@ -94,6 +94,10 @@ export function PortalShell({
               <small>{who}</small>
             </span>
             <span className="sp" />
+            <Link className="pill" href="/" title="All apps on this site">
+              <Icon name="home" size={16} />
+              All apps
+            </Link>
             <button className="pill" onClick={signOut}>
               <Icon name="logout" size={16} />
               Sign out

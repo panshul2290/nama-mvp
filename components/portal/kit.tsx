@@ -151,8 +151,8 @@ export function Columns({ rows, format = (v: number) => String(v) }: { rows: { l
 export function Dialog({ title, body, onClose, children, wide }: { title: string; body?: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   const trap = useFocusTrap(onClose);
   return (
-    <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
-      <div className={wide ? "wide" : ""} onClick={(e) => e.stopPropagation()}>
+    <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={wide ? "wide" : ""}>
         <h3>{title}</h3>
         {body && <p>{body}</p>}
         {children}

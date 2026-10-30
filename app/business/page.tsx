@@ -114,7 +114,7 @@ export default function BusinessDashboard() {
                     </td>
                     <td className="mut">{o.contract_id ? "Contract" : ref.order(o.order_no)}</td>
                     <td>
-                      <StatusPill status={o.status} />
+                      <StatusPill status={o.status} type={o.service_type} />
                     </td>
                   </tr>
                 ))}

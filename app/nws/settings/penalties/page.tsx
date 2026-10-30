@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Empty, int, Kpi, omr, PageHead, ReadOnlyNote, Switch, useAudited } from "@/components/nws/admin/ui";
 import { fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { friendlyError } from "@/lib/errors";
+import { PENALTY_STATE } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Penalty, type PenaltyRule } from "@/lib/types";
 
 const PARTY: Record<string, string> = { driver: "Driver / tanker company", customer: "Customer", business: "Business account" };
-const STATE: Record<Penalty["state"], [string, string]> = { issued: ["Issued", "act"], disputed: ["Disputed", "warn"], upheld: ["Upheld", "bad"], cancelled: ["Cancelled", ""] };
+const STATE: Record<Penalty["state"], [string, string]> = PENALTY_STATE;
 const amountText = (r: PenaltyRule) => (r.amount_kind === "pct" ? `${Number(r.amount)}% per month` : omr(r.amount));
 
 export default function PenaltiesPage() {

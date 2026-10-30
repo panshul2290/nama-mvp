@@ -5,6 +5,7 @@ import { useDriver } from "@/components/DriverContext";
 import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
 import { useNow } from "@/components/driver/useNow";
 import { useT } from "@/lib/i18n";
+import { PENALTY_STATE } from "@/lib/labels";
 import { isOnTime, muscatDayStart, muscatWeekStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type CompanyTx, type Order, type Penalty } from "@/lib/types";
@@ -134,7 +135,8 @@ export default function EarningsPage() {
 
   const pct = (v: number | null) => (v == null ? "—" : `${f.d(v)}%`);
   const signed = (a: number) => `${a >= 0 ? "+" : "−"}${f.money(Math.abs(a))}`;
-  const STATE_TONE: Record<Penalty["state"], string> = { issued: "bad", disputed: "warn", upheld: "bad", cancelled: "ok" };
+  // Same tones as the web portals (lib/labels); the words come from the driver's own EN/AR strings.
+  const STATE_TONE: Record<Penalty["state"], string> = { issued: PENALTY_STATE.issued[1], disputed: PENALTY_STATE.disputed[1], upheld: PENALTY_STATE.upheld[1], cancelled: PENALTY_STATE.cancelled[1] };
 
   return (
     <main className="screen">

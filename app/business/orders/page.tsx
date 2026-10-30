@@ -170,7 +170,7 @@ export default function BusinessOrders() {
                       </td>
                       <td>{o.driver_name ?? "—"}</td>
                       <td>
-                        <StatusPill status={o.status} />
+                        <StatusPill status={o.status} type={o.service_type} />
                       </td>
                       <td>{etaText(t ? { lat: t.last_lat, lng: t.last_lng } : null, l, o.status)}</td>
                     </tr>
@@ -227,7 +227,7 @@ export default function BusinessOrders() {
                   <td>{o.slot_label ?? (o.slot_start ? fmtDateTime(o.slot_start) : "As soon as possible")}</td>
                   <td>{o.tanker_plate ?? <span className="mut">—</span>}</td>
                   <td>
-                    <StatusPill status={o.status} />
+                    <StatusPill status={o.status} type={o.service_type} />
                     {o.status === "cancelled" && o.cancel_reason && <small className="stack">{o.cancel_reason}</small>}
                   </td>
                   <td className="num">{n3(o.total)}</td>

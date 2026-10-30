@@ -67,8 +67,9 @@ export function ReasonDialog({
   const [busy, setBusy] = useState(false);
   const trap = useFocusTrap(busy ? undefined : onCancel);
   return (
-    <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label={title} onClick={onCancel}>
-      <div onClick={(e) => e.stopPropagation()}>
+    // A backdrop click doesn't close it: the typed reason would be lost (Escape and Cancel do).
+    <div ref={trap} className="dlg" role="dialog" aria-modal="true" aria-label={title}>
+      <div>
         <h3>{title}</h3>
         {body && <p>{body}</p>}
         {extra}

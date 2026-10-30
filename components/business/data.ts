@@ -38,13 +38,7 @@ export const OPEN: OrderStatus[] = ["pending_approval", "scheduled", "requested"
 export const TRACKABLE: OrderStatus[] = ["accepted", "arriving", "arrived", "collected"];
 
 export const FREQ_LABEL = { weekly: "Weekly", biweekly: "Every 2 weeks", monthly: "Monthly" } as const;
-export const CONTRACT_STATUS: Record<string, [string, "ok" | "warn" | "bad" | "act" | ""]> = {
-  pending_owner: ["Awaiting company", "warn"],
-  active: ["Active", "ok"],
-  paused: ["Paused", "warn"],
-  ended: ["Ended", ""],
-  declined: ["Declined", "bad"],
-};
+
 
 /** When an order should have been served by (lib/sla): the slot end, or 2 h after it was released/placed. */
 export const dueBy = slaDue;
