@@ -52,8 +52,10 @@ export async function platformSuite(t: Target, r: Reporter) {
   r.check("quote_order: emergency ×1.5 fee and WELCOME10 10% discount on the fee", q.q.delivery_fee === 5.25 && q.q.discount === 0.525, q.q);
   await r.denies("quote_order: unknown promo → invalid_promo", () => one(C1.id, "select quote_order('DW', 1000, null, false, 'NOPE99')"), "invalid_promo");
 
-  const later = new Date(Date.now() + 26 * 3600e3).toISOString();
-  const laterEnd = new Date(Date.now() + 28 * 3600e3).toISOString();
+  // Tomorrow 08:00–10:00 Muscat: always more than 2 h ahead, and outside every blocked time (0044).
+  const tomorrow = new Date(Date.now() + 4 * 3600e3 + 86400e3).toISOString().slice(0, 10);
+  const later = `${tomorrow}T08:00:00+04:00`;
+  const laterEnd = `${tomorrow}T10:00:00+04:00`;
   const sched = await order(C2.id, "DW", 500, "card", { slotStart: later, slotEnd: laterEnd });
   r.check("a slot more than 2 h ahead creates a scheduled order", sched.status === "scheduled", sched.status);
 

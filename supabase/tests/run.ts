@@ -27,6 +27,8 @@ import { mobile2Suite } from "./suites/mobile2";
 import { registerImportSuite } from "./suites/registerImport";
 import { moneySuite } from "./suites/money";
 import { supportSuite } from "./suites/support";
+import { addressFleetSuite } from "./suites/addressFleet";
+import { resilienceSuite } from "./suites/resilience";
 
 const which = (process.argv[2] ?? "pglite") as "pglite" | "supabase";
 const outDir = process.argv[3]; // optional: write raw output + JSON here
@@ -79,7 +81,7 @@ async function main() {
   const before = t.name === "supabase" ? (await fingerprint())[0] : null;
   if (before) out(`non-test data before: ${before.users} users, ${before.rows} rows, md5 ${before.md5}`);
   try {
-    for (const suite of [migrationsSuite, lifecycleSuite, pricingSuite, authzSuite, concurrencySuite, gpsSuite, privacySuite, assignmentsSuite, staffSuite, platformSuite, phoneSuite, testZoneSuite, portalSuite, portal2Suite, mobile2Suite, deliverySuite, privacy2Suite, integrationsSuite, analyticsSuite, registerImportSuite, moneySuite, supportSuite]) {
+    for (const suite of [migrationsSuite, lifecycleSuite, pricingSuite, authzSuite, concurrencySuite, gpsSuite, privacySuite, assignmentsSuite, staffSuite, platformSuite, phoneSuite, testZoneSuite, portalSuite, portal2Suite, mobile2Suite, deliverySuite, privacy2Suite, integrationsSuite, analyticsSuite, registerImportSuite, moneySuite, supportSuite, addressFleetSuite, resilienceSuite]) {
       try {
         await suite(t, r);
       } catch (e) {
