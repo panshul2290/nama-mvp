@@ -1,0 +1,111 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
+import { friendlyError } from "@/lib/errors";
+import { supabase } from "@/lib/supabase/client";
+import type { DispatchCandidate } from "@/lib/types";
+
+// Auto-dispatch ranking (dispatch_candidates, 0026) with one-click assignment through
+// staff_order_action('assign'). Used by the order detail and the dispatch queue.
+
+const T = {
+  title: "Suggested tankers",
+  sub: "ranked by ETA, today's workload and rating · eligible first",
+  none: "No tanker of this service right now.",
+  noneEligible: "No eligible tanker right now — the reasons are listed against each one.",
+  assign: "Assign",
+  best: "Best match",
+  offered: "Offered",
+  loading: "Ranking tankers…",
+  basis: "Straight-line ETA at the dispatch speed (Settings → Zones decides whether requests are offered automatically).",
+};
+
+export function useDispatchCandidates(orderId: string | null, limit = 8) {
+  const [rows, setRows] = useState<DispatchCandidate[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(() => {
+    if (!orderId) return;
+    supabase()
+      .rpc("dispatch_candidates", { p_order: orderId, p_limit: limit })
+      .then(({ data, error: e }) => {
+        setError(e ? friendlyError(e) : null);
+        setRows((data ?? []) as DispatchCandidate[]);
+      });
+  }, [orderId, limit]);
+  useEffect(load, [load]);
+  return { rows, error, reload: load };
+}
+
+export function DispatchSuggestions({ orderId, orderLabel, canAssign, compact, onAssigned }: {
+  orderId: string;
+  orderLabel: string;
+  canAssign: boolean;
+  /** Fewer rows and no heading, for a table row in the dispatch queue. */
+  compact?: boolean;
+  onAssigned?: () => void;
+}) {
+  const { toast } = useStaff();
+  const { rows, error, reload } = useDispatchCandidates(orderId, compact ? 3 : 8);
+  const [pick, setPick] = useState<DispatchCandidate | null>(null);
+
+  const list = (
+    <>
+      {error && <div className="banner badb">{error}</div>}
+      {!rows && !error && <p className="mut" style={{ fontSize: 13 }}>{T.loading}</p>}
+      {rows?.length === 0 && <p className="mut" style={{ fontSize: 13 }}>{T.none}</p>}
+      {rows && rows.length > 0 && !rows.some((r) => r.eligible) && <p className="mut" style={{ fontSize: 13 }}>{T.noneEligible}</p>}
+      <div className="picklist" role="list" aria-label={T.title}>
+        {rows?.map((c, i) => (
+          <div key={c.tanker_id} role="listitem" className={`pickrow ${c.eligible ? "" : "off"}`} style={{ opacity: c.eligible ? 1 : 0.6, cursor: "default" }}>
+            <span>
+              <b>{c.plate}</b> · {c.driver_name || "no driver"}{c.company_name ? ` · ${c.company_name}` : " · independent"}
+              {c.eligible && i === 0 && <span className="st ok ptag">{T.best}</span>}
+              {c.offered && <span className="st act ptag">{T.offered}</span>}
+              <small className="mut" style={{ display: "block" }}>
+                {c.eligible ? c.reasons.join(" · ") : c.blockers.join(" · ")}
+              </small>
+            </span>
+            {c.eligible && canAssign && (
+              <button type="button" className={`btn sm ${i === 0 ? "pri" : ""}`} onClick={() => setPick(c)}>{T.assign}</button>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      {compact ? list : (
+        <div className="panel">
+          <h2>{T.title} <small>{T.sub}</small></h2>
+          <div className="pad">
+            {list}
+            <p className="note" style={{ margin: "8px 0 0" }}>{T.basis}</p>
+          </div>
+        </div>
+      )}
+      {pick && (
+        <ReasonDialog
+          title={`Assign ${orderLabel} to ${pick.plate}`}
+          body={`${pick.driver_name ?? "The driver"} is told at once. ${pick.reasons.join(" · ")}.`}
+          confirm={T.assign}
+          defaultReason={`Dispatch suggestion: ${pick.reasons.slice(0, 2).join(", ")}`}
+          onCancel={() => setPick(null)}
+          onConfirm={async (reason) => {
+            const { error: e } = await supabase().rpc("staff_order_action", { p_order_id: orderId, p_action: "assign", p_reason: reason, p_tanker_id: pick.tanker_id });
+            if (e) {
+              toast(friendlyError(e), true);
+              reload();
+              return;
+            }
+            toast(`${orderLabel} assigned to ${pick.plate}`);
+            setPick(null);
+            onAssigned?.();
+          }}
+        />
+      )}
+    </>
+  );
+}

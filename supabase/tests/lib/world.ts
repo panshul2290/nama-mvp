@@ -48,6 +48,16 @@ export async function makeWorld(t: Target, prefix: string): Promise<World> {
 
 export const TEST_AREA = "TEST automated check";
 
+/**
+ * Orders placed without a slot are priced at "now": between 18:00 and 20:00 Muscat
+ * that is the evening peak (×1.2 delivery fee). Checks of exact prices pick the
+ * expected figure with this, so the suite passes at any hour.
+ */
+export async function peakNow(t: Target) {
+  const [r] = await t.admin<{ p: boolean }>("select is_peak(null) as p");
+  return r.p;
+}
+
 export async function placeOrder(t: Target, customer: string, type: "DW" | "WW" | "TE", gallons: number) {
   const [o] = await t.as<{ id: string; order_no: string; total: string; status: string; driver_earnings: string }>(
     customer,

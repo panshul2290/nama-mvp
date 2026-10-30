@@ -192,6 +192,8 @@ export type Zone = {
   id: string; name: string; governorate: string; center_lat: number; center_lng: number; radius_km: string; active: boolean;
   /** Test zone (0020): contains exactly its bounding box, ranks after every real zone. */
   is_test?: boolean; min_lat?: number | null; max_lat?: number | null; min_lng?: number | null; max_lng?: number | null;
+  /** Auto-dispatch (0026): offer each request to the best tanker for offer_seconds, then the next. */
+  auto_offer?: boolean; offer_seconds?: number;
 };
 export type Site = { id: string; code: string; kind: "fill" | "discharge"; name: string; service_types: ServiceType[]; lat: number; lng: number; radius_m: number; operator: string; active: boolean; is_test?: boolean };
 export type Property = { id: string; customer_id: string | null; org_id: string | null; label: string; address: string; area: string; lat: number; lng: number; tank_gal: number; created_at: string };
@@ -225,7 +227,7 @@ export type Penalty = {
 };
 export type PenaltyRule = { code: string; label: string; party: "driver" | "customer" | "business"; amount: string; amount_kind: "omr" | "pct"; compensation: string; active: boolean };
 export type Notification = { id: number; user_id: string; event: string; channels: string[]; title: string; body: string; order_id: string | null; created_at: string; read_at: string | null };
-export type NotificationTemplate = { event: string; label: string; audience: string; title_en: string; body_en: string; title_ar: string; body_ar: string; push: boolean; sms: boolean; whatsapp: boolean };
+export type NotificationTemplate = { event: string; label: string; audience: string; title_en: string; body_en: string; title_ar: string; body_ar: string; push: boolean; sms: boolean; whatsapp: boolean; email?: boolean; category?: "service" | "reminder" | "marketing"; critical?: boolean };
 export type Invoice = { id: string; invoice_no: number; org_id: string; period_start: string; period_end: string; orders: number; subtotal: string; vat: string; total: string; status: "issued" | "paid" | "overdue"; issued_at: string; due_at: string; paid_at: string | null };
 export type TankerDocument = {
   id: string; tanker_id: string | null; driver_id: string | null; kind: string; ref_no: string; valid_to: string; file_path: string | null;
@@ -255,4 +257,25 @@ export const ref = {
   dataRequest: (n: number | string) => `DSR-${n}`,
   // The customer's own PO number, labelled "PO …" unless it already says so ("PO-1234", "PO 77", "PO123").
   po: (s: string) => (/^\s*P\.?O(?![a-z])/i.test(s) ? s.trim() : `PO ${s.trim()}`),
+};
+
+/** One message per channel in the delivery pipeline (0026). The raw destination never leaves the database. */
+export type OutboxRow = {
+  id: number; notification_id: number | null; user_id: string | null; event: string; channel: "push" | "sms" | "whatsapp" | "email"; lang: "en" | "ar";
+  destination_masked: string | null; title: string; body: string; status: "queued" | "sent" | "failed"; attempts: number; next_attempt_at: string;
+  provider: string | null; provider_ref: string | null; provider_response: Record<string, unknown> | null; error: string | null;
+  order_id: string | null; is_test: boolean; created_at: string; sent_at: string | null;
+};
+
+/** dispatch_candidates (0026): a tanker ranked for an order, with the reasons. */
+export type DispatchCandidate = {
+  tanker_id: string; plate: string; driver_id: string | null; driver_name: string | null; company_name: string | null;
+  distance_km: number | null; eta_min: number | null; jobs_today: number; rating: number | null; score: number;
+  eligible: boolean; reasons: string[]; blockers: string[]; offered: boolean;
+};
+
+/** order_sla / my_order_sla (0026): the one on-time rule. */
+export type OrderSla = {
+  order_id: string; due_at: string; served_at: string | null; basis: "slot" | "asap"; asap_minutes: number; minutes_late: number;
+  state: "on_time" | "late" | "on_track" | "at_risk" | "overdue" | "cancelled" | "not_started";
 };

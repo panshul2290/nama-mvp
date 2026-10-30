@@ -53,6 +53,7 @@ export function ReasonDialog({
   confirm,
   danger,
   extra,
+  defaultReason = "",
   onCancel,
   onConfirm,
 }: {
@@ -61,10 +62,12 @@ export function ReasonDialog({
   confirm: string;
   danger?: boolean;
   extra?: React.ReactNode;
+  /** Pre-filled reason for routine actions (the user can still change it). */
+  defaultReason?: string;
   onCancel: () => void;
   onConfirm: (reason: string) => Promise<void> | void;
 }) {
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState(defaultReason);
   const [busy, setBusy] = useState(false);
   const trap = useFocusTrap(busy ? undefined : onCancel);
   return (

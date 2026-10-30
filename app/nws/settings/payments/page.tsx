@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chips, ConfirmDialog, downloadCsv, Empty, fetchPaged, int, Kpi, omr, PageHead, pct, ReadOnlyNote, useRun } from "@/components/nws/admin/ui";
+import { FillCreditPanel } from "@/components/nws/admin/FillCreditPanel";
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { supabase } from "@/lib/supabase/client";
 import { ref } from "@/lib/types";
@@ -150,6 +151,8 @@ export default function PaymentsPage() {
         </div>
         <p className="note">Last {DAYS} days{shown.length > 300 ? ", latest 300 shown (export has all)" : ""}. Signed amounts: positive credits the customer wallet or company account; payouts and fines are negative for the company.</p>
       </div>
+
+      <FillCreditPanel />
 
       <div className="panel">
         <h2>Payout batches <small>{finance ? "Finance and Super admins can run a batch" : "run by Finance"}</small></h2>

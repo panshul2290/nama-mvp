@@ -7,10 +7,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChatBubbles } from "@/components/chat/OrderChat";
 import { FleetMap } from "@/components/nws/FleetMap";
 import type { LatLng, MapSite } from "@/components/nws/FleetMapView";
-import { permitSummary, type Permit } from "@/components/nws/fleetData";
 import { CHANNEL_LABEL, maskPhone, n3, omr3, one, orderSla, St, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
 import { PodLocation } from "@/components/PodLocation";
 import { SignatureSvg } from "@/components/SignatureSvg";
+import { DispatchSuggestions } from "@/components/nws/DispatchSuggestions";
 import { PenaltyDialog } from "@/components/nws/PenaltyDialog";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { OrderBill, STATUS_TEXT, statusText } from "@/components/OrderBits";
@@ -46,22 +46,12 @@ const ROLE: Record<OrderMessage["sender_role"], string> = { customer: "Customer"
 type Complaint = { id: string; case_no: number; category: string; state: string; created_at: string; due_at: string };
 type Penalty = { id: string; penalty_no: number; amount: string; state: string; reason: string; created_at: string; rule: One<{ label: string }> };
 type Verification = { company: string | null; permit_no: string | null; permit_valid_to: string | null; water_test: { cert_no: string; passed: boolean; tested_at: string } | null; device: string | null } | null;
-type Candidate = {
-  id: string; plate: string; service_type: ServiceType; capacity_gal: number; is_online: boolean; blocked: boolean; last_lat: number | null; last_lng: number | null;
-  permits: Permit[]; assignments: { unassigned_at: string | null; driver: { full_name: string } | null }[];
-};
-type Dlg = "assign" | "reschedule" | "cancel" | "refund" | "penalty" | null;
+type Dlg = "reschedule" | "cancel" | "refund" | "penalty" | null;
 
 const PAY_LABEL: Record<string, string> = { wallet: "Wallet", card: "Card", omannet: "OmanNet", wallet_card: "Wallet + card", account: "On account (B2B)", cash: "Cash on delivery" };
 const PAY_TONE: Record<string, string> = { authorized: "act", captured: "ok", refunded: "warn", partially_refunded: "warn", failed: "bad", on_account: "act" };
 const SOURCE_LABEL: Record<string, string> = { tfs: "Filling station (TFS)", ivms: "IVMS", stp: "Treatment plant (STP)", tas: "TAS" };
 const ON_JOB = ["accepted", "arriving", "arrived", "collected"];
-
-function km(a: LatLng, b: LatLng) {
-  const r = (d: number) => (d * Math.PI) / 180;
-  const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
-  return 6371 * 2 * Math.asin(Math.sqrt(h));
-}
 
 /** Tomorrow 08:00–10:00 Muscat time (UTC+4, no daylight saving). */
 function tomorrowMorning() {
@@ -92,8 +82,6 @@ export default function OrderDetail() {
   const [sites, setSites] = useState<MapSite[]>([]);
   const [missing, setMissing] = useState(false);
   const [dlg, setDlg] = useState<Dlg>(null);
-  const [cands, setCands] = useState<Candidate[]>([]);
-  const [pick, setPick] = useState("");
   const [amount, setAmount] = useState("");
   const [body, setBody] = useState("");
 
@@ -153,28 +141,6 @@ export default function OrderDetail() {
 
   const photo = useSignedUrl(pod?.photo_path);
   const sigFile = useSignedUrl(pod?.signature_svg ? null : pod?.signature_path);
-
-  // Eligible tankers for a manual assignment, nearest first.
-  async function openAssign() {
-    if (!o) return;
-    const db = supabase();
-    const [t, busy] = await Promise.all([
-      db
-        .from("tankers")
-        .select("id, plate, service_type, capacity_gal, is_online, blocked, last_lat, last_lng, permits(id, permit_no, type, status, issued_at, expires_at), assignments:tanker_assignments(unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name))")
-        .eq("service_type", o.service_type)
-        .gte("capacity_gal", o.gallons)
-        .eq("blocked", false),
-      db.from("orders").select("tanker_id").in("status", ON_JOB),
-    ]);
-    const onJob = new Set(((busy.data ?? []) as { tanker_id: string | null }[]).map((x) => x.tanker_id));
-    const list = ((t.data ?? []) as unknown as Candidate[]).filter((c) => permitSummary(c).valid && c.assignments.some((a) => !a.unassigned_at) && !onJob.has(c.id));
-    const dist = (c: Candidate) => (loc && c.last_lat != null && c.last_lng != null ? km(loc, { lat: c.last_lat, lng: c.last_lng }) : Infinity);
-    list.sort((a, b) => Number(b.is_online) - Number(a.is_online) || dist(a) - dist(b));
-    setCands(list);
-    setPick(list[0]?.id ?? "");
-    setDlg("assign");
-  }
 
   async function act(action: "assign" | "cancel" | "reschedule" | "refund", reason: string, extra: Record<string, unknown>, ok: string) {
     if (await rpc("staff_order_action", { p_order_id: id, p_action: action, p_reason: reason, ...extra }, ok)) {
@@ -246,7 +212,7 @@ export default function OrderDetail() {
         </div>
         <div className="btns">
           {o.status === "requested" && (
-            <button className="btn pri" disabled={!isOp} title={opTip} onClick={openAssign}>
+            <button className="btn pri" disabled={!isOp} title={opTip} onClick={() => document.getElementById("dispatch")?.scrollIntoView({ behavior: "smooth", block: "center" })}>
               Assign
             </button>
           )}
@@ -278,6 +244,12 @@ export default function OrderDetail() {
           </Link>
         </div>
       </div>
+
+      {o.status === "requested" && (
+        <div id="dispatch">
+          <DispatchSuggestions orderId={o.id} orderLabel={orderNo(o.order_no)} canAssign={isOp} onAssigned={load} />
+        </div>
+      )}
 
       <div className="two">
         <div>
@@ -613,33 +585,6 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      {dlg === "assign" && (
-        <ReasonDialog
-          title={`Assign ${orderNo(o.order_no)}`}
-          body="Eligible tankers: matching service and capacity, valid permit, not suspended, with a driver and no active job. Online tankers first, nearest first."
-          confirm="Assign"
-          extra={
-            <div className="picklist" role="listbox" aria-label="Tankers">
-              {cands.length === 0 && <span className="mut" style={{ fontSize: 13 }}>No eligible tanker right now.</span>}
-              {cands.map((c) => {
-                const d = loc && c.last_lat != null && c.last_lng != null ? km(loc, { lat: c.last_lat, lng: c.last_lng }) : null;
-                return (
-                  <button key={c.id} type="button" className={`pickrow ${pick === c.id ? "on" : ""}`} onClick={() => setPick(c.id)}>
-                    <span>
-                      <b>{c.plate}</b> · {c.capacity_gal.toLocaleString()} gal · {c.assignments.find((a) => !a.unassigned_at)?.driver?.full_name ?? "driver"}
-                    </span>
-                    <small className="mut">
-                      <St tone={c.is_online ? "ok" : ""}>{c.is_online ? "Online" : "Offline"}</St> {d != null ? `${d.toFixed(1)} km` : ""}
-                    </small>
-                  </button>
-                );
-              })}
-            </div>
-          }
-          onCancel={() => setDlg(null)}
-          onConfirm={(r) => (pick ? act("assign", r, { p_tanker_id: pick }, `${orderNo(o.order_no)} assigned to ${cands.find((c) => c.id === pick)?.plate}`) : toast("Choose a tanker first", true))}
-        />
-      )}
       {dlg === "reschedule" && (
         <ReasonDialog
           title={`Move ${orderNo(o.order_no)} to ${slot.label}`}

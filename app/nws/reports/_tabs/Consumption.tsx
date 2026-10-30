@@ -158,7 +158,7 @@ export default function Consumption({ rows }: { rows: ORow[] }) {
               </tbody>
             </table>
           </div>
-          <p className="note">Average interval between a property&apos;s drinking-water deliveries over the last 180 days. The “Refill reminder” notification template is ready, but reminders aren’t sent automatically in the pilot.</p>
+          <p className="note">Average interval between a property&apos;s drinking-water deliveries over the last 180 days. Refill reminders go out automatically every morning (09:00) to customers who allow reminders, once per predicted refill, unless an order or contract is already open — see Settings → Notifications → Outbox (event refill_reminder).</p>
         </div>
       </div>
 

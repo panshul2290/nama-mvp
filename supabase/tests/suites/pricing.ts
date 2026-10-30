@@ -2,7 +2,7 @@
 // Anything that changes a rule or the billing mode runs inside a transaction
 // that is always rolled back, so a live project never sees the change.
 import type { Reporter, Target } from "../lib/harness";
-import { makeWorld, placeOrder, setOnline, TEST_AREA } from "../lib/world";
+import { makeWorld, peakNow, placeOrder, setOnline, TEST_AREA } from "../lib/world";
 
 type Q = <R = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<R[]>;
 
@@ -57,24 +57,28 @@ export async function pricingSuite(t: Target, r: Reporter) {
     by("pending_clarification"));
   r.check("assumptions: base fees DW 3.5 / WW 6 / TE 8, driver share 0.85, peak 1.2, priority 1.5, monthly 0.10, yearly 0.15, cancel fee 1",
     JSON.stringify(rules.filter((x) => x.status === "assumption").map((x) => `${x.rule_key}=${x.value}`).sort()) ===
-      JSON.stringify(["cancel_fee_omr=1", "discount_monthly=0.10", "discount_yearly=0.15", "driver_share=0.85", "fee_dw_omr=3.5", "fee_te_omr=8", "fee_ww_omr=6", "peak_multiplier=1.2", "priority_multiplier=1.5"]),
+      JSON.stringify(["cancel_fee_omr=1", "demand_cap=1.3", "demand_min_open=10", "demand_ratio_threshold=3", "demand_step=0.1", "discount_monthly=0.10", "discount_yearly=0.15",
+        "distance_cap=1.5", "distance_free_km=15", "distance_per_km=0.02", "driver_share=0.85", "dynamic_cap=2.5", "fee_dw_omr=3.5", "fee_te_omr=8", "fee_ww_omr=6",
+        "peak_multiplier=1.2", "priority_multiplier=1.5"]),
     by("assumption"));
   const [mode] = await t.admin<{ value: string }>("select value from app_settings where key = 'BILLING_MODE'");
   r.check("BILLING_MODE defaults to demo", mode?.value === "demo", mode);
 
   // ---- demo mode: orders are priced and every line carries its rule status
+  // (slot-less orders are peak-priced between 18:00 and 20:00 Muscat: expected figures follow)
+  const peak = await peakNow(t);
   const small = await placeOrder(t, C1.id, "DW", 600);
   const big = await placeOrder(t, C1.id, "DW", 3000);
   const ww = await placeOrder(t, C1.id, "WW", 3000);
   const basis = async (id: string) => (await t.admin<{ price_basis: Record<string, unknown> }>("select price_basis from orders where id = $1", [id]))[0].price_basis;
   const b1 = await basis(small.id);
   r.check("demo: DW 600 gal is priced; water confirmed, fee assumption, VAT pending, total pending, earnings assumption",
-    small.total === "4.305" && b1.water === "confirmed" && b1.fee === "assumption" && b1.vat === "pending_clarification" && b1.total === "pending_clarification" && b1.earnings === "assumption" && b1.mode === "demo",
+    small.total === (peak ? "5.040" : "4.305") && b1.water === "confirmed" && b1.fee === "assumption" && b1.vat === "pending_clarification" && b1.total === "pending_clarification" && b1.earnings === "assumption" && b1.mode === "demo",
     { total: small.total, b1 });
   const b2 = await basis(big.id);
-  r.check("demo: DW 3,000 gal (slab) = 11.760 and its water line is pending (Q05)", big.total === "11.760" && b2.water === "pending_clarification", { total: big.total, b2 });
+  r.check("demo: DW 3,000 gal (slab) = 11.760 and its water line is pending (Q05)", big.total === (peak ? "12.495" : "11.760") && b2.water === "pending_clarification", { total: big.total, b2 });
   const b3 = await basis(ww.id);
-  r.check("demo: WW 3,000 gal water line is confirmed", b3.water === "confirmed" && ww.total === "9.450", { total: ww.total, b3 });
+  r.check("demo: WW 3,000 gal water line is confirmed", b3.water === "confirmed" && ww.total === (peak ? "10.710" : "9.450"), { total: ww.total, b3 });
   await setOnline(t, D2.id, true);
   const [req] = await t.as<{ earnings_status: string }>(D2.id, "select earnings_status from open_requests_near(23.6, 58.2) where id = $1", [small.id]);
   r.check("driver's open-request list reports the earnings status (assumption)", req?.earnings_status === "assumption", req);
@@ -109,11 +113,11 @@ export async function pricingSuite(t: Target, r: Reporter) {
     const p3 = await adminIn(q, "insert into orders (customer_id, service_type, gallons, area, water_charge, delivery_fee, vat, total, driver_earnings) values ($1,'WW',100,$2,0,0,0,0,0)", [C1.id, TEST_AREA]);
     r.check("production: the trigger also refuses a privileged direct insert", !!p3.error && p3.error.includes("pricing_unconfirmed"), p3.error);
 
-    await q("update pricing_rules set status = 'confirmed' where rule_key in ('fee_dw_omr', 'vat_rate', 'driver_share')");
+    await q(`update pricing_rules set status = 'confirmed' where rule_key in ('fee_dw_omr', 'vat_rate', 'driver_share'${peak ? ", 'peak_multiplier'" : ""})`);
     const p4 = await asUserIn(q, C1.id, PLACE, ["DW", 600]);
     const pb = p4.rows?.[0]?.price_basis as Record<string, unknown> | undefined;
     r.check("production: once every rule the order uses is confirmed, it is priced (DW 600 gal)",
-      !p4.error && p4.rows?.[0]?.total === "4.305" && pb?.mode === "production" && pb?.total === "confirmed", p4.error ?? pb);
+      !p4.error && p4.rows?.[0]?.total === (peak ? "5.040" : "4.305") && pb?.mode === "production" && pb?.total === "confirmed", p4.error ?? pb);
     const p5 = await asUserIn(q, C1.id, PLACE, ["DW", 3000]);
     r.check("production: DW 3,000 gal is still refused while Q05 is pending — and only the Q05 rules are listed",
       !!p5.error && p5.error.includes("dw_rate_above_650") && !p5.error.includes("fee_dw_omr") && !p5.error.includes("vat_rate"), p5.error);

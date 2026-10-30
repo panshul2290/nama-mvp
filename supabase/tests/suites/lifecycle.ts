@@ -2,7 +2,7 @@
 // this suite created, so it is safe to run against a live project.
 import { quote as jsQuote, type PricingRule } from "../../../lib/pricing";
 import type { Reporter, Target } from "../lib/harness";
-import { makeWorld, placeOrder, setOnline, deliver } from "../lib/world";
+import { makeWorld, peakNow, placeOrder, setOnline, deliver } from "../lib/world";
 
 export async function lifecycleSuite(t: Target, r: Reporter) {
   r.start("PRICE pricing");
@@ -42,7 +42,8 @@ export async function lifecycleSuite(t: Target, r: Reporter) {
   const { C1, D1, D2, D3 } = w;
 
   const o1 = await placeOrder(t, C1.id, "DW", 1000);
-  r.check("place_order prices on the server (DW 1,000 gal = 5.460) and starts as requested", o1.total === "5.460" && o1.status === "requested", o1);
+  const peak = await peakNow(t);
+  r.check(`place_order prices on the server (DW 1,000 gal = ${peak ? "6.195 at the evening peak" : "5.460"}) and starts as requested`, o1.total === (peak ? "6.195" : "5.460") && o1.status === "requested", o1);
   r.check("the order gets an order_no ≥ 48200", Number(o1.order_no) >= 48200, o1.order_no);
 
   const mine = async (driver: string) => (await t.as<{ id: string }>(driver, "select id from open_requests_near(23.6, 58.2)")).map((x) => x.id);
@@ -80,6 +81,8 @@ export async function lifecycleSuite(t: Target, r: Reporter) {
   const nums: number[] = [];
   for (let i = 0; i < 25; i++) nums.push(Number((await placeOrder(t, C1.id, "WW", 50)).order_no));
   r.check("25 orders in a row get 25 distinct, increasing numbers", new Set(nums).size === 25 && nums.every((v, i) => i === 0 || v > nums[i - 1]), nums);
+  // Leave them cancelled: 25 open wastewater requests would (rightly) raise demand pricing in the zone for later suites.
+  await t.admin("update orders set status = 'cancelled', cancelled_at = now(), cancelled_by = 'system' where order_no = any($1::bigint[])", [nums]);
   const [dup] = await t.admin<{ n: number }>("select count(*)::int - count(distinct order_no)::int as n from orders");
   r.check("no two orders in the database share a number", dup.n === 0, dup);
   const [forced] = await t.admin<{ order_no: string }>(

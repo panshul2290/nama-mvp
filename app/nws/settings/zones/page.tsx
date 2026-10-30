@@ -40,6 +40,27 @@ export default function ZonesPage() {
     });
   }
 
+  // Auto-dispatch (0026): offer each request to the best-ranked tanker first.
+  function dispatch(z: Zone, on: boolean) {
+    let secs = String(z.offer_seconds ?? 45);
+    ask({
+      title: `${on ? "Auto-offer on" : "Auto-offer off"} — ${z.name}`,
+      body: on
+        ? "Each new request is offered to the best tanker (nearest, fairest workload, best rating, eligible) for the time below, then the next one, then it goes to every driver's open list. Operators can still assign by hand."
+        : "Requests go straight to every eligible driver's open list, nearest first.",
+      extra: on ? (
+        <div className="fld">
+          <label htmlFor="zo-s">Seconds each tanker has to accept (10–600)</label>
+          <input id="zo-s" className="in" type="number" min={10} max={600} defaultValue={secs} onChange={(e) => (secs = e.target.value)} />
+        </div>
+      ) : undefined,
+      confirm: on ? "Turn on" : "Turn off",
+      ok: `Auto-offer ${on ? "on" : "off"} in ${z.name}`,
+      run: (reason) => supabase().rpc("staff_set_zone_dispatch", { p_zone_id: z.id, p_auto_offer: on, p_offer_seconds: Number(secs) || 45, p_reason: reason }),
+      done: load,
+    });
+  }
+
   return (
     <>
       <PageHead title="Zones and geofences" sub="Where tanker service is offered, and the approved filling stations and discharge plants trips are verified against." />
@@ -72,14 +93,18 @@ export default function ZonesPage() {
             <h2>Service areas</h2>
             <div className="tblwrap">
               <table>
-                <thead><tr><th>Area</th><th>Governorate</th><th className="num">Radius</th><th className="num">Active</th></tr></thead>
+                <thead><tr><th>Area</th><th>Governorate</th><th className="num">Radius</th><th className="num">Auto-offer</th><th className="num">Active</th></tr></thead>
                 <tbody>
-                  {!zones && <Empty cols={4}>Loading…</Empty>}
+                  {!zones && <Empty cols={5}>Loading…</Empty>}
                   {zones?.map((z) => (
                     <tr key={z.id}>
                       <td>{z.name}{z.is_test && <span className="st warn ptag">TEST</span>}</td>
                       <td>{z.governorate}</td>
                       <td className="num">{z.min_lat != null ? "box" : `${Number(z.radius_km)} km`}</td>
+                      <td className="num">
+                        <Switch on={Boolean(z.auto_offer)} disabled={!editor} label={z.auto_offer ? "Auto-offer on" : "Auto-offer off"} onClick={() => dispatch(z, !z.auto_offer)} />
+                        {z.auto_offer && <small style={{ display: "block" }}>{z.offer_seconds} s each</small>}
+                      </td>
                       <td className="num"><Switch on={z.active} disabled={!editor} label={z.active ? "Active" : "Disabled"} onClick={() => toggle("zone", z.id, z.name, z.active)} /></td>
                     </tr>
                   ))}

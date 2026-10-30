@@ -7,7 +7,14 @@
 //   - done: delivered (drinking water, treated effluent) or collected (wastewater;
 //     the later discharge at the treatment plant is not part of the customer SLA).
 
+//
+// The database holds the same rule (0026: sla_due_at, sla_served_at, sla_state,
+// my_order_sla, and the SLA setting) and the reports aggregate with it; this copy only
+// labels live screens between refreshes. Keep the two in step.
+
 export const ASAP_MINUTES = 120;
+/** An open order is "at risk" this close to its deadline (sla_state: at_risk). */
+export const AT_RISK_MINUTES = 20;
 
 const MIN = 60_000;
 const DAY = 86_400_000;

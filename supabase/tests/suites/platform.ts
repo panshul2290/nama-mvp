@@ -48,7 +48,7 @@ export async function platformSuite(t: Target, r: Reporter) {
   const paid = await order(C1.id, "DW", 1000, "wallet");
   r.check("wallet checkout: order requested, payment authorized, wallet debited by the total", paid.status === "requested" && paid.payment_status === "authorized" && (await wallet(C1.id)) === 20 - Number(paid.total), paid);
 
-  const q = await one<{ q: Row }>(C1.id, "select quote_order('DW', 1000, null, true, 'WELCOME10') as q");
+  const q = await one<{ q: Row }>(C1.id, "select quote_order('DW', 1000, (current_date + 1 + time '06:00') at time zone 'UTC', true, 'WELCOME10') as q");
   r.check("quote_order: emergency ×1.5 fee and WELCOME10 10% discount on the fee", q.q.delivery_fee === 5.25 && q.q.discount === 0.525, q.q);
   await r.denies("quote_order: unknown promo → invalid_promo", () => one(C1.id, "select quote_order('DW', 1000, null, false, 'NOPE99')"), "invalid_promo");
 

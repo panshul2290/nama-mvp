@@ -703,7 +703,7 @@ function NotifTab({ notifs }: { notifs: Notif[] | null }) {
           </tbody>
         </table>
       </div>
-      <p className="note">SMS and WhatsApp are simulated in the pilot: messages are logged here, not sent.</p>
+      <p className="note">Each notification also goes out on its channels through the delivery pipeline (Settings → Notifications → Outbox shows every message and its status). No SMS, WhatsApp or push gateway is connected yet: the built-in simulator sends them.</p>
     </div>
   );
 }

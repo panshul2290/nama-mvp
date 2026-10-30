@@ -27,6 +27,17 @@ const FEE_ENGINE: [string, string][] = [
   ["vat_rate", "VAT"],
   ["cancel_fee_omr", "Cancellation fee after assignment (OMR)"],
 ];
+// Dynamic factors (0026): distance and demand multiply the delivery fee next to peak and priority.
+const DYNAMIC: [string, string, string][] = [
+  ["distance_free_km", "Distance included in the base fee", "km"],
+  ["distance_per_km", "Added per km beyond it", "× per km"],
+  ["distance_cap", "Distance multiplier cap", "×"],
+  ["demand_min_open", "Demand pricing needs at least", "open requests"],
+  ["demand_ratio_threshold", "Starts above", "requests per online tanker"],
+  ["demand_step", "Added per extra request per tanker", "×"],
+  ["demand_cap", "Demand multiplier cap", "×"],
+  ["dynamic_cap", "Cap on the combined multiplier", "×"],
+];
 const TARIFF: [string, React.ReactNode, string][] = [
   ["dw_tier_threshold_gal", <><span className="tag DW">DW</span> first tier ends at</>, "gal"],
   ["dw_rate_upto_650", <><span className="tag DW">DW</span> up to 650 gal</>, "baisa / gal"],
@@ -36,7 +47,8 @@ const TARIFF: [string, React.ReactNode, string][] = [
   ["te_rate", <><span className="tag TE">TE</span> all</>, "baisa / gal"],
 ];
 
-type QuoteRes = { water_charge: number; delivery_fee: number; discount: number; vat: number; total: number; driver_earnings: number; total_status: RuleStatus; peak: boolean; priority: boolean; discount_pct: number; promo_label: string | null };
+type Factors = { base_fee: number; multiplier: number; peak_mult: number; priority_mult: number; distance_km: number | null; distance_mult: number; demand_ratio: number; demand_mult: number; located: boolean };
+type QuoteRes = { water_charge: number; delivery_fee: number; discount: number; vat: number; total: number; driver_earnings: number; total_status: RuleStatus; peak: boolean; priority: boolean; discount_pct: number; promo_label: string | null; factors?: Factors };
 
 export default function PricingPage() {
   const { can } = useStaff();
@@ -112,6 +124,18 @@ export default function PricingPage() {
             </div>
             <p className="note">Open question for NWS (Q05): whether 3 baisa applies to the whole volume above 650 gal or only to the part above it. BILLING_MODE is changed by the database owner (see README → Pricing).</p>
           </div>
+          <div className="panel">
+            <h2>Dynamic pricing <small>distance and demand, capped</small></h2>
+            <div className="tblwrap">
+              <table>
+                <tbody>{DYNAMIC.map(([k, l, u]) => row(k, l, u))}</tbody>
+              </table>
+            </div>
+            <p className="note">
+              Distance: from the nearest active filling station (wastewater: treatment plant) to the customer&apos;s pin. Demand: open requests for the service in the zone against online tankers with a fresh fix there.
+              Both are 1× inside the free distance and below the threshold, so existing prices hold; test-zone orders use no distance factor. The order keeps the breakdown, and the driver&apos;s earnings are their share of the multiplied fee.
+            </p>
+          </div>
           <PriceCheck />
         </div>
       </div>
@@ -174,6 +198,7 @@ function PriceCheck() {
   const [peak, setPeak] = useState(false);
   const [emergency, setEmergency] = useState(false);
   const [promo, setPromo] = useState("");
+  const [pin, setPin] = useState("");
   const [q, setQ] = useState<QuoteRes | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -181,7 +206,12 @@ function PriceCheck() {
     // quote_order decides "peak" from the slot time: 18:30 Muscat for peak, 10:00 otherwise.
     const d = new Date();
     d.setUTCHours(peak ? 14 : 6, peak ? 30 : 0, 0, 0);
-    const { data, error } = await supabase().rpc("quote_order", { p_service_type: service, p_gallons: Number(gallons), p_slot_start: d.toISOString(), p_emergency: emergency, p_promo_code: promo.trim() || null });
+    const m = pin.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (pin.trim() && !m) return setErr("Delivery pin: latitude, longitude — e.g. 23.59, 58.41");
+    const { data, error } = await supabase().rpc("quote_order", {
+      p_service_type: service, p_gallons: Number(gallons), p_slot_start: d.toISOString(), p_emergency: emergency, p_promo_code: promo.trim() || null,
+      p_lat: m ? Number(m[1]) : null, p_lng: m ? Number(m[2]) : null,
+    });
     setErr(error ? friendlyError(error) : null);
     setQ(error ? null : (data as QuoteRes));
   }
@@ -205,6 +235,10 @@ function PriceCheck() {
             <label htmlFor="pc-p">Promo code</label>
             <input id="pc-p" className="in" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} placeholder="Optional" />
           </div>
+          <div className="fld">
+            <label htmlFor="pc-pin">Delivery pin (lat, lng)</label>
+            <input id="pc-pin" className="in" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="Optional, e.g. 23.59, 58.41" dir="ltr" />
+          </div>
         </div>
         <div className="checks" style={{ display: "flex", gap: 16, margin: "10px 0", fontSize: 13.5 }}>
           <label><input type="checkbox" checked={peak} onChange={(e) => setPeak(e.target.checked)} /> Evening peak slot</label>
@@ -221,6 +255,13 @@ function PriceCheck() {
           <div><span>VAT</span><span>{omr(q.vat)}</span></div>
           <div className="tot"><span>Total (OMR) {q.total_status !== "confirmed" && <span className={`st ptag ${BADGE[q.total_status][1]}`}>{BADGE[q.total_status][0]}</span>}</span><span>{omr(q.total)}</span></div>
           <div className="mut"><span>Driver earnings</span><span>{omr(q.driver_earnings)}</span></div>
+          {q.factors && (
+            <div className="mut" style={{ display: "block", fontSize: 12.5 }}>
+              Fee {omr(q.factors.base_fee)} × {Number(q.factors.multiplier).toFixed(3)}: peak {q.factors.peak_mult}× · priority {q.factors.priority_mult}× · distance {q.factors.distance_mult}×
+              {q.factors.distance_km != null ? ` (${q.factors.distance_km} km)` : ""} · demand {q.factors.demand_mult}× ({q.factors.demand_ratio} requests per tanker)
+              {!q.factors.located && " — add a pin for distance and demand"}
+            </div>
+          )}
         </div>
       )}
     </div>

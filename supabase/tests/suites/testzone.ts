@@ -125,6 +125,8 @@ export async function testZoneSuite(t: Target, r: Reporter) {
   await t.admin("update orders set status = 'cancelled', cancelled_at = now() where id = $1", [delhi2.id]);
 
   await one(D1.id, "select * from accept_order($1)", [om.id]);
+  // D1 is independent: Omani fills draw on its prepaid filling credit (0026); test-zone fills are free.
+  await one(D1.id, "select driver_topup_fill_credit(50)");
   // The tanker then moves to India (inside the test zone, next to nothing Omani).
   await t.admin("update tankers set last_lat = 28.62, last_lng = 77.22, last_fix_at = now() where id = $1", [w.tk.D1]);
   const omFill = await one<Row>(D1.id, "select * from confirm_fill($1)", [om.id]);

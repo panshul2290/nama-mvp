@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useStaff } from "@/components/nws/StaffContext";
 import { saveCsv, saveTable, TABLE_FORMATS, type CsvCell, type TableFormat } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
-import { servedAt, slaDue } from "@/lib/sla";
+import { AT_RISK_MINUTES, servedAt, slaDue } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
 import { omanTime } from "@/lib/time";
 import type { OrderStatus } from "@/lib/types";
@@ -61,7 +61,7 @@ export function orderSla(
     return at <= due ? { text: "On time", tone: "ok" } : { text: "Late", tone: "bad" };
   }
   if (now > due) return { text: "Late", tone: "bad" };
-  if (due - now < 20 * 60_000) return { text: "At risk", tone: "warn" };
+  if (due - now < AT_RISK_MINUTES * 60_000) return { text: "At risk", tone: "warn" };
   return { text: "On time", tone: "ok" };
 }
 

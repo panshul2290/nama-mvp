@@ -2,8 +2,9 @@
 
 import "../ops.css";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { CallerOrderModal } from "@/components/nws/CallerOrderModal";
+import { DispatchSuggestions } from "@/components/nws/DispatchSuggestions";
 import { CHANNEL_LABEL, downloadCsv, Kpi, n3, one, orderSla, useNow, useRealtime } from "@/components/nws/ops";
 import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { statusText } from "@/components/OrderBits";
@@ -55,6 +56,7 @@ export default function OrdersPage() {
   const [counts, setCounts] = useState<Partial<Record<Group, number>>>({});
   const [kpi, setKpi] = useState<{ median: number | null; cancelledToday: number; createdToday: number } | null>(null);
   const [calling, setCalling] = useState<string | null>(null);
+  const [suggest, setSuggest] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   const load = useCallback(async () => {
@@ -204,12 +206,13 @@ export default function OrdersPage() {
                 <th className="num">Total</th>
                 <th>SLA</th>
                 <th>Created</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {rows?.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="empty">
+                  <td colSpan={12} className="empty">
                     No orders match these filters.
                   </td>
                 </tr>
@@ -217,7 +220,8 @@ export default function OrdersPage() {
               {rows?.map((o) => {
                 const sla = orderSla(o, now);
                 return (
-                  <tr key={o.id} className="click" onClick={() => router.push(`/nws/orders/${o.id}`)}>
+                  <Fragment key={o.id}>
+                  <tr className="click" onClick={() => router.push(`/nws/orders/${o.id}`)}>
                     <td className={`stripe ${o.service_type}`}>
                       <b>{orderNo(o.order_no)}</b>
                       {o.is_emergency && <span className="st bad ptag">priority</span>}
@@ -246,7 +250,22 @@ export default function OrdersPage() {
                     <td>
                       <small>{fmtDateTime(o.created_at)}</small>
                     </td>
+                    <td className="num">
+                      {o.status === "requested" && (
+                        <button className="btn sm" aria-expanded={suggest === o.id} onClick={(e) => { e.stopPropagation(); setSuggest(suggest === o.id ? null : o.id); }}>
+                          {suggest === o.id ? "Hide" : "Suggest"}
+                        </button>
+                      )}
+                    </td>
                   </tr>
+                  {suggest === o.id && (
+                    <tr>
+                      <td colSpan={12} style={{ background: "var(--bg2, #f6f8f9)" }}>
+                        <DispatchSuggestions compact orderId={o.id} orderLabel={orderNo(o.order_no)} canAssign={can("operator")} onAssigned={() => { setSuggest(null); load(); }} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
