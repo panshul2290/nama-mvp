@@ -34,6 +34,7 @@ export function BizProvider({ value, children }: { value: Ctx; children: React.R
 
 export function useBiz() {
   const v = use(BizCtx);
+  // i18n-ignore: developer error
   if (!v) throw new Error("useBiz must be used inside the Business portal layout");
   const role = v.org.my_role ?? v.profile.org_role ?? null;
   return {
@@ -47,6 +48,7 @@ export function useBiz() {
   };
 }
 
+/** English (exports); orgRoleLabel()/segmentLabel() in lib/labels give the viewer's language. */
 export const ORG_ROLE_LABEL: Record<OrgRole, string> = { admin: "Account admin", site_manager: "Site manager", finance: "Finance" };
 export const SEGMENT_LABEL: Record<OrgSummary["segment"], string> = { commercial: "Commercial", government: "Government", industrial: "Industrial", farm: "Farm" };
 

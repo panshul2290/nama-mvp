@@ -3,21 +3,23 @@
 import "./business.css";
 import { usePathname } from "next/navigation";
 import { useCallback, useState } from "react";
-import { BizProvider, ORG_ROLE_LABEL, SEGMENT_LABEL, type OrgSummary } from "@/components/business/BizContext";
+import { BizProvider, SEGMENT_LABEL, type OrgSummary } from "@/components/business/BizContext";
+import { BIZ } from "@/components/business/i18n";
+import { useFmt } from "@/components/portal/i18n";
 import { useAction, useLive } from "@/components/portal/kit";
 import { PortalLoading, PortalShell, usePortalProfile, type PortalTab } from "@/components/portal/PortalShell";
 import { useMyInvitations } from "@/components/useInvitations";
 import { supabase } from "@/lib/supabase/client";
-import { omanDate } from "@/lib/time";
-
-const DESCRIPTION =
-  "Web portal for commercial and government customers: multi-site ordering on credit, contracts, monthly invoices, team access by site, and delivery performance against the SLA.";
+import { useLang, useT } from "@/lib/i18n";
+import { orgRoleLabel, segmentLabel } from "@/lib/labels";
 
 export default function BusinessLayout({ children }: { children: React.ReactNode }) {
   const { profile } = usePortalProfile("business");
   const path = usePathname();
   const [org, setOrg] = useState<OrgSummary | null | undefined>(undefined);
   const [pending, setPending] = useState(0);
+  const { lang, dir } = useLang();
+  const t = useT(BIZ);
 
   const loadOrg = useCallback(async () => {
     const db = supabase();
@@ -36,17 +38,27 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
 
   // Print view of an invoice: no portal chrome.
   if (path.startsWith("/business/invoice/")) {
-    if (!profile || org === undefined) return <div className="inv-print-loading">Loading…</div>;
-    if (!org) return <div className="inv-print-loading">No business account.</div>;
+    if (!profile || org === undefined)
+      return (
+        <div className="inv-print-loading" dir={dir} lang={lang}>
+          {t("loading")}
+        </div>
+      );
+    if (!org)
+      return (
+        <div className="inv-print-loading" dir={dir} lang={lang}>
+          {t("noAccount")}
+        </div>
+      );
     return <BizProvider value={{ profile, org, reloadOrg: loadOrg }}>{children}</BizProvider>;
   }
 
   if (!profile || org === undefined) return <PortalLoading />;
-  const who = `Signed in as ${profile.full_name || "business user"}`;
+  const who = t("signedInAs", { name: profile.full_name || t("businessUser") });
 
   if (!org) {
     return (
-      <PortalShell app="Business portal" who={who} title="Open an account" description="Hotels, compounds, farms and government sites order water in bulk on credit from NWS-permitted tankers.">
+      <PortalShell app={t("appName")} who={who} title={t("openAccount")} description={t("openAccountDesc")}>
         <OrgInvitations onJoined={loadOrg} />
         <RegisterOrg onDone={loadOrg} />
       </PortalShell>
@@ -57,13 +69,13 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
   // Finance (prototype: "Invoices only") sees billing, orders to check them, and service levels.
   const financeHides = ["/business/sites", "/business/contracts", "/business/team"];
   const tabs: PortalTab[] = [
-    { href: "/business", label: "Dashboard" },
-    { href: "/business/orders", label: "Orders", badge: role === "admin" ? pending : 0 },
-    { href: "/business/sites", label: "Sites" },
-    { href: "/business/contracts", label: "Contracts" },
-    { href: "/business/invoices", label: "Invoices" },
-    { href: "/business/team", label: "Team" },
-    { href: "/business/sla", label: "Service levels" },
+    { href: "/business", label: t("tDashboard") },
+    { href: "/business/orders", label: t("orders"), badge: role === "admin" ? pending : 0 },
+    { href: "/business/sites", label: t("tSites") },
+    { href: "/business/contracts", label: t("tContracts") },
+    { href: "/business/invoices", label: t("tInvoices") },
+    { href: "/business/team", label: t("tTeam") },
+    { href: "/business/sla", label: t("tSla") },
   ]
     .filter((t) => role !== "finance" || !financeHides.includes(t.href))
     // Members limited to some sites (Team → Sites): invoices are organisation-wide.
@@ -71,24 +83,24 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
   const banner =
     org.status === "pending" ? (
       <div className="banner">
-        <b>Waiting for NWS approval</b> — NWS activates the account and sets your credit limit; you can add sites and invite your team meanwhile.
+        <b>{t("banPendingB")}</b> {t("banPending")}
       </div>
     ) : org.status === "suspended" ? (
       <div className="banner badb">
-        <b>Account suspended.</b> Contact NWS finance on 1442.
+        <b>{t("banSuspB")}</b> {t("banSusp")}
       </div>
     ) : org.paused ? (
       <div className="banner badb">
-        <b>Ordering is paused on this account.</b> Contact NWS finance.
+        <b>{t("banPausedB")}</b> {t("banPaused")}
       </div>
     ) : null;
 
   return (
     <PortalShell
-      app="Business portal"
-      who={`${who} · ${role ? ORG_ROLE_LABEL[role] : "Member"} · ${org.name}`}
+      app={t("appName")}
+      who={`${who} · ${role ? orgRoleLabel(role, lang) : t("member")} · ${org.name}`}
       title={org.name}
-      description={DESCRIPTION}
+      description={t("desc")}
       tabs={tabs}
       banner={banner}
     >
@@ -101,26 +113,29 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
 function OrgInvitations({ onJoined }: { onJoined: () => void }) {
   const { invitations, respond } = useMyInvitations("org_member");
   const { busy, run } = useAction();
+  const { lang } = useLang();
+  const t = useT(BIZ);
+  const f = useFmt();
   if (!invitations.length) return null;
   return (
     <div className="panel">
-      <h2>You’ve been invited</h2>
+      <h2>{t("invited")}</h2>
       <div className="pad">
         {invitations.map((i) => (
           <div key={i.id} className="banner info" role="status">
-            <b>{i.from ?? "A business account"}</b> invited you to join as {i.org_role ? ORG_ROLE_LABEL[i.org_role] : "a member"}. Expires {omanDate(i.expires_at)}.
+            <b>{i.from ?? t("aBusinessAccount")}</b> {t("invitedJoin", { role: i.org_role ? orgRoleLabel(i.org_role, lang) : t("aMember"), date: f.date(i.expires_at) })}
             <div className="btns" style={{ marginTop: 8 }}>
-              <button className="btn pri" disabled={busy !== null} onClick={() => run(i.id, () => respond(i.id, true).then((error) => ({ error })), "You joined the business account", onJoined)}>
-                Accept
+              <button className="btn pri" disabled={busy !== null} onClick={() => run(i.id, () => respond(i.id, true).then((error) => ({ error })), t("joined"), onJoined)}>
+                {t("accept")}
               </button>
-              <button className="btn" disabled={busy !== null} onClick={() => run(i.id, () => respond(i.id, false).then((error) => ({ error })), "Invitation declined")}>
-                Decline
+              <button className="btn" disabled={busy !== null} onClick={() => run(i.id, () => respond(i.id, false).then((error) => ({ error })), t("invDeclined"))}>
+                {t("decline")}
               </button>
             </div>
           </div>
         ))}
       </div>
-      <p className="note">Accepting joins that organisation instead of opening a new account.</p>
+      <p className="note">{t("acceptNote")}</p>
     </div>
   );
 }
@@ -130,54 +145,59 @@ function RegisterOrg({ onDone }: { onDone: () => void }) {
   const [cr, setCr] = useState("");
   const [segment, setSegment] = useState<OrgSummary["segment"]>("commercial");
   const { busy, run } = useAction();
+  const { lang } = useLang();
+  const t = useT(BIZ);
 
   return (
     <div className="reg">
       <div className="steps3">
         <div>
-          <b>1. Register</b>Your company name and Commercial Registration number.
+          <b>{t("reg1B")}</b>
+          {t("reg1")}
         </div>
         <div>
-          <b>2. NWS activation</b>NWS checks the CR and sets your credit limit and payment terms.
+          <b>{t("reg2B")}</b>
+          {t("reg2")}
         </div>
         <div>
-          <b>3. Order on account</b>Add your sites, invite your team and place bulk orders.
+          <b>{t("reg3B")}</b>
+          {t("reg3")}
         </div>
       </div>
       <div className="panel">
-        <h2>Business details</h2>
+        <h2>{t("bizDetails")}</h2>
         <form
           className="pad"
           onSubmit={(e) => {
             e.preventDefault();
-            run("reg", async () => supabase().rpc("org_register", { p_name: name.trim(), p_cr_no: cr.trim(), p_segment: segment }), "Account created — waiting for NWS approval", onDone);
+            run("reg", async () => supabase().rpc("org_register", { p_name: name.trim(), p_cr_no: cr.trim(), p_segment: segment }), t("regDone"), onDone);
           }}
         >
           <div className="form">
             <div className="fld full">
-              <label htmlFor="oName">Registered company name</label>
-              <input id="oName" className="in" required minLength={2} maxLength={120} value={name} onChange={(e) => setName(e.target.value)} placeholder="Al Noor Hotel LLC" />
+              <label htmlFor="oName">{t("regName")}</label>
+              <input id="oName" className="in" required minLength={2} maxLength={120} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("phOrgName")} />
             </div>
             <div className="fld">
-              <label htmlFor="oCr">Commercial Registration (CR) number</label>
-              <input id="oCr" className="in" required minLength={3} maxLength={30} value={cr} onChange={(e) => setCr(e.target.value)} placeholder="1234567" />
+              <label htmlFor="oCr">{t("regCr")}</label>
+              <input id="oCr" className="in" dir="ltr" required minLength={3} maxLength={30} value={cr} onChange={(e) => setCr(e.target.value)} placeholder="1234567" />
             </div>
             <div className="fld">
-              <label htmlFor="oSeg">Segment</label>
+              <label htmlFor="oSeg">{t("segment")}</label>
               <select id="oSeg" className="in" value={segment} onChange={(e) => setSegment(e.target.value as OrgSummary["segment"])}>
                 {(Object.keys(SEGMENT_LABEL) as OrgSummary["segment"][]).map((s) => (
                   <option key={s} value={s}>
-                    {SEGMENT_LABEL[s]}
+                    {segmentLabel(s, lang)}
                   </option>
                 ))}
               </select>
             </div>
           </div>
           <p className="mut" style={{ fontSize: 13, margin: "0 0 12px" }}>
-            You become the account admin. Credit limit, payment terms and the approval limit are set by NWS.
+            {t("adminNote")}
           </p>
           <button className="btn pri" disabled={busy === "reg"}>
-            {busy === "reg" ? "Submitting…" : "Open an account"}
+            {busy === "reg" ? t("submitting") : t("openAccount")}
           </button>
         </form>
       </div>

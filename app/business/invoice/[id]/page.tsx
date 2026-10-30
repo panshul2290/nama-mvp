@@ -2,21 +2,27 @@
 
 import { useParams } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
-import { ORDER_COLS, SEGMENT_LABEL, useBiz, type BizOrder } from "@/components/business/BizContext";
+import { ORDER_COLS, useBiz, type BizOrder } from "@/components/business/BizContext";
+import { BIZ } from "@/components/business/i18n";
 import { NamaLogo } from "@/components/icons";
-import { fmtDate, gal, n3 } from "@/components/portal/kit";
-import { SERVICE_LABEL } from "@/lib/pricing";
+import { useFmt } from "@/components/portal/i18n";
+import { useLang, useT } from "@/lib/i18n";
+import { segmentLabel, serviceLabel } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Invoice } from "@/lib/types";
 
 // Print-friendly invoice: opened in a new tab from Invoices → "Download PDF",
-// saved as PDF with the browser's print dialog.
+// saved as PDF with the browser's print dialog. It renders without PortalShell, so it sets
+// dir/lang itself; the invoice prints in the viewer's language.
 export default function InvoicePrint() {
   const { id } = useParams<{ id: string }>();
   const { org } = useBiz();
   const [inv, setInv] = useState<Invoice | null | undefined>(undefined);
   const [lines, setLines] = useState<BizOrder[]>([]);
   const [sites, setSites] = useState<Record<string, string>>({});
+  const { lang, dir } = useLang();
+  const t = useT(BIZ);
+  const f = useFmt();
 
   useEffect(() => {
     (async () => {
@@ -36,16 +42,27 @@ export default function InvoicePrint() {
     if (inv) document.title = `${ref.invoice(inv.invoice_no)} — ${org.name}`;
   }, [inv, org.name]);
 
-  if (inv === undefined) return <div className="inv-print-loading">Loading invoice…</div>;
-  if (!inv) return <div className="inv-print-loading">Invoice not found.</div>;
+  if (inv === undefined)
+    return (
+      <div className="inv-print-loading" dir={dir} lang={lang}>
+        {t("loadingInvoice")}
+      </div>
+    );
+  if (!inv)
+    return (
+      <div className="inv-print-loading" dir={dir} lang={lang}>
+        {t("invoiceNotFound")}
+      </div>
+    );
 
   const paid = inv.status === "paid";
+  const amt = (v: number | string) => f.omr(v);
   return (
-    <div className="inv-page">
+    <div className="inv-page" dir={dir} lang={lang}>
       <div className="inv-tools">
-        <button onClick={() => window.print()}>Print / Save as PDF</button>
+        <button onClick={() => window.print()}>{t("printSave")}</button>
         <button onClick={() => window.close()} className="sec">
-          Close
+          {t("close")}
         </button>
       </div>
       <article className="inv-doc">
@@ -53,58 +70,56 @@ export default function InvoicePrint() {
           <div>
             <NamaLogo className="inv-logo" />
             <p>
-              <b>Nama Water Services SAOC</b>
+              <b>{t("nwsName")}</b>
               <br />
-              Tanker Operations · Muscat, Sultanate of Oman
+              {t("nwsLine")}
               <br />
-              VATIN OM1100XXXXXX (simulated) · Call centre 1442
+              {t("vatin")}
             </p>
           </div>
           <div className="inv-title">
-            <h1>Tax invoice</h1>
+            <h1>{t("taxInvoice")}</h1>
             <dl>
-              <dt>Invoice</dt>
-              <dd>{ref.invoice(inv.invoice_no)}</dd>
-              <dt>Issued</dt>
-              <dd>{fmtDate(inv.issued_at)}</dd>
-              <dt>Due</dt>
-              <dd>{fmtDate(inv.due_at)}</dd>
-              <dt>Status</dt>
-              <dd>{paid ? `Paid ${fmtDate(inv.paid_at)}` : "Unpaid"}</dd>
+              <dt>{t("hInvoice")}</dt>
+              <dd dir="ltr">{ref.invoice(inv.invoice_no)}</dd>
+              <dt>{t("invIssued")}</dt>
+              <dd>{f.date(inv.issued_at)}</dd>
+              <dt>{t("hDue")}</dt>
+              <dd>{f.date(inv.due_at)}</dd>
+              <dt>{t("status")}</dt>
+              <dd>{paid ? t("paidOn", { date: f.date(inv.paid_at) }) : t("unpaid")}</dd>
             </dl>
           </div>
         </header>
 
         <section className="inv-parties">
           <div>
-            <small>Bill to</small>
+            <small>{t("billTo")}</small>
             <b>{org.name}</b>
-            <span>CR {org.cr_no}</span>
-            <span>{SEGMENT_LABEL[org.segment]} account · Net {org.terms_days}</span>
+            <span>{t("crN", { cr: org.cr_no })}</span>
+            <span>{t("segAccount", { seg: segmentLabel(org.segment, lang), n: f.n(org.terms_days) })}</span>
           </div>
           <div>
-            <small>Period</small>
+            <small>{t("hPeriod")}</small>
             <b>
-              {fmtDate(inv.period_start)} – {fmtDate(inv.period_end)}
+              {f.date(inv.period_start)} – {f.date(inv.period_end)}
             </b>
-            <span>
-              {inv.orders} deliver{inv.orders === 1 ? "y" : "ies"} on account
-            </span>
+            <span>{inv.orders === 1 ? t("delOnAccount1") : t("delOnAccountN", { n: f.n(inv.orders) })}</span>
           </div>
         </section>
 
         <table className="inv-lines">
           <thead>
             <tr>
-              <th>Order</th>
-              <th>Delivered</th>
-              <th>Site</th>
-              <th>Service</th>
-              <th className="r">Gallons</th>
-              <th>PO</th>
-              <th className="r">Amount ex VAT</th>
-              <th className="r">VAT 5%</th>
-              <th className="r">Total</th>
+              <th>{t("hOrder")}</th>
+              <th>{t("hDelivered")}</th>
+              <th>{t("hSite")}</th>
+              <th>{t("hService")}</th>
+              <th className="r">{t("hGallons")}</th>
+              <th>{t("hPo")}</th>
+              <th className="r">{t("hExVat")}</th>
+              <th className="r">{t("hVat5")}</th>
+              <th className="r">{t("total")}</th>
             </tr>
           </thead>
           <tbody>
@@ -113,23 +128,23 @@ export default function InvoicePrint() {
               return (
                 <Fragment key={o.id}>
                   <tr>
-                    <td>{ref.order(o.order_no)}</td>
-                    <td>{fmtDate(o.delivered_at)}</td>
+                    <td dir="ltr">{ref.order(o.order_no)}</td>
+                    <td>{f.date(o.delivered_at)}</td>
                     <td>{(o.property_id && sites[o.property_id]) || o.area}</td>
-                    <td>{SERVICE_LABEL[o.service_type]}</td>
-                    <td className="r">{gal(o.gallons)}</td>
-                    <td>{o.po_number ?? "—"}</td>
-                    <td className="r">{n3(Number(o.total) - Number(o.vat))}</td>
-                    <td className="r">{n3(o.vat)}</td>
-                    <td className="r">{n3(o.total)}</td>
+                    <td>{serviceLabel(o.service_type, lang)}</td>
+                    <td className="r">{f.n(o.gallons)}</td>
+                    <td dir="ltr">{o.po_number ?? "—"}</td>
+                    <td className="r">{f.n3(Number(o.total) - Number(o.vat))}</td>
+                    <td className="r">{f.n3(o.vat)}</td>
+                    <td className="r">{f.n3(o.total)}</td>
                   </tr>
                   {/* invoice_org bills total − short_credit, taking the credit off the amount before VAT. */}
                   {credit > 0 && (
                     <tr className="credit">
-                      <td colSpan={6}>Short-delivery credit on {ref.order(o.order_no)} (less than ordered was delivered)</td>
-                      <td className="r">−{n3(credit)}</td>
+                      <td colSpan={6}>{t("creditLine", { order: ref.order(o.order_no) })}</td>
+                      <td className="r">−{f.n3(credit)}</td>
                       <td className="r">—</td>
-                      <td className="r">−{n3(credit)}</td>
+                      <td className="r">−{f.n3(credit)}</td>
                     </tr>
                   )}
                 </Fragment>
@@ -140,25 +155,22 @@ export default function InvoicePrint() {
 
         <div className="inv-totals">
           <div>
-            <span>Subtotal (ex VAT)</span>
-            <b>OMR {n3(inv.subtotal)}</b>
+            <span>{t("subtotalEx")}</span>
+            <b>{amt(inv.subtotal)}</b>
           </div>
           <div>
-            <span>VAT 5%</span>
-            <b>OMR {n3(inv.vat)}</b>
+            <span>{t("hVat5")}</span>
+            <b>{amt(inv.vat)}</b>
           </div>
           <div className="grand">
-            <span>Total due</span>
-            <b>OMR {n3(inv.total)}</b>
+            <span>{t("totalDue")}</span>
+            <b>{amt(inv.total)}</b>
           </div>
         </div>
 
         <footer className="inv-foot">
-          <p>
-            Pay by bank transfer to Nama Water Services, quoting {ref.invoice(inv.invoice_no)}. Overdue amounts attract 2% a month. Every delivery on this invoice has a
-            proof of delivery (photo, flow-meter reading, signature and where it was recorded) on the order’s page in the Business portal (Orders → the order).
-          </p>
-          <p className="mut">Generated by the NWS Tanker Operations platform. All data shown is simulated for demonstration.</p>
+          <p>{t("payNote", { inv: ref.invoice(inv.invoice_no) })}</p>
+          <p className="mut">{t("generatedBy")}</p>
         </footer>
       </article>
     </div>

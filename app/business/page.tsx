@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { ORDER_COLS, useBiz, type BizOrder, type BizProperty } from "@/components/business/BizContext";
-import { OPEN } from "@/components/business/data";
+import { OPEN, slotText } from "@/components/business/data";
+import { BIZ } from "@/components/business/i18n";
 import { StatusPill, TypeTag } from "@/components/OrderBits";
-import { Bars, Kpis, fmtDateTime, gal, monthStart, omr, useLive } from "@/components/portal/kit";
+import { useFmt } from "@/components/portal/i18n";
+import { Bars, Kpis, monthStart, useLive } from "@/components/portal/kit";
+import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { ref } from "@/lib/types";
 
@@ -19,6 +22,8 @@ export default function BusinessDashboard() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cut, setCut] = useState<{ shown: number; total: number } | null>(null);
+  const t = useT(BIZ);
+  const f = useFmt();
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -66,24 +71,24 @@ export default function BusinessDashboard() {
     <>
       {error && (
         <div className="banner badb" role="alert">
-          Couldn’t load your dashboard: {error}. It will retry automatically.
+          {t("errDash", { error })}
         </div>
       )}
       {cut && (
         <div className="banner info" role="status">
-          Showing the latest {cut.shown.toLocaleString("en-GB")} of {cut.total.toLocaleString("en-GB")} orders this month — the totals below cover only those.
+          {t("cutNote", { n: f.n(cut.shown), total: f.n(cut.total) })}
         </div>
       )}
       <Kpis
         items={[
-          { label: "Sites", value: loaded ? sites.length : "…" },
-          { label: "Active contracts", value: loaded ? activeContracts : "…" },
-          { label: "Deliveries this month", value: loaded ? delivered.length : "…", sub: `${month.length - delivered.length} more booked or on the way` },
-          { label: "Spend this month", value: omr(spend), sub: "Delivered, incl. VAT, on account" },
+          { label: t("kSites"), value: loaded ? f.n(sites.length) : "…" },
+          { label: t("kActiveContracts"), value: loaded ? f.n(activeContracts) : "…" },
+          { label: t("kDeliveriesMonth"), value: loaded ? f.n(delivered.length) : "…", sub: t("kMoreBooked", { n: f.n(month.length - delivered.length) }) },
+          { label: t("kSpendMonth"), value: f.omr(spend), sub: t("kSpendSub") },
           {
-            label: limit > 0 ? `Credit used of ${omr(limit)}` : "Credit used",
-            value: limit > 0 ? `${pct}%` : "—",
-            sub: limit > 0 ? `${omr(used)} outstanding` : "Credit limit set by NWS on activation",
+            label: limit > 0 ? t("kCreditUsedOf", { limit: f.omr(limit) }) : t("kCreditUsed"),
+            value: limit > 0 ? f.ratio(pct, 100) : "—",
+            sub: limit > 0 ? t("kOutstanding", { amt: f.omr(used) }) : t("kCreditByNws"),
             tone: pct >= 90 ? "bad" : pct >= 70 ? "warn" : undefined,
           },
         ]}
@@ -91,15 +96,15 @@ export default function BusinessDashboard() {
       <div className="half">
         <div className="panel">
           <h2>
-            Water use by site <small>gallons delivered, this month</small>
+            {t("useBySite")} <small>{t("useBySiteSub")}</small>
           </h2>
-          <Bars rows={bySite} unit=" gal" empty={sites.length ? "No deliveries this month yet." : "Add your first site in Sites."} />
+          <Bars rows={bySite} unit={` ${t("galUnit")}`} empty={sites.length ? t("noDelMonth") : t("addFirstSite")} />
         </div>
         <div className="panel">
           <h2>
-            Upcoming deliveries
+            {t("upcoming")}
             <Link className="lk" href="/business/orders" style={{ fontSize: 13 }}>
-              All orders
+              {t("allOrders")}
             </Link>
           </h2>
           <div className="tblwrap">
@@ -107,12 +112,12 @@ export default function BusinessDashboard() {
               <tbody>
                 {upcoming.map((o) => (
                   <tr key={o.id}>
-                    <td>{o.slot_label ?? (o.slot_start ? fmtDateTime(o.slot_start) : "As soon as possible")}</td>
+                    <td>{f.ar && o.slot_start ? slotText(o.slot_start, o.slot_end, f.lang) : (o.slot_label ?? (o.slot_start ? f.dateTime(o.slot_start) : t("asap")))}</td>
                     <td>{siteName(o.property_id)}</td>
                     <td>
-                      {gal(o.gallons)} gal <TypeTag type={o.service_type} />
+                      {f.gal(o.gallons)} <TypeTag type={o.service_type} />
                     </td>
-                    <td className="mut">{o.contract_id ? "Contract" : ref.order(o.order_no)}</td>
+                    <td className="mut">{o.contract_id ? t("contractWord") : <bdi dir="ltr">{ref.order(o.order_no)}</bdi>}</td>
                     <td>
                       <StatusPill status={o.status} type={o.service_type} />
                     </td>
@@ -121,7 +126,7 @@ export default function BusinessDashboard() {
                 {loaded && !upcoming.length && (
                   <tr>
                     <td className="empty" colSpan={5}>
-                      Nothing booked. Place a bulk order or set up a contract.
+                      {t("nothingBooked")}
                     </td>
                   </tr>
                 )}

@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBiz, type BizProperty } from "@/components/business/BizContext";
+import { BIZ } from "@/components/business/i18n";
 import { Map as PinMap } from "@/components/Map";
 import { Sparkline } from "@/components/nws/admin/charts";
-import { Dialog, fmtShort, gal, useAction, useLive } from "@/components/portal/kit";
+import { useFmt } from "@/components/portal/i18n";
+import { Dialog, useAction, useLive } from "@/components/portal/kit";
 import { DEFAULT_CENTER } from "@/lib/geo";
+import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type LngLat } from "@/lib/types";
 
@@ -23,6 +26,8 @@ export default function BusinessSites() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [trends, setTrends] = useState<Map<string, Trend>>(new Map());
   const { busy, run } = useAction();
+  const t = useT(BIZ);
+  const f = useFmt();
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -56,17 +61,17 @@ export default function BusinessSites() {
     <>
       {loadError && (
         <div className="banner badb" role="alert">
-          Couldn’t load this page: {loadError}. It retries automatically.
+          {t("errPage", { error: loadError })}
         </div>
       )}
       <div className="panel">
         <div className="toolbar">
           <span className="mut" style={{ fontSize: 13 }}>
-            Delivery sites on this account. Each site has its own map pin and tank size.
+            {t("sitesIntro")}
           </span>
           {canOrder && (
             <button className="btn pri" onClick={() => setEdit("new")}>
-              Add site
+              {t("addSite")}
             </button>
           )}
         </div>
@@ -74,15 +79,15 @@ export default function BusinessSites() {
           <table>
             <thead>
               <tr>
-                <th>Site</th>
-                <th>Area</th>
-                <th className="num">Tank (gal)</th>
-                <th className="num">Deliveries</th>
-                <th>Last delivery</th>
-                <th>Last 12 weeks</th>
-                <th>Usual interval</th>
-                <th>Next refill (predicted)</th>
-                <th>Contract</th>
+                <th>{t("hSite")}</th>
+                <th>{t("hArea")}</th>
+                <th className="num">{t("hTank")}</th>
+                <th className="num">{t("hDeliveries")}</th>
+                <th>{t("hLastDel")}</th>
+                <th>{t("hLast12")}</th>
+                <th>{t("hInterval")}</th>
+                <th>{t("hNextRefill")}</th>
+                <th>{t("hContract")}</th>
                 <th />
               </tr>
             </thead>
@@ -94,14 +99,14 @@ export default function BusinessSites() {
                     {s.address && <small className="stack">{s.address}</small>}
                   </td>
                   <td>{s.area || "—"}</td>
-                  <td className="num">{gal(s.tank_gal)}</td>
-                  <td className="num">{stats[s.id]?.deliveries ?? 0}</td>
-                  <td>{fmtShort(stats[s.id]?.last)}</td>
+                  <td className="num">{f.n(s.tank_gal)}</td>
+                  <td className="num">{f.n(stats[s.id]?.deliveries ?? 0)}</td>
+                  <td>{f.day(stats[s.id]?.last)}</td>
                   <td>
                     {trends.get(s.id) ? (
-                      <span title={trends.get(s.id)!.weeks.map((g) => gal(Number(g))).join(" · ")}>
+                      <span title={trends.get(s.id)!.weeks.map((g) => f.n(Number(g))).join(" · ")}>
                         <Sparkline values={trends.get(s.id)!.weeks.map(Number)} width={90} />{" "}
-                        <small className="mut">{gal(Math.round(Number(trends.get(s.id)!.total_gal) / 12))} / wk</small>
+                        <small className="mut">{t("perWeek", { gal: f.n(Math.round(Number(trends.get(s.id)!.total_gal) / 12)) })}</small>
                       </span>
                     ) : <span className="mut">—</span>}
                   </td>
@@ -111,20 +116,20 @@ export default function BusinessSites() {
                     const days = st && st.deliveries > 1 && st.first && st.last ? (Date.parse(st.last) - Date.parse(st.first)) / 86_400_000 / (st.deliveries - 1) : null;
                     return (
                       <>
-                        <td>{days ? `Every ~${Math.max(1, Math.round(days))} days` : <span className="mut">—</span>}</td>
-                        <td>{days && st?.last ? fmtShort(new Date(Date.parse(st.last) + days * 86_400_000).toISOString()) : <span className="mut">—</span>}</td>
+                        <td>{days ? t("everyDays", { n: f.n(Math.max(1, Math.round(days))) }) : <span className="mut">—</span>}</td>
+                        <td>{days && st?.last ? f.day(new Date(Date.parse(st.last) + days * 86_400_000).toISOString()) : <span className="mut">—</span>}</td>
                       </>
                     );
                   })()}
-                  <td>{stats[s.id]?.contract ?? <span className="mut">—</span>}</td>
+                  <td>{stats[s.id]?.contract ? <bdi dir="ltr">{stats[s.id]?.contract}</bdi> : <span className="mut">—</span>}</td>
                   <td>
                     {canOrder && (
                       <div className="btns">
                         <button className="btn sm" onClick={() => setEdit(s)}>
-                          Edit
+                          {t("edit")}
                         </button>
                         <button className="btn sm" disabled={!!busy} onClick={() => setDel(s)}>
-                          Delete
+                          {t("delete")}
                         </button>
                       </div>
                     )}
@@ -134,33 +139,33 @@ export default function BusinessSites() {
               {loaded && !sites.length && (
                 <tr>
                   <td className="empty" colSpan={10}>
-                    No sites yet. Add your hotel, compound, farm or office to start ordering.
+                    {t("noSites")}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <p className="note">Site managers order and track for their sites. Sites with an active contract can&apos;t be deleted — end the contract first.</p>
+        <p className="note">{t("sitesNote")}</p>
       </div>
       {edit && <SiteDialog site={edit === "new" ? null : edit} onClose={() => setEdit(null)} onSaved={load} />}
       {del && (
-        <Dialog title={`Delete ${del.label}?`} body="Past orders keep their address, but the site’s ended or declined contracts are deleted with it. This can’t be undone." onClose={() => setDel(null)}>
+        <Dialog title={t("deleteQ", { name: del.label })} body={t("deleteBody")} onClose={() => setDel(null)}>
           <div className="btns" style={{ justifyContent: "flex-end" }}>
             <button className="btn" onClick={() => setDel(null)}>
-              Cancel
+              {t("cancel")}
             </button>
             <button
               className="btn bad"
               disabled={!!busy}
               onClick={() =>
-                run("del", async () => supabase().rpc("delete_property", { p_id: del.id }), `${del.label} deleted`, () => {
+                run("del", async () => supabase().rpc("delete_property", { p_id: del.id }), t("deletedT", { name: del.label }), () => {
                   setDel(null);
                   load();
                 })
               }
             >
-              Delete site
+              {t("deleteSite")}
             </button>
           </div>
         </Dialog>
@@ -178,6 +183,7 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
   const center = useMemo(() => (site ? { lat: site.lat, lng: site.lng } : DEFAULT_CENTER), [site]);
   const pick = useMemo(() => ({ value: point, onChange: setPoint }), [point]);
   const { busy, run } = useAction();
+  const t = useT(BIZ);
   // save_property accepts any pin, but orders to a pin outside every zone are refused: warn early.
   const [outside, setOutside] = useState(false);
   useEffect(() => {
@@ -189,7 +195,7 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
   }, [point]);
 
   return (
-    <Dialog title={site ? `Edit ${site.label}` : "Add site"} onClose={onClose} wide>
+    <Dialog title={site ? t("editQ", { name: site.label }) : t("addSite")} onClose={onClose} wide>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -205,7 +211,7 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
                 p_lng: point.lng,
                 p_tank_gal: tank,
               }),
-            site ? "Site updated" : "Site added",
+            site ? t("siteUpdated") : t("siteAdded"),
             () => {
               onSaved();
               onClose();
@@ -214,40 +220,43 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
         }}
       >
         <div className="mapbox">
-          <PinMap center={center} pick={pick} hint="Drag the pin or click the map to the delivery point" theme="dark" />
+          <PinMap center={center} pick={pick} hint={t("pinHint")} theme="dark" />
         </div>
         <p className="mut" style={{ fontSize: 12.5, margin: "-4px 0 12px" }}>
-          Pin: {point.lat.toFixed(5)}, {point.lng.toFixed(5)}
+          {t("pinLabel")}{" "}
+          <bdi dir="ltr">
+            {point.lat.toFixed(5)}, {point.lng.toFixed(5)}
+          </bdi>
         </p>
         {outside && (
           <div className="banner" role="status">
-            This pin is outside the NWS service area — orders to it will be refused. Move the pin to the delivery point.
+            {t("outsideArea")}
           </div>
         )}
         <div className="form">
           <div className="fld">
-            <label htmlFor="sLabel">Site name</label>
-            <input id="sLabel" className="in" required maxLength={80} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Al Noor Hotel, Ruwi" />
+            <label htmlFor="sLabel">{t("lSiteName")}</label>
+            <input id="sLabel" className="in" required maxLength={80} value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t("phSiteName")} />
           </div>
           <div className="fld">
-            <label htmlFor="sArea">Area</label>
-            <input id="sArea" className="in" maxLength={120} value={area} onChange={(e) => setArea(e.target.value)} placeholder="Ruwi" />
+            <label htmlFor="sArea">{t("hArea")}</label>
+            <input id="sArea" className="in" maxLength={120} value={area} onChange={(e) => setArea(e.target.value)} placeholder={t("phArea")} />
           </div>
           <div className="fld full">
-            <label htmlFor="sAddr">Address and access notes</label>
-            <input id="sAddr" className="in" maxLength={300} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Way 3109, service gate at the back" />
+            <label htmlFor="sAddr">{t("lAddr")}</label>
+            <input id="sAddr" className="in" maxLength={300} value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t("phAddr")} />
           </div>
           <div className="fld">
-            <label htmlFor="sTank">Tank size (gallons)</label>
+            <label htmlFor="sTank">{t("lTankSize")}</label>
             <input id="sTank" className="in" type="number" min={100} max={100000} step={100} required value={tank} onChange={(e) => setTank(Number(e.target.value))} />
           </div>
         </div>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </button>
           <button className="btn pri" disabled={busy === "save"}>
-            {busy === "save" ? "Saving…" : "Save site"}
+            {busy === "save" ? t("saving") : t("saveSite")}
           </button>
         </div>
       </form>

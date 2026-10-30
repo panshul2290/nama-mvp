@@ -3,10 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ORDER_COLS, useBiz, type BizOrder, type BizProperty } from "@/components/business/BizContext";
-import { OPEN, TRACKABLE, WINDOWS, etaText, muscatToday, slotFor, type WindowKey } from "@/components/business/data";
+import { OPEN, TRACKABLE, WINDOWS, etaText, muscatToday, slotFor, slotText, type WindowKey } from "@/components/business/data";
+import { BIZ } from "@/components/business/i18n";
 import { StatusPill, TypeTag } from "@/components/OrderBits";
-import { Dialog, fmtDateTime, gal, n3, omr, useAction, useLive } from "@/components/portal/kit";
-import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
+import { useFmt } from "@/components/portal/i18n";
+import { Dialog, useAction, useLive } from "@/components/portal/kit";
+import { useT } from "@/lib/i18n";
+import { serviceLabel } from "@/lib/labels";
+import { type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
 import { addDaysKey } from "@/lib/time";
 import { ref } from "@/lib/types";
@@ -14,13 +18,15 @@ import { ref } from "@/lib/types";
 type Loc = { order_id: string; lat: number; lng: number };
 type LiveTanker = { id: string; plate: string; last_lat: number | null; last_lng: number | null; last_seen_at: string | null };
 type Filter = "all" | "approval" | "open" | "delivered" | "cancelled";
+// [filter, dictionary key]
 const FILTERS: [Filter, string][] = [
-  ["all", "All"],
-  ["approval", "Needs approval"],
-  ["open", "Open"],
-  ["delivered", "Delivered"],
-  ["cancelled", "Cancelled"],
+  ["all", "all"],
+  ["approval", "fApproval"],
+  ["open", "fOpen"],
+  ["delivered", "fDelivered"],
+  ["cancelled", "fCancelled"],
 ];
+const WIN_KEY: Record<WindowKey, string> = { morning: "wMorning", afternoon: "wAfternoon", evening: "wEvening" };
 const GALLONS: Record<ServiceType, number[]> = { DW: [3000, 5000, 10000], WW: [3000, 5000, 10000], TE: [5000, 10000, 20000] };
 
 export default function BusinessOrders() {
@@ -34,6 +40,8 @@ export default function BusinessOrders() {
   const [decline, setDecline] = useState<BizOrder | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { busy, run } = useAction();
+  const t = useT(BIZ);
+  const f = useFmt();
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -72,17 +80,17 @@ export default function BusinessOrders() {
   const approvals = orders.filter((o) => o.status === "pending_approval");
 
   const decide = (o: BizOrder, approve: boolean, reason?: string) =>
-    run(`d${o.id}`, async () => supabase().rpc("org_decide_order", { p_order_id: o.id, p_approve: approve, p_reason: reason ?? null }), approve ? `${ref.order(o.order_no)} approved` : `${ref.order(o.order_no)} declined`, load);
+    run(`d${o.id}`, async () => supabase().rpc("org_decide_order", { p_order_id: o.id, p_approve: approve, p_reason: reason ?? null }), t(approve ? "approvedT" : "declinedT", { order: ref.order(o.order_no) }), load);
 
   return (
     <>
       {loadError && (
         <div className="banner badb" role="alert">
-          Couldn’t load this page: {loadError}. It retries automatically.
+          {t("errPage", { error: loadError })}
         </div>
       )}
       {role === "finance" ? (
-        <div className="banner info">Finance users see orders (with proof of delivery) and invoices. Ask an account admin or site manager to place orders.</div>
+        <div className="banner info">{t("financeNote")}</div>
       ) : canOrder ? (
         <BulkOrder sites={sites} onPlaced={load} />
       ) : null}
@@ -90,18 +98,18 @@ export default function BusinessOrders() {
       {isAdmin && approvals.length > 0 && (
         <div className="panel">
           <h2>
-            Waiting for your approval <small>above the approval limit of {omr(org.approval_limit)}</small>
+            {t("waitApproval")} <small>{t("aboveLimit", { amt: f.omr(org.approval_limit) })}</small>
           </h2>
           <div className="tblwrap">
             <table>
               <thead>
                 <tr>
-                  <th>Order</th>
-                  <th>Site</th>
-                  <th>Service</th>
-                  <th className="num">Gallons</th>
-                  <th>Window</th>
-                  <th className="num">Amount</th>
+                  <th>{t("hOrder")}</th>
+                  <th>{t("hSite")}</th>
+                  <th>{t("hService")}</th>
+                  <th className="num">{t("hGallons")}</th>
+                  <th>{t("hWindow")}</th>
+                  <th className="num">{t("hAmount")}</th>
                   <th />
                 </tr>
               </thead>
@@ -109,23 +117,27 @@ export default function BusinessOrders() {
                 {approvals.map((o) => (
                   <tr key={o.id}>
                     <td>
-                      {ref.order(o.order_no)}
-                      {o.po_number && <small className="stack">{o.po_number}</small>}
+                      <bdi dir="ltr">{ref.order(o.order_no)}</bdi>
+                      {o.po_number && (
+                        <small className="stack" dir="ltr">
+                          {o.po_number}
+                        </small>
+                      )}
                     </td>
                     <td>{siteName(o.property_id)}</td>
                     <td>
                       <TypeTag type={o.service_type} />
                     </td>
-                    <td className="num">{gal(o.gallons)}</td>
-                    <td>{o.slot_label ?? "As soon as possible"}</td>
-                    <td className="num">{n3(o.total)}</td>
+                    <td className="num">{f.n(o.gallons)}</td>
+                    <td>{f.ar && o.slot_start ? slotText(o.slot_start, o.slot_end, f.lang) : (o.slot_label ?? (o.slot_start ? f.dateTime(o.slot_start) : t("asap")))}</td>
+                    <td className="num">{f.n3(o.total)}</td>
                     <td>
                       <div className="btns">
                         <button className="btn sm pri" disabled={!!busy} onClick={() => decide(o, true)}>
-                          Approve
+                          {t("approve")}
                         </button>
                         <button className="btn sm" disabled={!!busy} onClick={() => setDecline(o)}>
-                          Decline
+                          {t("decline")}
                         </button>
                       </div>
                     </td>
@@ -140,40 +152,40 @@ export default function BusinessOrders() {
       {tracking.length > 0 && (
         <div className="panel">
           <h2>
-            Tracking <small>live — tankers on the way to your sites</small>
+            {t("tracking")} <small>{t("trackingSub")}</small>
           </h2>
           <div className="tblwrap">
             <table>
               <thead>
                 <tr>
-                  <th>Order</th>
-                  <th>Site</th>
-                  <th>Tanker</th>
-                  <th>Driver</th>
-                  <th>Status</th>
-                  <th>ETA</th>
+                  <th>{t("hOrder")}</th>
+                  <th>{t("hSite")}</th>
+                  <th>{t("hTanker")}</th>
+                  <th>{t("hDriver")}</th>
+                  <th>{t("hStatus")}</th>
+                  <th>{t("hEta")}</th>
                 </tr>
               </thead>
               <tbody>
                 {tracking.map((o) => {
-                  const t = tankers.find((x) => x.id === o.tanker_id) ?? null;
+                  const tk = tankers.find((x) => x.id === o.tanker_id) ?? null;
                   const l = locs.find((x) => x.order_id === o.id) ?? null;
                   return (
                     <tr key={o.id}>
                       <td>
-                        <Link className="lk" href={`/business/orders/${o.id}`}>
+                        <Link className="lk" href={`/business/orders/${o.id}`} dir="ltr">
                           {ref.order(o.order_no)}
                         </Link>
                       </td>
                       <td>{siteName(o.property_id)}</td>
                       <td>
-                        <b>{o.tanker_plate ?? t?.plate ?? "—"}</b>
+                        <b dir="ltr">{o.tanker_plate ?? tk?.plate ?? "—"}</b>
                       </td>
                       <td>{o.driver_name ?? "—"}</td>
                       <td>
                         <StatusPill status={o.status} type={o.service_type} />
                       </td>
-                      <td>{etaText(t ? { lat: t.last_lat, lng: t.last_lng } : null, l, o.status)}</td>
+                      <td>{etaText(tk ? { lat: tk.last_lat, lng: tk.last_lng } : null, l, o.status, f.lang)}</td>
                     </tr>
                   );
                 })}
@@ -188,56 +200,56 @@ export default function BusinessOrders() {
           <div className="chips">
             {FILTERS.map(([k, label]) => (
               <button key={k} className={`chip ${filter === k ? "on" : ""}`} onClick={() => setFilter(k)}>
-                {label}
-                {k === "approval" && approvals.length > 0 && <span className="tc">{approvals.length}</span>}
+                {t(label)}
+                {k === "approval" && approvals.length > 0 && <span className="tc">{f.n(approvals.length)}</span>}
               </button>
             ))}
           </div>
           <span className="mut" style={{ fontSize: 13 }}>
-            Billed to your account · Net {org.terms_days}
+            {t("billedNet", { n: f.n(org.terms_days) })}
           </span>
         </div>
         <div className="tblwrap">
           <table>
             <thead>
               <tr>
-                <th>Order</th>
-                <th>Site</th>
-                <th>Service</th>
-                <th className="num">Gallons</th>
-                <th>Window</th>
-                <th>Tanker</th>
-                <th>Status</th>
-                <th className="num">Amount</th>
+                <th>{t("hOrder")}</th>
+                <th>{t("hSite")}</th>
+                <th>{t("hService")}</th>
+                <th className="num">{t("hGallons")}</th>
+                <th>{t("hWindow")}</th>
+                <th>{t("hTanker")}</th>
+                <th>{t("hStatus")}</th>
+                <th className="num">{t("hAmount")}</th>
               </tr>
             </thead>
             <tbody>
               {shown.map((o) => (
                 <tr key={o.id}>
                   <td>
-                    <Link className="lk" href={`/business/orders/${o.id}`}>
+                    <Link className="lk" href={`/business/orders/${o.id}`} dir="ltr">
                       {ref.order(o.order_no)}
                     </Link>
-                    <small className="stack">{o.po_number ?? (o.contract_id ? "Contract delivery" : fmtDateTime(o.created_at))}</small>
+                    <small className="stack">{o.po_number ? <bdi dir="ltr">{o.po_number}</bdi> : o.contract_id ? t("contractDelivery") : f.dateTime(o.created_at)}</small>
                   </td>
                   <td>{siteName(o.property_id)}</td>
                   <td>
                     <TypeTag type={o.service_type} />
                   </td>
-                  <td className="num">{gal(o.gallons)}</td>
-                  <td>{o.slot_label ?? (o.slot_start ? fmtDateTime(o.slot_start) : "As soon as possible")}</td>
-                  <td>{o.tanker_plate ?? <span className="mut">—</span>}</td>
+                  <td className="num">{f.n(o.gallons)}</td>
+                  <td>{f.ar && o.slot_start ? slotText(o.slot_start, o.slot_end, f.lang) : (o.slot_label ?? (o.slot_start ? f.dateTime(o.slot_start) : t("asap")))}</td>
+                  <td>{o.tanker_plate ? <bdi dir="ltr">{o.tanker_plate}</bdi> : <span className="mut">—</span>}</td>
                   <td>
                     <StatusPill status={o.status} type={o.service_type} />
                     {o.status === "cancelled" && o.cancel_reason && <small className="stack">{o.cancel_reason}</small>}
                   </td>
-                  <td className="num">{n3(o.total)}</td>
+                  <td className="num">{f.n3(o.total)}</td>
                 </tr>
               ))}
               {loaded && !shown.length && (
                 <tr>
                   <td className="empty" colSpan={8}>
-                    {filter === "all" ? "No orders yet — deliveries on contract appear here too." : "No orders in this view."}
+                    {filter === "all" ? t("noOrders") : t("noOrdersView")}
                   </td>
                 </tr>
               )}
@@ -254,15 +266,16 @@ export default function BusinessOrders() {
 function DeclineDialog({ order, onClose, onConfirm }: { order: BizOrder; onClose: () => void; onConfirm: (reason: string) => Promise<unknown> }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const t = useT(BIZ);
   return (
-    <Dialog title={`Decline ${ref.order(order.order_no)}?`} body="The order is cancelled and the person who placed it is told why." onClose={onClose}>
+    <Dialog title={t("declineQ", { order: ref.order(order.order_no) })} body={t("declineBody")} onClose={onClose}>
       <div className="fld">
-        <label htmlFor="dr">Reason</label>
-        <textarea id="dr" className="in" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Not approved" autoFocus />
+        <label htmlFor="dr">{t("reason")}</label>
+        <textarea id="dr" className="in" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("phNotApproved")} autoFocus />
       </div>
       <div className="btns" style={{ justifyContent: "flex-end" }}>
         <button className="btn" onClick={onClose}>
-          Cancel
+          {t("cancel")}
         </button>
         <button
           className="btn bad"
@@ -273,7 +286,7 @@ function DeclineDialog({ order, onClose, onConfirm }: { order: BizOrder; onClose
             setBusy(false);
           }}
         >
-          Decline order
+          {t("declineOrder")}
         </button>
       </div>
     </Dialog>
@@ -293,6 +306,8 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
   const [unit, setUnit] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const { busy, run } = useAction();
+  const t = useT(BIZ);
+  const f = useFmt();
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(t);
@@ -317,7 +332,9 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
   // The database refuses orders on an inactive account or past the credit limit; say so before submitting.
   const left = Number(org.credit_limit) - Number(org.credit_used);
   const blocked =
-    org.status !== "active" ? "The account isn’t active yet — NWS sets the credit limit when it approves it." : org.paused ? "Ordering is paused on this account." : Number(org.credit_limit) <= 0 ? "No credit limit is set yet — contact NWS finance." : null;
+    org.status !== "active" ? t("blockedInactive") : org.paused ? t("blockedPaused") : Number(org.credit_limit) <= 0 ? t("blockedNoLimit") : null;
+  // The window as the viewer reads it (slot.label stays English: it is stored on the order).
+  const slotShown = f.ar ? slotText(slot.start, slot.end, f.lang) : slot.label;
   const overLimit = !blocked && total != null && total > left;
   // A window that has already ended today can't be booked.
   const passed = (w: WindowKey) => Date.parse(slotFor(date, w).end) <= now;
@@ -325,9 +342,9 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
   if (!sites.length) {
     return (
       <div className="panel">
-        <h2>Place a bulk order</h2>
+        <h2>{t("placeBulk")}</h2>
         <p className="note">
-          Add a site first — orders are delivered to your registered sites. <Link className="lk" href="/business/sites">Add a site</Link>
+          {t("addSiteFirst")} <Link className="lk" href="/business/sites">{t("addASite")}</Link>
         </p>
       </div>
     );
@@ -336,7 +353,7 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
   return (
     <div className="panel">
       <h2>
-        Place a bulk order <small>one tanker per load · billed on account</small>
+        {t("placeBulk")} <small>{t("placeBulkSub")}</small>
       </h2>
       <form
         className="pad"
@@ -356,7 +373,9 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
                 p_po_number: po.trim() || null,
                 p_note: note.trim() || null,
               }),
-            needsApproval ? `${count} order${count > 1 ? "s" : ""} sent to your account admin for approval` : `${count} tanker${count > 1 ? "s" : ""} booked for ${slot.label}`,
+            needsApproval
+              ? t(count > 1 ? "sentForApprovalN" : "sentForApproval1", { n: f.n(count) })
+              : t(count > 1 ? "bookedN" : "booked1", { n: f.n(count), slot: slotShown }),
             () => {
               setPo("");
               setNote("");
@@ -367,7 +386,7 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
       >
         <div className="form">
           <div className="fld">
-            <label htmlFor="bSite">Site</label>
+            <label htmlFor="bSite">{t("hSite")}</label>
             <select id="bSite" className="in" value={siteId} onChange={(e) => setSite(e.target.value)}>
               {sites.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -377,17 +396,17 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
             </select>
           </div>
           <div className="fld">
-            <label htmlFor="bType">Service</label>
+            <label htmlFor="bType">{t("hService")}</label>
             <select id="bType" className="in" value={type} onChange={(e) => setType(e.target.value as ServiceType)}>
-              {(["DW", "WW", "TE"] as ServiceType[]).map((t) => (
-                <option key={t} value={t}>
-                  {t === "WW" ? "Wastewater pickup" : SERVICE_LABEL[t]}
+              {(["DW", "WW", "TE"] as ServiceType[]).map((s) => (
+                <option key={s} value={s}>
+                  {s === "WW" ? t("wwPickup") : serviceLabel(s, f.lang)}
                 </option>
               ))}
             </select>
           </div>
           <div className="fld">
-            <label htmlFor="bGal">Gallons per tanker</label>
+            <label htmlFor="bGal">{t("lGalPer")}</label>
             <input id="bGal" className="in" type="number" min={100} max={20000} step={100} list="bGalList" required value={gallons} onChange={(e) => setGallons(Number(e.target.value))} />
             <datalist id="bGalList">
               {GALLONS[type].map((g) => (
@@ -396,53 +415,55 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
             </datalist>
           </div>
           <div className="fld">
-            <label htmlFor="bQty">Number of tankers</label>
+            <label htmlFor="bQty">{t("lNum")}</label>
             <select id="bQty" className="in" value={count} onChange={(e) => setCount(Number(e.target.value))}>
               {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
-                <option key={n}>{n}</option>
-              ))}
-            </select>
-          </div>
-          <div className="fld">
-            <label htmlFor="bDate">Delivery date</label>
-            <input id="bDate" className="in" type="date" min={muscatToday()} required value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-          <div className="fld">
-            <label htmlFor="bWin">Window</label>
-            <select id="bWin" className="in" value={win} onChange={(e) => setWin(e.target.value as WindowKey)}>
-              {(Object.keys(WINDOWS) as WindowKey[]).map((w) => (
-                <option key={w} value={w} disabled={passed(w)}>
-                  {WINDOWS[w].label}
-                  {passed(w) ? " (passed)" : ""}
+                <option key={n} value={n}>
+                  {f.n(n)}
                 </option>
               ))}
             </select>
           </div>
           <div className="fld">
-            <label htmlFor="bPO">Purchase order (optional)</label>
-            <input id="bPO" className="in" maxLength={40} value={po} onChange={(e) => setPo(e.target.value)} placeholder="PO-2231" />
+            <label htmlFor="bDate">{t("lDate")}</label>
+            <input id="bDate" className="in" type="date" min={muscatToday()} required value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className="fld">
-            <label htmlFor="bNote">Note for the driver (optional)</label>
-            <input id="bNote" className="in" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Gate 3, ask for maintenance" />
+            <label htmlFor="bWin">{t("hWindow")}</label>
+            <select id="bWin" className="in" value={win} onChange={(e) => setWin(e.target.value as WindowKey)}>
+              {(Object.keys(WINDOWS) as WindowKey[]).map((w) => (
+                <option key={w} value={w} disabled={passed(w)}>
+                  {t(WIN_KEY[w])}
+                  {passed(w) ? t("passed") : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="fld">
+            <label htmlFor="bPO">{t("lPo")}</label>
+            <input id="bPO" className="in" dir="ltr" maxLength={40} value={po} onChange={(e) => setPo(e.target.value)} placeholder="PO-2231" />
+          </div>
+          <div className="fld">
+            <label htmlFor="bNote">{t("lNote")}</label>
+            <input id="bNote" className="in" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("phNote")} />
           </div>
         </div>
         <div className="orderfoot">
           <div className="mut">
-            {slot.label} · {count} × {gal(gallons)} gal
+            {slotShown} · {f.n(count)} × {f.gal(gallons)}
             {total != null && (
               <>
                 {" "}
-                · estimated <b className="ink">{omr(total)}</b> incl. VAT
+                · {t("estimated")} <b className="ink">{f.omr(total)}</b> {t("inclVat")}
               </>
             )}
-            {needsApproval && <span className="st warn" style={{ marginLeft: 8 }}>Needs admin approval</span>}
-            {!blocked && <small className="stack">Credit left on the account: {omr(Math.max(0, left))}</small>}
+            {needsApproval && <span className="st warn" style={{ marginInlineStart: 8 }}>{t("needsAdmin")}</span>}
+            {!blocked && <small className="stack">{t("creditLeft", { amt: f.omr(Math.max(0, left)) })}</small>}
             {blocked && <small className="stack" style={{ color: "var(--bad)" }}>{blocked}</small>}
-            {overLimit && <small className="stack" style={{ color: "var(--bad)" }}>This is more than the credit left. Pay an invoice or ask NWS to raise the limit.</small>}
+            {overLimit && <small className="stack" style={{ color: "var(--bad)" }}>{t("overLimit")}</small>}
           </div>
           <button className="btn pri" disabled={busy === "order" || !siteId || !!blocked || overLimit || passed(win)}>
-            {busy === "order" ? "Placing…" : `Place order on account (Net ${org.terms_days})`}
+            {busy === "order" ? t("placing") : t("placeOnAccount", { n: f.n(org.terms_days) })}
           </button>
         </div>
       </form>

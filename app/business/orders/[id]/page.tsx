@@ -4,10 +4,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ORDER_COLS, useBiz, type BizOrder } from "@/components/business/BizContext";
+import { slotText } from "@/components/business/data";
+import { BIZ } from "@/components/business/i18n";
 import { StatusPill, TypeTag } from "@/components/OrderBits";
 import { PodLocation } from "@/components/PodLocation";
-import { Dialog, St, fmtDateTime, gal, n3, useAction, useLive } from "@/components/portal/kit";
+import { useFmt } from "@/components/portal/i18n";
+import { Dialog, St, useAction, useLive } from "@/components/portal/kit";
 import { SignatureSvg } from "@/components/SignatureSvg";
+import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Complaint, type OrderStatus, type Pod } from "@/lib/types";
 
@@ -26,6 +30,8 @@ export default function BusinessOrderDetail() {
   const [site, setSite] = useState<Site | null>(null);
   const [cases, setCases] = useState<Complaint[]>([]);
   const [dlg, setDlg] = useState<"cancel" | "report" | null>(null);
+  const t = useT(BIZ);
+  const f = useFmt();
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -49,15 +55,15 @@ export default function BusinessOrderDetail() {
   useLive(`biz-order-${id}`, ["orders", "complaints"], load, 30_000);
 
   useEffect(() => {
-    if (o) document.title = `${ref.order(o.order_no)} — Business portal`;
-  }, [o]);
+    if (o) document.title = t("docTitle", { order: ref.order(o.order_no) });
+  }, [o, t]);
 
-  if (o === undefined) return <div className="panel"><div className="empty">Loading…</div></div>;
+  if (o === undefined) return <div className="panel"><div className="empty">{t("loading")}</div></div>;
   if (!o)
     return (
       <div className="panel">
         <div className="empty">
-          Order not found. <Link className="lk" href="/business/orders">Back to orders</Link>
+          {t("orderNotFound")} <Link className="lk" href="/business/orders">{t("backToOrders")}</Link>
         </div>
       </div>
     );
@@ -68,58 +74,67 @@ export default function BusinessOrderDetail() {
   const canCancel = CANCELLABLE.includes(o.status) && role !== "finance" && (isAdmin || own);
   const credit = Number(o.short_credit ?? 0);
   const steps: [string, string | null, boolean][] = [
-    ["Order placed", o.created_at, true],
-    ["Tanker assigned", o.accepted_at, !!o.accepted_at],
-    ["Tanker at the site", o.arrived_at, !!o.arrived_at],
-    [ww ? "Collected" : "Delivered", o.delivered_at, !!o.delivered_at],
+    [t("stPlaced"), o.created_at, true],
+    [t("stAssigned"), o.accepted_at, !!o.accepted_at],
+    [t("stAtSite"), o.arrived_at, !!o.arrived_at],
+    [ww ? t("stCollected") : t("stDelivered"), o.delivered_at, !!o.delivered_at],
   ];
 
   return (
     <>
       <div className="toolbar" style={{ marginBottom: 12 }}>
         <Link className="lk" href="/business/orders">
-          ← All orders
+          {t("backAll")}
         </Link>
       </div>
       <div className="half">
         <div className="panel">
           <h2>
             <span>
-              {ref.order(o.order_no)} <StatusPill status={o.status} type={o.service_type} />
+              <bdi dir="ltr">{ref.order(o.order_no)}</bdi> <StatusPill status={o.status} type={o.service_type} />
             </span>
-            <small>{o.contract_id ? "Contract delivery" : o.po_number ? ref.po(o.po_number) : "Bulk order"}</small>
+            <small>{o.contract_id ? t("contractDelivery") : o.po_number ? <bdi dir="ltr">{ref.po(o.po_number)}</bdi> : t("bulkOrder")}</small>
           </h2>
           <dl className="kv" style={{ paddingTop: 8 }}>
-            <dt>Site</dt>
+            <dt>{t("hSite")}</dt>
             <dd>
               {site?.label ?? o.area}
               {site && <small className="stack mut">{[site.address, site.area].filter(Boolean).join(" · ")}</small>}
             </dd>
-            <dt>Service</dt>
+            <dt>{t("hService")}</dt>
             <dd>
-              <TypeTag type={o.service_type} /> {gal(o.gallons)} gal
+              <TypeTag type={o.service_type} /> {f.gal(o.gallons)}
             </dd>
-            <dt>Window</dt>
-            <dd>{o.slot_label ?? (o.slot_start ? fmtDateTime(o.slot_start) : "As soon as possible")}</dd>
-            <dt>Tanker</dt>
-            <dd>{o.tanker_plate ? `${o.tanker_plate}${o.driver_name ? ` · ${o.driver_name}` : ""}` : <span className="mut">Not assigned yet</span>}</dd>
+            <dt>{t("hWindow")}</dt>
+            <dd>{f.ar && o.slot_start ? slotText(o.slot_start, o.slot_end, f.lang) : (o.slot_label ?? (o.slot_start ? f.dateTime(o.slot_start) : t("asap")))}</dd>
+            <dt>{t("hTanker")}</dt>
+            <dd>
+              {o.tanker_plate ? (
+                <>
+                  <bdi dir="ltr">{o.tanker_plate}</bdi>
+                  {o.driver_name ? ` · ${o.driver_name}` : ""}
+                </>
+              ) : (
+                <span className="mut">{t("notAssigned")}</span>
+              )}
+            </dd>
             {o.driver_note && (
               <>
-                <dt>Note for the driver</dt>
+                <dt>{t("noteDriver")}</dt>
                 <dd style={{ fontWeight: 400 }}>{o.driver_note}</dd>
               </>
             )}
-            <dt>Amount</dt>
+            <dt>{t("hAmount")}</dt>
             <dd>
-              OMR {n3(o.total)} <small className="mut">incl. VAT {n3(o.vat)}</small>
-              {credit > 0 && <small className="stack" style={{ color: "var(--warn)" }}>Short-delivery credit − OMR {n3(credit)} on the invoice</small>}
+              {f.omr(o.total)} <small className="mut">{t("inclVatAmt", { amt: f.n3(o.vat) })}</small>
+              {credit > 0 && <small className="stack" style={{ color: "var(--warn)" }}>{t("shortCredit", { amt: f.omr(credit) })}</small>}
             </dd>
-            <dt>Billing</dt>
-            <dd>{o.invoice_id ? <Link className="lk" href={`/business/invoice/${o.invoice_id}`} target="_blank">On the invoice</Link> : o.status === "cancelled" ? "Not billed" : "On account — next invoice"}</dd>
+            <dt>{t("billing")}</dt>
+            <dd>{o.invoice_id ? <Link className="lk" href={`/business/invoice/${o.invoice_id}`} target="_blank">{t("onInvoice")}</Link> : o.status === "cancelled" ? t("notBilled") : t("onAccountNext")}</dd>
           </dl>
           {o.status === "cancelled" ? (
             <div className="banner badb" style={{ margin: "0 16px 16px" }}>
-              Cancelled {fmtDateTime(o.cancelled_at)}
+              {t("cancelledAt", { date: f.dateTime(o.cancelled_at) })}
               {o.cancel_reason ? ` — ${o.cancel_reason}` : ""}
             </div>
           ) : (
@@ -127,53 +142,53 @@ export default function BusinessOrderDetail() {
               {steps.map(([label, at, done]) => (
                 <li key={label} className={done ? "done" : ""}>
                   {label}
-                  {at && <small style={{ display: "block" }}>{fmtDateTime(at)}</small>}
+                  {at && <small style={{ display: "block" }}>{f.dateTime(at)}</small>}
                 </li>
               ))}
             </ul>
           )}
           <div className="pad btns">
             {CANCELLABLE.includes(o.status) && (
-              <button className="btn bad" disabled={!canCancel} title={canCancel ? undefined : role === "finance" ? "Finance users can’t cancel orders" : "Only the person who placed it or an account admin"} onClick={() => setDlg("cancel")}>
-                Cancel order
+              <button className="btn bad" disabled={!canCancel} title={canCancel ? undefined : role === "finance" ? t("cantCancelFinance") : t("cantCancelOwner")} onClick={() => setDlg("cancel")}>
+                {t("cancelOrder")}
               </button>
             )}
             <button className="btn" onClick={() => setDlg("report")}>
-              Report a problem
+              {t("reportProblem")}
             </button>
           </div>
         </div>
 
         <div className="panel">
           <h2>
-            Proof of {ww ? "collection" : "delivery"} {pod && pod.status === "rejected" && <St tone="bad">Rejected by NWS</St>}
+            {ww ? t("proofCollection") : t("proofDelivery")} {pod && pod.status === "rejected" && <St tone="bad">{t("rejectedNws")}</St>}
           </h2>
           {!pod ? (
-            <div className="empty">{o.status === "delivered" || o.status === "collected" ? "No proof recorded." : `Recorded by the driver at the ${ww ? "collection" : "delivery"}.`}</div>
+            <div className="empty">{o.status === "delivered" || o.status === "collected" ? t("noProof") : ww ? t("recordedCollection") : t("recordedDelivery")}</div>
           ) : (
             <>
               <dl className="kv" style={{ paddingTop: 8 }}>
-                <dt>Flow meter</dt>
+                <dt>{t("flowMeter")}</dt>
                 <dd>
-                  {gal(pod.meter_gal)} gal
-                  {!ww && pod.meter_gal < o.gallons * 0.95 && <small className="stack" style={{ color: "var(--warn)" }}>Short of the {gal(o.gallons)} gal ordered</small>}
+                  {f.gal(pod.meter_gal)}
+                  {!ww && pod.meter_gal < o.gallons * 0.95 && <small className="stack" style={{ color: "var(--warn)" }}>{t("shortOf", { gal: f.gal(o.gallons) })}</small>}
                 </dd>
-                <dt>Recorded</dt>
-                <dd>{fmtDateTime(pod.created_at)}</dd>
-                <dt>Signature</dt>
-                <dd>{pod.no_signature ? <St tone="warn">Nobody available to sign{pod.left_at_tank ? (ww ? " — collected from the tank" : " — left at the tank") : ""}</St> : "Signed on site"}</dd>
+                <dt>{t("recorded")}</dt>
+                <dd>{f.dateTime(pod.created_at)}</dd>
+                <dt>{t("signature")}</dt>
+                <dd>{pod.no_signature ? <St tone="warn">{t("noSigner")}{pod.left_at_tank ? (ww ? t("collectedFromTank") : t("leftAtTank")) : ""}</St> : t("signedOnSite")}</dd>
               </dl>
               <div className="pad">
                 <PodLocation pod={pod} site={site} />
                 {photo ? (
                   <a href={photo} target="_blank" rel="noreferrer">
                     {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
-                    <img className="pod-img" src={photo} alt={`Proof of ${ww ? "collection" : "delivery"} for ${ref.order(o.order_no)}`} style={{ marginTop: 10 }} />
+                    <img className="pod-img" src={photo} alt={t(ww ? "podAltCollection" : "podAltDelivery", { order: ref.order(o.order_no) })} style={{ marginTop: 10 }} />
                   </a>
                 ) : (
-                  pod.photo_path && <small className="mut">Loading photo…</small>
+                  pod.photo_path && <small className="mut">{t("loadingPhoto")}</small>
                 )}
-                {!pod.no_signature && pod.signature_svg?.trim() && <SignatureSvg value={pod.signature_svg} label="Signature" style={{ width: "100%", maxWidth: 320, color: "#0e2329", marginTop: 10 }} />}
+                {!pod.no_signature && pod.signature_svg?.trim() && <SignatureSvg value={pod.signature_svg} label={t("signature")} style={{ width: "100%", maxWidth: 320, color: "#0e2329", marginTop: 10 }} />}
               </div>
             </>
           )}
@@ -182,19 +197,19 @@ export default function BusinessOrderDetail() {
 
       {cases.length > 0 && (
         <div className="panel">
-          <h2>Problems reported</h2>
+          <h2>{t("problems")}</h2>
           <div className="tblwrap">
             <table>
               <tbody>
                 {cases.map((c) => (
                   <tr key={c.id}>
-                    <td>C-{c.case_no}</td>
+                    <td dir="ltr">C-{c.case_no}</td>
                     <td>{c.description}</td>
                     <td>
-                      <St tone={c.state === "resolved" ? "ok" : c.state === "escalated" ? "bad" : "act"}>{c.state === "resolved" ? "Resolved" : c.state === "new" ? "Received" : "With NWS"}</St>
+                      <St tone={c.state === "resolved" ? "ok" : c.state === "escalated" ? "bad" : "act"}>{c.state === "resolved" ? t("cResolved") : c.state === "new" ? t("cReceived") : t("cWithNws")}</St>
                       {c.resolution && <small className="stack">{c.resolution}</small>}
                     </td>
-                    <td>{fmtDateTime(c.created_at)}</td>
+                    <td>{f.dateTime(c.created_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -212,27 +227,28 @@ export default function BusinessOrderDetail() {
 function CancelDialog({ order, onClose, onDone }: { order: BizOrder; onClose: () => void; onDone: () => void }) {
   const { busy, run } = useAction();
   const [reason, setReason] = useState("");
+  const t = useT(BIZ);
   return (
-    <Dialog title={`Cancel ${ref.order(order.order_no)}?`} body="Orders on account aren’t charged until delivery, so there is nothing to refund. A tanker that is already on the way can’t be cancelled here — call NWS on 1442." onClose={onClose}>
+    <Dialog title={t("cancelQ", { order: ref.order(order.order_no) })} body={t("cancelBody")} onClose={onClose}>
       <div className="fld">
-        <label htmlFor="cxr">Reason (optional)</label>
-        <textarea id="cxr" className="in" rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Not needed any more" autoFocus />
+        <label htmlFor="cxr">{t("reasonOpt")}</label>
+        <textarea id="cxr" className="in" rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("phNotNeeded")} autoFocus />
       </div>
       <div className="btns" style={{ justifyContent: "flex-end" }}>
         <button className="btn" onClick={onClose}>
-          Keep the order
+          {t("keepOrder")}
         </button>
         <button
           className="btn bad"
           disabled={busy === "cx"}
           onClick={() =>
-            run("cx", () => supabase().rpc("org_cancel_order", { p_order_id: order.id, p_reason: reason.trim() || null }), `${ref.order(order.order_no)} cancelled`, () => {
+            run("cx", () => supabase().rpc("org_cancel_order", { p_order_id: order.id, p_reason: reason.trim() || null }), t("cancelledT", { order: ref.order(order.order_no) }), () => {
               onClose();
               onDone();
             })
           }
         >
-          {busy === "cx" ? "Cancelling…" : "Cancel order"}
+          {busy === "cx" ? t("cancelling") : t("cancelOrder")}
         </button>
       </div>
     </Dialog>
@@ -244,6 +260,8 @@ function ReportDialog({ order, onClose, onDone }: { order: BizOrder; onClose: ()
   const [slas, setSlas] = useState<Sla[]>([]);
   const [cat, setCat] = useState("");
   const [text, setText] = useState("");
+  const t = useT(BIZ);
+  const f = useFmt();
   useEffect(() => {
     supabase()
       .from("complaint_sla")
@@ -252,37 +270,37 @@ function ReportDialog({ order, onClose, onDone }: { order: BizOrder; onClose: ()
       .then(({ data }) => setSlas((data ?? []) as Sla[]));
   }, []);
   return (
-    <Dialog title={`Report a problem — ${ref.order(order.order_no)}`} body="The NWS complaints team opens a case and answers within the time shown for the category. You can follow it here." onClose={onClose}>
+    <Dialog title={t("reportTitle", { order: ref.order(order.order_no) })} body={t("reportBody")} onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          run("rp", () => supabase().rpc("file_complaint", { p_order_id: order.id, p_category: cat, p_description: text.trim(), p_photo_path: null }), "Problem reported — NWS will get back to you", () => {
+          run("rp", () => supabase().rpc("file_complaint", { p_order_id: order.id, p_category: cat, p_description: text.trim(), p_photo_path: null }), t("reported"), () => {
             onClose();
             onDone();
           });
         }}
       >
         <div className="fld">
-          <label htmlFor="rpc">What went wrong</label>
+          <label htmlFor="rpc">{t("whatWrong")}</label>
           <select id="rpc" className="in" required value={cat} onChange={(e) => setCat(e.target.value)}>
-            <option value="">Choose…</option>
+            <option value="">{t("choose")}</option>
             {slas.map((s) => (
               <option key={s.category} value={s.category}>
-                {s.label} · answered within {s.hours} h
+                {t("answeredWithin", { label: BIZ[`cat_${s.category}`] ? t(`cat_${s.category}`) : s.label, h: f.n(s.hours) })}
               </option>
             ))}
           </select>
         </div>
         <div className="fld">
-          <label htmlFor="rpd">Details</label>
+          <label htmlFor="rpd">{t("details")}</label>
           <textarea id="rpd" className="in" rows={4} maxLength={1000} required minLength={3} value={text} onChange={(e) => setText(e.target.value)} />
         </div>
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </button>
           <button className="btn pri" disabled={busy === "rp" || !cat || text.trim().length < 3}>
-            {busy === "rp" ? "Sending…" : "Report problem"}
+            {busy === "rp" ? t("sending") : t("reportBtn")}
           </button>
         </div>
       </form>

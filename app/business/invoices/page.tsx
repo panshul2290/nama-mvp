@@ -2,7 +2,10 @@
 
 import { useCallback, useState } from "react";
 import { useBiz } from "@/components/business/BizContext";
-import { Kpis, St, fmtDate, n3, omr, useAction, useLive } from "@/components/portal/kit";
+import { BIZ } from "@/components/business/i18n";
+import { useFmt } from "@/components/portal/i18n";
+import { Kpis, St, useAction, useLive } from "@/components/portal/kit";
+import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Invoice } from "@/lib/types";
 
@@ -14,6 +17,8 @@ export default function BusinessInvoices() {
   const [now, setNow] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const { busy, run } = useAction();
+  const t = useT(BIZ);
+  const f = useFmt();
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -43,32 +48,30 @@ export default function BusinessInvoices() {
     <>
       {loadError && (
         <div className="banner badb" role="alert">
-          Couldn’t load this page: {loadError}. It retries automatically.
+          {t("errPage", { error: loadError })}
         </div>
       )}
       <Kpis
         items={[
-          { label: "Outstanding invoices", value: omr(unpaid.reduce((s, i) => s + Number(i.total), 0)), sub: `${unpaid.length} unpaid`, tone: unpaid.length ? "warn" : "ok" },
-          { label: "Overdue", value: overdue.length, sub: overdue.length ? "2% a month on overdue amounts" : "Nothing overdue", tone: overdue.length ? "bad" : "ok" },
-          { label: "Delivered, not yet invoiced", value: omr(uninvoiced.total), sub: `${uninvoiced.n} order${uninvoiced.n === 1 ? "" : "s"}` },
-          { label: "Credit used", value: omr(org.credit_used), sub: `of ${omr(org.credit_limit)}` },
+          { label: t("kOutstandingInv"), value: f.omr(unpaid.reduce((s, i) => s + Number(i.total), 0)), sub: t("nUnpaid", { n: f.n(unpaid.length) }), tone: unpaid.length ? "warn" : "ok" },
+          { label: t("kOverdue"), value: f.n(overdue.length), sub: overdue.length ? t("overdueSub") : t("nothingOverdue"), tone: overdue.length ? "bad" : "ok" },
+          { label: t("kUninvoiced"), value: f.omr(uninvoiced.total), sub: uninvoiced.n === 1 ? t("nOrders1") : t("nOrdersN", { n: f.n(uninvoiced.n) }) },
+          { label: t("kCreditUsed"), value: f.omr(org.credit_used), sub: t("ofAmt", { amt: f.omr(org.credit_limit) }) },
         ]}
       />
       <div className="panel">
         <h2>
           <span>
-            Invoices{" "}
-            <small>
-              {org.invoicing === "weekly" ? "Weekly" : "Monthly"} cycle · Net {org.terms_days} · credit limit {omr(org.credit_limit)}
-            </small>
+            {t("invoicesH")}{" "}
+            <small>{t("cycleSub", { cycle: org.invoicing === "weekly" ? t("cycleWeekly") : t("cycleMonthly"), n: f.n(org.terms_days), amt: f.omr(org.credit_limit) })}</small>
           </span>
           {canPay && (
             <button
               className="btn pri sm"
               disabled={busy === "gen" || uninvoiced.n === 0}
-              onClick={() => run("gen", async () => supabase().rpc("org_generate_invoice"), "Invoice issued for delivered orders", after)}
+              onClick={() => run("gen", async () => supabase().rpc("org_generate_invoice"), t("invIssuedT"), after)}
             >
-              {busy === "gen" ? "Generating…" : "Generate invoice"}
+              {busy === "gen" ? t("generating") : t("generate")}
             </button>
           )}
         </h2>
@@ -76,14 +79,14 @@ export default function BusinessInvoices() {
           <table>
             <thead>
               <tr>
-                <th>Invoice</th>
-                <th>Period</th>
-                <th className="num">Orders</th>
-                <th className="num">Subtotal</th>
-                <th className="num">VAT</th>
-                <th className="num">Total</th>
-                <th>Due</th>
-                <th>Status</th>
+                <th>{t("hInvoice")}</th>
+                <th>{t("hPeriod")}</th>
+                <th className="num">{t("hOrders")}</th>
+                <th className="num">{t("hSubtotal")}</th>
+                <th className="num">{t("hVat")}</th>
+                <th className="num">{t("total")}</th>
+                <th>{t("hDue")}</th>
+                <th>{t("hStatus")}</th>
                 <th />
               </tr>
             </thead>
@@ -92,32 +95,32 @@ export default function BusinessInvoices() {
                 const late = i.status !== "paid" && (i.status === "overdue" || (now > 0 && Date.parse(i.due_at) < now));
                 return (
                   <tr key={i.id}>
-                    <td>{ref.invoice(i.invoice_no)}</td>
+                    <td dir="ltr">{ref.invoice(i.invoice_no)}</td>
                     <td>
-                      {fmtDate(i.period_start)} – {fmtDate(i.period_end)}
+                      {f.date(i.period_start)} – {f.date(i.period_end)}
                     </td>
-                    <td className="num">{i.orders}</td>
-                    <td className="num">{n3(i.subtotal)}</td>
-                    <td className="num">{n3(i.vat)}</td>
+                    <td className="num">{f.n(i.orders)}</td>
+                    <td className="num">{f.n3(i.subtotal)}</td>
+                    <td className="num">{f.n3(i.vat)}</td>
                     <td className="num">
-                      <b>{n3(i.total)}</b>
+                      <b>{f.n3(i.total)}</b>
                     </td>
-                    <td>{fmtDate(i.due_at)}</td>
+                    <td>{f.date(i.due_at)}</td>
                     <td>
-                      {i.status === "paid" ? <St tone="ok">Paid {fmtDate(i.paid_at)}</St> : late ? <St tone="bad">Overdue</St> : <St tone="act">Issued</St>}
+                      {i.status === "paid" ? <St tone="ok">{t("paidOn", { date: f.date(i.paid_at) })}</St> : late ? <St tone="bad">{t("stOverdue")}</St> : <St tone="act">{t("stIssued")}</St>}
                     </td>
                     <td>
                       <div className="btns">
                         <a className="btn sm" href={`/business/invoice/${i.id}`} target="_blank" rel="noopener">
-                          Download PDF
+                          {t("downloadPdf")}
                         </a>
                         {canPay && i.status !== "paid" && (
                           <button
                             className="btn sm pri"
                             disabled={!!busy}
-                            onClick={() => run(`pay${i.id}`, async () => supabase().rpc("org_pay_invoice", { p_invoice_id: i.id }), `${ref.invoice(i.invoice_no)} paid`, after)}
+                            onClick={() => run(`pay${i.id}`, async () => supabase().rpc("org_pay_invoice", { p_invoice_id: i.id }), t("paidT", { inv: ref.invoice(i.invoice_no) }), after)}
                           >
-                            {busy === `pay${i.id}` ? "Paying…" : "Pay now"}
+                            {busy === `pay${i.id}` ? t("paying") : t("payNow")}
                           </button>
                         )}
                       </div>
@@ -128,14 +131,14 @@ export default function BusinessInvoices() {
               {loaded && !invoices.length && (
                 <tr>
                   <td className="empty" colSpan={9}>
-                    No invoices yet. Delivered orders are invoiced each cycle{canPay ? " — or generate one now" : ""}.
+                    {canPay ? t("noInvoicesGen") : t("noInvoices")}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        <p className="note">Payments are by bank transfer to Nama Water Services (simulated). Invoices show VAT at 5% and a line for every delivery.</p>
+        <p className="note">{t("invNote")}</p>
       </div>
     </>
   );
