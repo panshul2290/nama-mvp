@@ -3,6 +3,24 @@ import type { Dict } from "@/lib/i18n";
 import { withCommon } from "@/components/portal/dict";
 
 export const ORD: Dict = withCommon({
+  // address details, delivery contact, sponsorship, payment follow-up, scheduled volume (0040–0045)
+  addrDetails: { en: "Address details", ar: "تفاصيل العنوان" },
+  deliveryContact: { en: "Delivery contact", ar: "جهة الاتصال للتوصيل" },
+  callAhead: { en: "Call before arrival", ar: "الاتصال قبل الوصول" },
+  sponsoredTag: { en: "Sponsored", ar: "متبرَّع به" },
+  sponsoredFor: { en: "Sponsored delivery to", ar: "توصيل متبرَّع به إلى" },
+  sponsorAnon: { en: "anonymous sponsor", ar: "متبرع مجهول" },
+  payFollowTag: { en: "Payment follow-up", ar: "متابعة الدفع" },
+  pf_outage_pay_later: { en: "Pay later (payment outage)", ar: "الدفع لاحقاً (تعطل الدفع)" },
+  pf_payment_pending: { en: "Payment still pending", ar: "الدفع لا يزال معلقاً" },
+  pf_autopay_failed: { en: "Auto-pay failed", ar: "فشل الدفع التلقائي" },
+  pfResolved: { en: "resolved", ar: "تمت المعالجة" },
+  schedVolT: { en: "Scheduled volume", ar: "الكميات المجدولة" },
+  schedVolS: { en: "Booked orders with a window, and recurring deliveries not yet created (test zone left out)", ar: "الطلبات المحجوزة بموعد، والتوصيلات الدورية التي لم تُنشأ بعد (دون منطقة الاختبار)" },
+  schedDay: { en: "Day", ar: "اليوم" },
+  schedBooked: { en: "Booked", ar: "محجوزة" },
+  schedPlanned: { en: "Recurring planned", ar: "دورية مخططة" },
+  schedGal: { en: "Gallons", ar: "الجالونات" },
   // Orders list
   title: { en: "Orders", ar: "الطلبات" },
   intro: {

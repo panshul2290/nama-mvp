@@ -12,6 +12,7 @@ import { downloadTable, ExportButtons, Kpi, one, St, Tabs, useNow, useRealtime, 
 import type { TableFormat } from "@/lib/csv";
 import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { FLEET } from "@/components/nws/i18n/fleet";
+import { TierPill, useDriverTiers, VehiclePanel } from "@/components/nws/VehiclePanel";
 import { useFmt, type Fmt } from "@/components/portal/i18n";
 import { useLang, useT } from "@/lib/i18n";
 import { label } from "@/lib/labels";
@@ -101,6 +102,7 @@ function Fleet() {
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string | null>(params.get("tanker"));
+  const tiers = useDriverTiers();
   const [trail, setTrail] = useState<LatLng[] | null>(null);
   const [trailNote, setTrailNote] = useState("");
   const [tankerTrips, setTankerTrips] = useState<Trip[]>([]);
@@ -355,7 +357,9 @@ function Fleet() {
                           {tk.governorate_code ? geo.govName(tk.governorate_code) : <span className="mut">{t("notSet")}</span>}
                           {tk.governorate_code && <small style={{ display: "block" }}>{geo.clusterName(geo.clusterOf(tk.governorate_code))}</small>}
                         </td>
-                        <td>{a?.driver?.full_name ?? <span className="mut">{t("unassigned")}</span>}</td>
+                        <td>
+                          {a?.driver?.full_name ?? <span className="mut">{t("unassigned")}</span>} {a && <TierPill tier={tiers[a.driver_id]} />}
+                        </td>
                         <td><span className={`tag ${tk.service_type}`}>{label("svc", tk.service_type, lang, SERVICE_NAME[tk.service_type])}</span></td>
                         <td><St tone={p.tone}>{permitText(tk, p, t, f)}</St></td>
                         <td>
@@ -408,6 +412,7 @@ function Fleet() {
             {rows && !selected && <p className="note">{t("selectHint")}</p>}
           </div>
 
+          {selected && <VehiclePanel tankerId={selected.id} />}
           {selected && (
             <div className="grid2">
               <div className="panel">

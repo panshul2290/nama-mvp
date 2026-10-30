@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ORDER_COLS, useBiz, type BizOrder, type BizProperty } from "@/components/business/BizContext";
 import { OPEN, TRACKABLE, WINDOWS, etaText, muscatToday, slotFor, slotText, type WindowKey } from "@/components/business/data";
 import { BIZ } from "@/components/business/i18n";
@@ -313,7 +313,19 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
     return () => clearInterval(t);
   }, []);
   const siteId = site || sites[0]?.id || "";
-  const slot = useMemo(() => slotFor(date, win), [date, win]);
+  // NWS delivery-window templates (0044: Ramadan, Eid, blocked prayer times) for the next 30 days;
+  // the fixed windows beyond that or if they can't be loaded.
+  const [tplRows, setTplRows] = useState<{ day: string; starts_at: string; ends_at: string; label: string }[]>([]);
+  const [tplPick, setTplPick] = useState("");
+  useEffect(() => {
+    supabase()
+      .rpc("delivery_windows", { p_days: 30 })
+      .then(({ data }) => setTplRows((data ?? []) as { day: string; starts_at: string; ends_at: string; label: string }[]));
+  }, []);
+  const dayWins = tplRows.filter((r) => String(r.day).slice(0, 10) === date);
+  const tw = dayWins.find((r) => r.starts_at === tplPick) ?? dayWins[0];
+  const slot = tw ? { start: tw.starts_at, end: tw.ends_at, label: tw.label } : slotFor(date, win);
+  const hm = (iso: string) => f.time(iso);
 
   useEffect(() => {
     let cancelled = false;
@@ -430,14 +442,25 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
           </div>
           <div className="fld">
             <label htmlFor="bWin">{t("hWindow")}</label>
-            <select id="bWin" className="in" value={win} onChange={(e) => setWin(e.target.value as WindowKey)}>
-              {(Object.keys(WINDOWS) as WindowKey[]).map((w) => (
-                <option key={w} value={w} disabled={passed(w)}>
-                  {t(WIN_KEY[w])}
-                  {passed(w) ? t("passed") : ""}
-                </option>
-              ))}
-            </select>
+            {dayWins.length > 0 ? (
+              <select id="bWin" className="in" value={tw?.starts_at ?? ""} onChange={(e) => setTplPick(e.target.value)}>
+                {dayWins.map((r) => (
+                  <option key={r.starts_at} value={r.starts_at}>
+                    {hm(r.starts_at)}–{hm(r.ends_at)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select id="bWin" className="in" value={win} onChange={(e) => setWin(e.target.value as WindowKey)}>
+                {(Object.keys(WINDOWS) as WindowKey[]).map((w) => (
+                  <option key={w} value={w} disabled={passed(w)}>
+                    {t(WIN_KEY[w])}
+                    {passed(w) ? t("passed") : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+            {dayWins.length > 0 && <small className="mut">{t("winTemplate")}</small>}
           </div>
           <div className="fld">
             <label htmlFor="bPO">{t("lPo")}</label>

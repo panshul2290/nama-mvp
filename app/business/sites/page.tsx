@@ -1,5 +1,7 @@
 "use client";
 
+import { AddressDetailsForm } from "@/components/AddressDetailsForm";
+import { contactPhoneOk, detailsFromRow, detailsPayload, type DetailsForm } from "@/lib/address";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBiz, type BizProperty } from "@/components/business/BizContext";
 import { BIZ } from "@/components/business/i18n";
@@ -32,7 +34,7 @@ export default function BusinessSites() {
   const load = useCallback(async () => {
     const db = supabase();
     const [p, c, o, tr] = await Promise.all([
-      db.from("properties").select("id, label, address, area, lat, lng, tank_gal, created_at").eq("org_id", org.id).order("label"),
+      db.from("properties").select("*").eq("org_id", org.id).order("label"),
       db.from("contracts").select("property_id, contract_no, status").eq("org_id", org.id).in("status", ["pending_owner", "active", "paused"]),
       db.from("orders").select("property_id, delivered_at").eq("org_id", org.id).eq("status", "delivered").order("delivered_at", { ascending: false }).limit(1000),
       db.rpc("org_sites_trends", { p_weeks: 12 }),
@@ -179,6 +181,7 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
   const [address, setAddress] = useState(site?.address ?? "");
   const [area, setArea] = useState(site?.area ?? "");
   const [tank, setTank] = useState(site?.tank_gal ?? 10000);
+  const [details, setDetails] = useState<DetailsForm>(() => detailsFromRow(site));
   const [point, setPoint] = useState<LngLat>(site ? { lat: site.lat, lng: site.lng } : DEFAULT_CENTER);
   const center = useMemo(() => (site ? { lat: site.lat, lng: site.lng } : DEFAULT_CENTER), [site]);
   const pick = useMemo(() => ({ value: point, onChange: setPoint }), [point]);
@@ -201,16 +204,21 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
           e.preventDefault();
           run(
             "save",
-            async () =>
-              supabase().rpc("save_property", {
-                p_id: site?.id ?? null,
-                p_label: label.trim(),
-                p_address: address.trim(),
-                p_area: area.trim(),
-                p_lat: point.lat,
-                p_lng: point.lng,
-                p_tank_gal: tank,
-              }),
+            async () => {
+              const r = await supabase()
+                .rpc("save_property", {
+                  p_id: site?.id ?? null,
+                  p_label: label.trim(),
+                  p_address: address.trim(),
+                  p_area: area.trim(),
+                  p_lat: point.lat,
+                  p_lng: point.lng,
+                  p_tank_gal: tank,
+                })
+                .single<{ id: string }>();
+              if (r.error || !r.data) return r;
+              return supabase().rpc("set_property_details", { p_id: r.data.id, p_details: detailsPayload(details) });
+            },
             site ? t("siteUpdated") : t("siteAdded"),
             () => {
               onSaved();
@@ -251,11 +259,12 @@ function SiteDialog({ site, onClose, onSaved }: { site: BizProperty | null; onCl
             <input id="sTank" className="in" type="number" min={100} max={100000} step={100} required value={tank} onChange={(e) => setTank(Number(e.target.value))} />
           </div>
         </div>
+        <AddressDetailsForm value={details} onChange={setDetails} portal />
         <div className="btns" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn" onClick={onClose}>
             {t("cancel")}
           </button>
-          <button className="btn pri" disabled={busy === "save"}>
+          <button className="btn pri" disabled={busy === "save" || !contactPhoneOk(details)}>
             {busy === "save" ? t("saving") : t("saveSite")}
           </button>
         </div>

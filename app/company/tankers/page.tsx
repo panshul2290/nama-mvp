@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { driverOf, permitText, tankerPermit, tankerStatus, useCompany, useFleet } from "@/components/company/CompanyContext";
 import { CO } from "@/components/company/i18n";
 import { TypeTag } from "@/components/OrderBits";
@@ -10,11 +10,15 @@ import { useLang, useT } from "@/lib/i18n";
 import { serviceLabel } from "@/lib/labels";
 import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
+import { omanToday } from "@/lib/time";
+import type { Tanker } from "@/lib/types";
 
 export default function CompanyTankers() {
   const fleet = useFleet("tankers");
   const { company } = useCompany();
   const [adding, setAdding] = useState(false);
+  const [vehicle, setVehicle] = useState<string | null>(null);
+  const today = omanToday();
   const t = useT(CO);
   const f = useFmt();
   const { lang } = useLang();
@@ -44,6 +48,7 @@ export default function CompanyTankers() {
               <th>{t("ivms")}</th>
               <th>{t("lastPos")}</th>
               <th>{t("status")}</th>
+              <th>{t("vehPapers")}</th>
             </tr>
           </thead>
           <tbody>
@@ -84,12 +89,19 @@ export default function CompanyTankers() {
                       <small className="docmeta">{open.length > 1 ? t("openAlertsN", { n: f.n(open.length), msg: open[0].message }) : t("openAlerts1", { msg: open[0].message })}</small>
                     )}
                   </td>
+                  <td>
+                    <St tone={tk.vehicle_status === "verified" ? "ok" : tk.vehicle_status === "rejected" ? "bad" : "warn"}>{t(`vs_${tk.vehicle_status ?? "unverified"}`)}</St>
+                    {[tk.op_card_expiry, tk.insurance_expiry].some((d) => d && d < today) && <small className="docmeta badt">{t("vehExpired")}</small>}
+                    <button className="btn sm" style={{ marginTop: 4 }} onClick={() => setVehicle(tk.id)}>
+                      {t("vehEdit")}
+                    </button>
+                  </td>
                 </tr>
               );
             })}
             {fleet.loaded && !fleet.tankers.length && (
               <tr>
-                <td colSpan={8} className="empty">
+                <td colSpan={9} className="empty">
                   {t("tkEmpty")}
                 </td>
               </tr>
@@ -99,6 +111,7 @@ export default function CompanyTankers() {
       </div>
       <p className="note">{t("tkNote")}</p>
       {adding && <RegisterTanker onClose={() => setAdding(false)} onDone={fleet.reload} />}
+      {vehicle && <VehicleDialog tankerId={vehicle} onClose={() => setVehicle(null)} onDone={fleet.reload} />}
     </div>
   );
 }
@@ -163,6 +176,74 @@ function RegisterTanker({ onClose, onDone }: { onClose: () => void; onDone: () =
           </button>
         </div>
       </form>
+    </Dialog>
+  );
+}
+
+const VFIELDS: [keyof Tanker, string, "text" | "date" | "number"][] = [
+  ["naql_reg_no", "vehNaql", "text"],
+  ["op_card_no", "vehOpCard", "text"],
+  ["op_card_expiry", "vehOpCardExp", "date"],
+  ["vin", "vehVin", "text"],
+  ["make", "vehMake", "text"],
+  ["model", "vehModel", "text"],
+  ["model_year", "vehYear", "number"],
+  ["tank_capacity_gal", "vehCap", "number"],
+  ["insurance_company", "vehInsCo", "text"],
+  ["insurance_policy_no", "vehInsNo", "text"],
+  ["insurance_expiry", "vehInsExp", "date"],
+  ["tracking_device_id", "vehDevice", "text"],
+];
+
+/** Naql vehicle, operating card and insurance papers (0041): saved for NWS to verify. */
+function VehicleDialog({ tankerId, onClose, onDone }: { tankerId: string; onClose: () => void; onDone: () => void }) {
+  const t = useT(CO);
+  const { busy, run } = useAction();
+  const [v, setV] = useState<Record<string, string> | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    supabase()
+      .from("tankers")
+      .select("*")
+      .eq("id", tankerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const tk = data as Tanker | null;
+        setNote(tk?.vehicle_note ?? null);
+        setV(Object.fromEntries(VFIELDS.map(([k]) => [k, tk?.[k] == null ? "" : String(tk[k])])));
+      });
+  }, [tankerId]);
+  return (
+    <Dialog title={t("vehTitle")} body={t("vehBody")} onClose={onClose} wide>
+      {note && <div className="banner">{note}</div>}
+      {v && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            run("veh", async () => supabase().rpc("save_tanker_vehicle", { p_tanker: tankerId, p_v: v }), t("vehSaved"), () => {
+              onDone();
+              onClose();
+            });
+          }}
+        >
+          <div className="form">
+            {VFIELDS.map(([k, label, kind]) => (
+              <div key={k} className="fld">
+                <label htmlFor={`veh-${k}`}>{t(label)}</label>
+                <input id={`veh-${k}`} className="in" type={kind} dir={kind === "text" ? "ltr" : undefined} value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })} />
+              </div>
+            ))}
+          </div>
+          <div className="btns" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn" onClick={onClose}>
+              {t("cancel")}
+            </button>
+            <button className="btn pri" disabled={busy === "veh"}>
+              {busy === "veh" ? t("saving") : t("vehSend")}
+            </button>
+          </div>
+        </form>
+      )}
     </Dialog>
   );
 }

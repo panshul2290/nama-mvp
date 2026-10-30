@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useDriverTiers } from "@/components/nws/VehiclePanel";
 import { currentDoc, tankerOf, useCompany, useCompanyOrders, useFleet } from "@/components/company/CompanyContext";
 import { CO } from "@/components/company/i18n";
 import { isOnTime } from "@/lib/sla";
@@ -21,6 +22,7 @@ export default function CompanyDrivers() {
   const { busy, run } = useAction();
   const [adding, setAdding] = useState(false);
   const t = useT(CO);
+  const tiers = useDriverTiers();
   const f = useFmt();
   const { lang } = useLang();
 
@@ -56,6 +58,7 @@ export default function CompanyDrivers() {
               <th className="num">{t("rating")}</th>
               <th className="num">{t("onTime")}</th>
               <th>{t("status")}</th>
+              <th>{t("tierCol")}</th>
             </tr>
           </thead>
           <tbody>
@@ -99,12 +102,15 @@ export default function CompanyDrivers() {
                   <td className="num">{rated.length ? `${f.n(rated.reduce((s, o) => s + (o.rating ?? 0), 0) / rated.length, 1)} ★` : "—"}</td>
                   <td className="num">{timed.length ? f.pct(Math.round((timed.filter(Boolean).length / timed.length) * 100) / 100, 0) : "—"}</td>
                   <td>{!tk ? <St tone="warn">{t("noTanker")}</St> : tk.blocked ? <St tone="bad">{t("tankerBlocked")}</St> : tk.is_online ? <St tone="ok">{t("online")}</St> : <St>{t("offline")}</St>}</td>
+                  <td>
+                    <span className={`tier ${tiers[d.id] ?? "bronze"}`}>{t(`tier_${tiers[d.id] ?? "bronze"}`)}</span>
+                  </td>
                 </tr>
               );
             })}
             {fleet.loaded && !fleet.drivers.length && (
               <tr>
-                <td colSpan={7} className="empty">
+                <td colSpan={8} className="empty">
                   {t("drEmpty")}
                 </td>
               </tr>
@@ -171,7 +177,9 @@ export default function CompanyDrivers() {
           </div>
         </>
       )}
-      <p className="note">{t("drNote")}</p>
+      <p className="note">
+        {t("drNote")} {t("tierNote")}
+      </p>
       {adding && <InviteDriver onClose={() => setAdding(false)} onDone={sent.reload} />}
     </div>
   );

@@ -4,6 +4,8 @@ import type { Dict } from "@/lib/i18n";
 import { withCommon } from "@/components/portal/dict";
 
 export const OPS: Dict = withCommon({
+  sosBanner: { en: "Driver SOS: {n} open", ar: "استغاثة سائق: {n} مفتوحة" },
+  sosShow: { en: "Show on map", ar: "عرض على الخريطة" },
   // Header
   title: { en: "Live operations", ar: "العمليات المباشرة" },
   muscatGov: { en: "Muscat Governorate", ar: "محافظة مسقط" },

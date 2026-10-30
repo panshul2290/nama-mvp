@@ -9,6 +9,7 @@ import { ORD } from "@/components/nws/i18n/orders";
 import { CHANNEL_LABEL, downloadCsv, Kpi, n3, one, orderSla, useNow, useRealtime } from "@/components/nws/ops";
 import { useStaff } from "@/components/nws/StaffContext";
 import { statusText } from "@/components/OrderBits";
+import { ScheduledVolume } from "@/components/nws/ScheduledVolume";
 import { useFmt } from "@/components/portal/i18n";
 import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
@@ -24,6 +25,7 @@ type Row = {
   id: string; order_no: number; service_type: ServiceType; gallons: number; area: string; status: OrderStatus; total: string;
   tanker_plate: string | null; driver_name: string | null; created_at: string; released_at: string | null; collected_at: string | null; delivered_at: string | null;
   slot_end: string | null; slot_label: string | null;
+  payment_followup: string | null; payment_followup_resolved_at: string | null; sponsorship: { order_id: string } | { order_id: string }[] | null;
   channel: string; is_emergency: boolean; is_test: boolean;
   customer: { full_name: string } | null;
   zone: { name: string } | { name: string }[] | null;
@@ -42,7 +44,7 @@ const GROUPS: [Group, string, OrderStatus[] | null][] = [
 ];
 const LIMIT = 300;
 const COLS =
-  "id, order_no, service_type, gallons, area, status, total, tanker_plate, driver_name, created_at, released_at, collected_at, delivered_at, slot_end, slot_label, channel, is_emergency, is_test, customer:profiles!orders_customer_id_fkey(full_name), zone:zones!orders_zone_id_fkey(name), contract:contracts!orders_contract_id_fkey(contract_no), org:organizations!orders_org_id_fkey(name)";
+  "id, order_no, service_type, gallons, area, status, total, tanker_plate, driver_name, created_at, released_at, collected_at, delivered_at, slot_end, slot_label, channel, is_emergency, is_test, payment_followup, payment_followup_resolved_at, sponsorship:sponsorships(order_id), customer:profiles!orders_customer_id_fkey(full_name), zone:zones!orders_zone_id_fkey(name), contract:contracts!orders_contract_id_fkey(contract_no), org:organizations!orders_org_id_fkey(name)";
 
 // English for the CSV export; planText words it on screen.
 const plan = (o: Row) => (o.channel === "contract" && one(o.contract) ? `Contract CT-${one(o.contract)!.contract_no}` : (CHANNEL_LABEL[o.channel] ?? o.channel));
@@ -138,6 +140,7 @@ export default function OrdersPage() {
           {t("newCaller")}
         </button>
       </div>
+      <ScheduledVolume />
 
       <div className="okpis">
         <Kpi label={t("kQueue")} value={counts.queue != null ? f.n(counts.queue) : "—"} sub={t("kQueueSub")} tone={counts.queue ? "warn" : ""} />
@@ -240,6 +243,8 @@ export default function OrdersPage() {
                       <b dir="ltr">{orderNo(o.order_no)}</b>
                       {o.is_emergency && <span className="st bad ptag">{t("priority")}</span>}
                       {o.is_test && <span className="st warn ptag" title={t("testTip")}>{t("test")}</span>}
+                      {one(o.sponsorship) && <span className="st ok ptag">{t("sponsoredTag")}</span>}
+                      {o.payment_followup && !o.payment_followup_resolved_at && <span className="st warn ptag">{t("payFollowTag")}</span>}
                     </td>
                     <td>
                       {o.customer?.full_name || "—"}

@@ -5,6 +5,7 @@ import type { Dict } from "@/lib/i18n";
 import { withCommon } from "@/components/portal/dict";
 
 export const BIZ: Dict = withCommon({
+  winTemplate: { en: "Windows follow NWS delivery times (Ramadan, Eid and prayer times included).", ar: "تتبع الفترات مواعيد التوصيل لدى نماء (بما في ذلك رمضان والأعياد وأوقات الصلاة)." },
   // ---------------------------------------------------------------- layout, tabs, banners
   appName: { en: "Business portal", ar: "بوابة الأعمال" },
   desc: {

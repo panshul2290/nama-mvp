@@ -4,6 +4,7 @@ import "../admin.css";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { canSee } from "@/components/nws/access";
+import { CONT } from "@/components/nws/i18n/continuity";
 import { SETTINGS } from "@/components/nws/i18n/settings";
 import { useStaff } from "@/components/nws/StaffContext";
 import { useT } from "@/lib/i18n";
@@ -25,12 +26,21 @@ export const SETTINGS_NAV: { group: string; items: { href: string; label: string
     items: [
       { href: "/nws/settings/zones", label: "navZones" },
       { href: "/nws/settings/clusters", label: "navClusters" },
+      { href: "/nws/settings/windows", label: "navWindows" },
+      { href: "/nws/settings/tiers", label: "navTiers" },
+      { href: "/nws/settings/charity", label: "navCharity" },
       { href: "/nws/settings/emergency", label: "navEmergency" },
       { href: "/nws/settings/notices", label: "navNotices" },
       { href: "/nws/settings/notifications", label: "navNotifications" },
     ],
   },
-  { group: "gFinance", items: [{ href: "/nws/settings/payments", label: "navPayments" }] },
+  {
+    group: "gFinance",
+    items: [
+      { href: "/nws/settings/payments", label: "navPayments" },
+      { href: "/nws/settings/continuity", label: "navContinuity" },
+    ],
+  },
   {
     group: "gRisk",
     items: [
@@ -51,7 +61,10 @@ export const SETTINGS_NAV: { group: string; items: { href: string; label: string
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { staff } = useStaff();
-  const t = useT(SETTINGS);
+  const ts = useT(SETTINGS);
+  const tc = useT(CONT);
+  // New pages' labels live in CONT (0040–0045).
+  const t = (k: string) => (k in CONT ? tc(k) : ts(k));
   const groups = SETTINGS_NAV.map((g) => ({ ...g, items: g.items.filter((i) => canSee(staff.staff_role, i.href)) })).filter((g) => g.items.length > 0);
   return (
     <div className="settings">

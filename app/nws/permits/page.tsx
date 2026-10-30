@@ -1,5 +1,6 @@
 "use client";
 
+import { VehiclePanel } from "@/components/nws/VehiclePanel";
 import "../ops.css";
 import "../admin.css";
 import "../register.css";
@@ -668,6 +669,7 @@ function Permits() {
                       ))}
                     </ul>
                   </div>
+                  {selTanker?.id && <VehiclePanel tankerId={selTanker.id} />}
                 </>
               )}
             </div>

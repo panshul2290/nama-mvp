@@ -2,6 +2,7 @@
 
 import { createContext, use } from "react";
 import type { PortalProfile } from "@/components/portal/PortalShell";
+import type { AddressDetails } from "@/lib/address";
 import type { OrderStatus, OrgRole } from "@/lib/types";
 import type { ServiceType } from "@/lib/pricing";
 
@@ -90,4 +91,4 @@ export type BizOrder = {
 export const ORDER_COLS =
   "id, order_no, service_type, gallons, area, status, total, vat, property_id, contract_id, tanker_id, tanker_plate, driver_name, slot_start, slot_end, slot_label, po_number, driver_note, invoice_id, created_at, accepted_at, arrived_at, delivered_at, cancelled_at, cancel_reason, customer_id, billing, short_credit";
 
-export type BizProperty = { id: string; label: string; address: string; area: string; lat: number; lng: number; tank_gal: number; created_at: string };
+export type BizProperty = { id: string; label: string; address: string; area: string; lat: number; lng: number; tank_gal: number; created_at: string } & AddressDetails;

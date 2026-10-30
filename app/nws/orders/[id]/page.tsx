@@ -18,6 +18,8 @@ import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { OrderBill, statusText } from "@/components/OrderBits";
 import { useFmt } from "@/components/portal/i18n";
 import { usePricingRules } from "@/components/usePricingRules";
+import { detailParts, useWilayats } from "@/lib/address";
+import { ADDR } from "@/lib/addressI18n";
 import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
 import { useLang, useT } from "@/lib/i18n";
@@ -81,6 +83,9 @@ export default function OrderDetail() {
   const now = useNow(30_000);
   const [o, setO] = useState<Detail | null>(null);
   const [loc, setLoc] = useState<OrderLocation | null>(null);
+  const [sponsor, setSponsor] = useState<{ anonymous: boolean; site: { name: string } | null } | null>(null);
+  const ta = useT(ADDR);
+  const wil = useWilayats();
   const [audit, setAudit] = useState<Audit[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [refunds, setRefunds] = useState<WalletTx[]>([]);
@@ -122,6 +127,11 @@ export default function OrderDetail() {
     if (!a.data) return setMissing(true);
     setO(a.data as unknown as Detail);
     setLoc(b.data as OrderLocation | null);
+    db.from("sponsorships")
+      .select("anonymous, site:beneficiary_sites(name)")
+      .eq("order_id", id)
+      .maybeSingle()
+      .then(({ data }) => setSponsor((data as unknown as { anonymous: boolean; site: { name: string } | null }) ?? null));
     setAudit((c.data ?? []) as Audit[]);
     setPayments((p.data ?? []) as Payment[]);
     setRefunds(((w.data ?? []) as WalletTx[]).filter((x) => x.kind === "refund" || x.kind === "goodwill" || x.kind === "cancel_fee"));
@@ -219,7 +229,9 @@ export default function OrderDetail() {
         <div>
           <h1>
             <bdi dir="ltr">{ord}</bdi> <span className={`st ${stTone}`}>{stText}</span> {o.is_emergency && <span className="st bad">{t("priorityCap")}</span>}{" "}
-            {o.is_test && <span className="st warn" title={t("testTipFull")}>{t("test")}</span>}
+            {o.is_test && <span className="st warn" title={t("testTipFull")}>{t("test")}</span>}{" "}
+            {sponsor && <span className="st ok">{t("sponsoredTag")}</span>}{" "}
+            {o.payment_followup && !o.payment_followup_resolved_at && <span className="st warn">{t("payFollowTag")}</span>}
           </h1>
           <p>
             <span className={`tag ${o.service_type}`}>{o.service_type}</span> {f.gal(o.gallons)} · {o.area}
@@ -305,6 +317,42 @@ export default function OrderDetail() {
               <dl className="kv" style={{ padding: 0 }}>
                 <dt>{t("address")}</dt>
                 <dd>{loc?.address || "—"}</dd>
+                {loc && (detailParts(loc, lang, wil?.wilayats, ta).length > 0 || loc.landmark) && (
+                  <>
+                    <dt>{t("addrDetails")}</dt>
+                    <dd>
+                      {detailParts(loc, lang, wil?.wilayats, ta).join(" · ")}
+                      {loc.landmark && <small className="d-block mut">{loc.landmark}</small>}
+                    </dd>
+                  </>
+                )}
+                {loc?.contact_phone && (
+                  <>
+                    <dt>{t("deliveryContact")}</dt>
+                    <dd>
+                      {loc.contact_name || "—"} · <bdi dir="ltr">{maskPhone(loc.contact_phone)}</bdi>
+                      {loc.call_ahead && <St tone="warn">{t("callAhead")}</St>}
+                    </dd>
+                  </>
+                )}
+                {sponsor && (
+                  <>
+                    <dt>{t("sponsoredFor")}</dt>
+                    <dd>
+                      {sponsor.site?.name ?? "—"}
+                      {sponsor.anonymous ? ` · ${t("sponsorAnon")}` : ""}
+                    </dd>
+                  </>
+                )}
+                {o.payment_followup && (
+                  <>
+                    <dt>{t("payFollowTag")}</dt>
+                    <dd>
+                      {t(`pf_${o.payment_followup}`)}
+                      {o.payment_followup_resolved_at ? ` · ${t("pfResolved")}` : ""}
+                    </dd>
+                  </>
+                )}
                 <dt>{t("coords")}</dt>
                 <dd>{loc ? <bdi dir="ltr">{`${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`}</bdi> : "—"}</dd>
                 {o.driver_note && (

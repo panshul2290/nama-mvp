@@ -201,6 +201,9 @@ export default function LiveOperations() {
 
   const day = startOfDay(now);
   const openAlerts = useMemo(() => alerts.filter((a) => a.state === "open"), [alerts]);
+  // Driver SOS (0042): unresolved ones on top of the feed and in a banner; highlighted, no sound.
+  const sosOpen = useMemo(() => alerts.filter((a) => a.type === "SOS" && a.state !== "resolved"), [alerts]);
+  const sosFirst = useMemo(() => [...sosOpen, ...alerts.filter((a) => !(a.type === "SOS" && a.state !== "resolved"))], [alerts, sosOpen]);
   // KPIs leave out tankers and alerts in an active test zone (0020); the map and feed still show them.
   const inTest = (p: { lat: number | null; lng: number | null }) => p.lat != null && p.lng != null && inTestArea({ lat: p.lat, lng: p.lng }, testAreas);
   const allOnline = tankers.filter((t) => t.is_online);
@@ -310,6 +313,29 @@ export default function LiveOperations() {
 
   return (
     <>
+      {sosOpen.length > 0 && (
+        <div className="banner badb sos-row" role="alert">
+          <b>{t("sosBanner", { n: f.n(sosOpen.length) })}</b>
+          {sosOpen.map((a) => {
+            const tk = tankers.find((x) => x.id === a.tanker_id);
+            return (
+              <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+                {tk && <bdi dir="ltr">{tk.plate}</bdi>}
+                <span>{a.message}</span>
+                <time className="mut">{f.ago(a.created_at, now)}</time>
+                {a.lat != null && a.lng != null && (
+                  <bdi dir="ltr" className="mut">
+                    {a.lat.toFixed(5)}, {a.lng.toFixed(5)}
+                  </bdi>
+                )}
+                <button className="btn sm" onClick={() => pickAlert(a)}>
+                  {t("sosShow")}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="ops-head">
         <div>
           <h1>{t("title")}</h1>
@@ -459,10 +485,11 @@ export default function LiveOperations() {
             </h2>
             <div className="feed">
               {alerts.length === 0 && <div className="empty">{t("noAlerts")}</div>}
-              {alerts.slice(0, 30).map((a) => {
+              {sosFirst.slice(0, 30).map((a) => {
                 const tk = tankers.find((x) => x.id === a.tanker_id);
+                const sos = a.type === "SOS" && a.state !== "resolved";
                 return (
-                  <button key={a.id} className={`alert ${a.state !== "open" ? "done" : ""} ${selAlert === a.id ? "sel" : ""}`} onClick={() => pickAlert(a)}>
+                  <button key={a.id} className={`alert ${a.state !== "open" ? "done" : ""} ${selAlert === a.id ? "sel" : ""} ${sos ? "sos-row" : ""}`} onClick={() => pickAlert(a)}>
                     <i className={`sb ${a.severity}`} />
                     <div className="ac">
                       <div className="t">

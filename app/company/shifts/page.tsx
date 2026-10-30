@@ -10,7 +10,7 @@ import { SHIFT_KEYS, shiftHours, type Shift } from "@/lib/shifts";
 import { supabase } from "@/lib/supabase/client";
 import { omanToday, omanWeekday } from "@/lib/time";
 
-type Avail = { driver_id: string; weekday: number; available: boolean; shift: Shift };
+type Avail = { driver_id: string; weekday: number; available: boolean; shift: Shift; start_time?: string | null; end_time?: string | null };
 type Emergency = { on: boolean; zone: string | null; reason: string | null };
 
 // Weekdays 0 (Sunday) to 6 and shift names are CO keys (d0…d6, sh_day…), translated at render.
@@ -23,6 +23,7 @@ export default function CompanyShifts() {
   const fleet = useFleet("shifts");
   const { busy, run } = useAction();
   const [avail, setAvail] = useState<Avail[]>([]);
+  const [until, setUntil] = useState<Record<string, string>>({});
   const [checks, setChecks] = useState<Set<string>>(new Set());
   const [emergency, setEmergency] = useState<Emergency | null>(null);
   const t = useT(CO);
@@ -32,12 +33,14 @@ export default function CompanyShifts() {
   const load = useCallback(async () => {
     const db = supabase();
     const today = omanToday();
-    const [a, s, e] = await Promise.all([
-      db.from("driver_availability").select("driver_id, weekday, available, shift"),
+    const [a, u, s, e] = await Promise.all([
+      db.from("driver_availability").select("driver_id, weekday, available, shift, start_time, end_time"),
+      db.from("driver_profiles").select("driver_id, unavailable_until"),
       db.from("shift_checks").select("driver_id").eq("day", today),
       db.from("app_settings").select("value").eq("key", "EMERGENCY").maybeSingle(),
     ]);
     setAvail((a.data ?? []) as Avail[]);
+    setUntil(Object.fromEntries(((u.data ?? []) as { driver_id: string; unavailable_until: string | null }[]).filter((r) => r.unavailable_until).map((r) => [r.driver_id, r.unavailable_until as string])));
     setChecks(new Set((s.data ?? []).map((r: { driver_id: string }) => r.driver_id)));
     try {
       setEmergency(e.data?.value ? (JSON.parse(e.data.value) as Emergency) : null);
@@ -90,6 +93,7 @@ export default function CompanyShifts() {
                   {tk?.plate ?? t("noTanker")}
                   {checks.has(d.id) ? t("preTripDone") : ""}
                 </small>
+                {until[d.id] && until[d.id] > omanToday() && <small className="badt">{t("avUntil", { d: f.date(until[d.id]) })}</small>}
               </div>,
               ...DAYS.map((_, day) => {
                 const a = get(d.id, day);
@@ -107,6 +111,11 @@ export default function CompanyShifts() {
                         </option>
                       ))}
                     </select>
+                    {a.available && a.start_time && a.end_time && (
+                      <small dir="ltr">
+                        {a.start_time.slice(0, 5)}–{a.end_time.slice(0, 5)}
+                      </small>
+                    )}
                   </div>
                 );
               }),
@@ -120,7 +129,7 @@ export default function CompanyShifts() {
               <St tone="ok">{t("onDutyN", { n: f.n(onDuty) })}</St>{" "}
             </>
           )}
-          {t("shiftsNote", { list: SHIFT_KEYS.map((s) => `${shiftName(s)} ${f.d(shiftHours(s))}`).join(" · ") })}
+          {t("shiftsNote", { list: SHIFT_KEYS.map((s) => `${shiftName(s)} ${f.d(shiftHours(s))}`).join(" · ") })} {t("avNote")}
         </p>
       </div>
     </div>
