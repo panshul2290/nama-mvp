@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { COMPLAINTS } from "@/components/nws/i18n/complaints";
+import { SUPPORT } from "@/components/nws/i18n/support";
 import { Bars, CHANNEL_LABEL, HOUR, Kpi, Modal, one, St, Tabs, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
 import { useStaff } from "@/components/nws/StaffContext";
 import { useFmt, type Fmt } from "@/components/portal/i18n";
@@ -22,6 +23,8 @@ type Case = {
   id: string; case_no: number; order_id: string | null; customer_id: string | null; category: string; description: string; photo_path: string | null;
   channel: "app" | "call_centre" | "business"; genesys_id: string | null; state: State; owner_team: string | null; sla_hours: number; due_at: string;
   refund_amount: string; resolution: string | null; created_at: string; resolved_at: string | null;
+  /** 0035/0039: high for overcharge reports and customer escalations to 1442. */
+  priority?: "normal" | "high"; escalated_at?: string | null; escalated_by?: "customer" | "staff" | null;
   customer: { full_name: string; phone: string | null } | { full_name: string; phone: string | null }[] | null;
   order: { id: string; order_no: number; tanker_plate: string | null; driver_name: string | null } | { id: string; order_no: number; tanker_plate: string | null; driver_name: string | null }[] | null;
 };
@@ -88,7 +91,7 @@ function Complaints() {
       db
         .from("complaints")
         .select(
-          "id, case_no, order_id, customer_id, category, description, photo_path, channel, genesys_id, state, owner_team, sla_hours, due_at, refund_amount, resolution, created_at, resolved_at, customer:profiles(full_name, phone), order:orders(id, order_no, tanker_plate, driver_name)",
+          "*, customer:profiles(full_name, phone), order:orders(id, order_no, tanker_plate, driver_name)",
         )
         .order("created_at", { ascending: false })
         .limit(500),
@@ -149,7 +152,9 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
     const o = one(c.order);
     return String(c.case_no).includes(s) || (cu?.full_name ?? "").toLowerCase().includes(s) || (cu?.phone ?? "").replace(/\s/g, "").includes(s.replace(/\s/g, "")) || (o ? String(o.order_no).includes(s) : false);
   };
-  const list = all.filter((c) => match(c, f) && (!cat || c.category === cat) && hit(c));
+  // Escalated by the customer (1442) first, then other high-priority open cases, then the newest.
+  const rank = (c: Case) => (c.state === "escalated" && c.escalated_by === "customer" ? 0 : c.state !== "resolved" && c.priority === "high" ? 1 : 2);
+  const list = all.filter((c) => match(c, f) && (!cat || c.category === cat) && hit(c)).sort((a, b) => rank(a) - rank(b) || b.created_at.localeCompare(a.created_at));
   const label = (cat: string) => w.cat(cat, slas.find((s) => s.category === cat)?.label);
   const selected = all.find((c) => c.id === sel) ?? null;
   const canLog = can("complaints_agent", "operator");
@@ -226,7 +231,10 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
                       </td>
                       <td>{label(c.category)}</td>
                       <td>{w.channel(c.channel)}</td>
-                      <td><St tone={STATE_TONE[c.state]}>{w.state(c.state)}</St></td>
+                      <td>
+                        <St tone={STATE_TONE[c.state]}>{w.state(c.state)}</St>
+                        <Flag c={c} />
+                      </td>
                       <td>{c.state === "resolved" ? <St tone={s.tone}>{s.text}</St> : s.tone === "bad" ? <St tone="bad">{s.text}</St> : <span className={s.tone === "warn" ? "" : "mut"} style={s.tone === "warn" ? { color: "var(--warn)", fontWeight: 700 } : undefined}>{s.text}</span>}</td>
                       <td>{o ? <bdi dir="ltr">{orderNo(o.order_no)}</bdi> : "—"}</td>
                     </tr>
@@ -260,6 +268,14 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
       )}
     </>
   );
+}
+
+/** "Escalated by the customer to 1442" / "High priority" under the state. */
+function Flag({ c }: { c: Case }) {
+  const t = useT(SUPPORT);
+  if (c.state === "escalated" && c.escalated_by === "customer") return <small className="bad" style={{ display: "block", fontWeight: 700 }}>{t("escByCustomer")}</small>;
+  if (c.state !== "resolved" && c.priority === "high") return <small style={{ display: "block", color: "var(--warn)", fontWeight: 700 }}>{t("prioHigh")}</small>;
+  return null;
 }
 
 type Mode = "resolve" | "note" | "reply" | "assign" | "escalate" | "refund";

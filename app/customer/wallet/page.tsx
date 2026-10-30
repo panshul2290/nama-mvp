@@ -5,6 +5,7 @@ import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { amt3, dshort, omr3 } from "@/components/customer/fmt";
 import { usePaymentMethods, usePrefs, useWallet, type WalletInfo } from "@/components/customer/hooks";
+import { RefundPolicy } from "@/components/customer/RefundPolicy";
 import { Sheet, Toggle } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/useToast";
@@ -190,6 +191,9 @@ export default function WalletPage() {
             </div>
           ))
         )}
+        <div style={{ marginTop: 16 }}>
+          <RefundPolicy />
+        </div>
         {toast.node}
       </main>
       {adding && (

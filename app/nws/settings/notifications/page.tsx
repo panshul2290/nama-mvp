@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chips, Empty, Kpi, PageHead, ReadOnlyNote, Switch, useAudited, useRun } from "@/components/nws/admin/ui";
+import { DelayMessages, SenderIds } from "@/components/nws/CommsSettings";
+import { SUPPORT } from "@/components/nws/i18n/support";
 import { SET_ADMIN } from "@/components/nws/i18n/settingsAdmin";
 import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { useFmt } from "@/components/portal/i18n";
@@ -19,6 +21,8 @@ const PROVIDER: Record<string, string> = { simulated: "provSimulated", external:
 const STATUS_TONE: Record<OutboxRow["status"], string> = { queued: "warn", sent: "ok", failed: "bad" };
 const STATUS_LABEL: Record<OutboxRow["status"], string> = { queued: "stQueued", sent: "stSent", failed: "stFailed" };
 const PAGE = 100;
+// 0038: marketing templates are "marketing", everything else (service, reminders) "transactional".
+const classOf = (c: { message_class?: string; category?: string }) => (c.message_class ?? (c.category === "marketing" ? "marketing" : "transactional")) as "transactional" | "marketing";
 
 type NotifySetting = { providers: Record<Channel, string>; max_attempts: number; sender_id?: string };
 type Stat = { channel: Channel; status: OutboxRow["status"]; is_test: boolean; n: number };
@@ -136,6 +140,9 @@ export default function NotificationsPage() {
         <p className="note">{t("simulatedNote")}</p>
       </div>
 
+      <SenderIds />
+      <DelayMessages />
+
       <Outbox key={tick} canRetry={operator} onChanged={reload} />
 
       <div className="panel">
@@ -152,6 +159,7 @@ export default function NotificationsPage() {
                   <td>
                     {tp.label}
                     <small style={{ display: "block" }}><code dir="ltr">{tp.event}</code> · {t(CATEGORY[tp.category ?? "service"] ?? "catService")}{tp.critical ? t("orderCritical") : ""}</small>
+                    <ClassTag c={tp} />
                   </td>
                   <td>{AUDIENCE[tp.audience] ? t(AUDIENCE[tp.audience]) : tp.audience}</td>
                   {CHANNELS.map(([c, l]) => (
@@ -194,7 +202,7 @@ function Outbox({ canRetry, onChanged }: { canRetry: boolean; onChanged: () => v
       const text = search.trim().replace(/[,()%]/g, " ");
       let q = supabase()
         .from("notification_outbox")
-        .select("id, notification_id, user_id, event, channel, lang, destination_masked, title, body, status, attempts, next_attempt_at, provider, provider_ref, provider_response, error, order_id, is_test, created_at, sent_at, user:profiles!notification_outbox_user_id_fkey(full_name)")
+        .select("id, notification_id, user_id, event, channel, lang, destination_masked, title, body, status, attempts, next_attempt_at, provider, provider_ref, provider_response, error, order_id, is_test, created_at, sent_at, message_class, sender_id, user:profiles!notification_outbox_user_id_fkey(full_name)")
         .order("id", { ascending: false })
         .range(from, from + PAGE - 1);
       if (channel !== "all") q = q.eq("channel", channel);
@@ -260,8 +268,8 @@ function Outbox({ canRetry, onChanged }: { canRetry: boolean; onChanged: () => v
                 <tr key={r.id}>
                   <td>{f.dateTime(r.created_at)}{r.sent_at && <small style={{ display: "block" }}>{t("sentAt", { at: f.dateTime(r.sent_at) })}</small>}</td>
                   <td>{r.user?.full_name || "—"}<small style={{ display: "block" }} dir="ltr">{r.destination_masked ?? "—"}</small></td>
-                  <td><code dir="ltr">{r.event}</code>{r.is_test && <span className="st warn ptag">{t("testTag")}</span>}</td>
-                  <td>{ch ? t(ch) : r.channel}<small style={{ display: "block" }}>{r.lang === "ar" ? t("arabic") : t("english")}</small></td>
+                  <td><code dir="ltr">{r.event}</code>{r.is_test && <span className="st warn ptag">{t("testTag")}</span>}<ClassTag c={r} /></td>
+                  <td>{ch ? t(ch) : r.channel}<small style={{ display: "block" }}>{r.lang === "ar" ? t("arabic") : t("english")}</small>{r.sender_id && <SenderTag id={r.sender_id} />}</td>
                   <td className="tpl" dir={r.lang === "ar" ? "rtl" : "ltr"}><b>{r.title}</b><small>{r.body}</small></td>
                   <td>
                     <span className={`st ${STATUS_TONE[r.status]}`}>{t(STATUS_LABEL[r.status])}</span>
@@ -291,6 +299,18 @@ function Outbox({ canRetry, onChanged }: { canRetry: boolean; onChanged: () => v
       {more && <div className="pad"><button className="btn" onClick={loadMore}>{t("loadMore")}</button></div>}
     </div>
   );
+}
+
+/** Transactional or marketing (0038), on a template or an outbox row. */
+function ClassTag({ c }: { c: { message_class?: string; category?: string } }) {
+  const t = useT(SUPPORT);
+  const k = classOf(c);
+  return <span className={`st ${k === "marketing" ? "warn" : ""} ptag`}>{t(k === "marketing" ? "clsMarketing" : "clsTransactional")}</span>;
+}
+
+function SenderTag({ id }: { id: string }) {
+  const t = useT(SUPPORT);
+  return <small style={{ display: "block" }} dir="ltr">{t("senderCol", { id })}</small>;
 }
 
 function EditTemplate({ tpl, onClose, onDone }: { tpl: NotificationTemplate; onClose: () => void; onDone: () => void }) {

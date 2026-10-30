@@ -7,6 +7,7 @@ import { useCx } from "@/components/customer/i18n";
 import { dshort, gal, windowText } from "@/components/customer/fmt";
 import { useEmergency, useNow, useOnline, usePrefs, useProperties } from "@/components/customer/hooks";
 import { recoFor, useRecoText } from "@/components/customer/Reco";
+import { ServiceNotices } from "@/components/customer/ServiceNotices";
 import { fillPending, Progress5, StatusTag, statusKey, useUnread } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
 import { firstName } from "@/lib/format";
@@ -116,6 +117,7 @@ export default function CustomerHome() {
           {t("emBan", { z: emergency.zone || t("allZones"), r: emergency.reason || "" })}
         </div>
       )}
+      <ServiceNotices />
 
       <div className="ch-hero">
         <h4>{t("needW")}</h4>

@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
+import { CaseTimeline, EscalateBox } from "@/components/customer/ComplaintParts";
+import { useNow } from "@/components/customer/hooks";
 import { useCx } from "@/components/customer/i18n";
+import { RefundPolicy } from "@/components/customer/RefundPolicy";
 import { dshort, dtshort, omr3 } from "@/components/customer/fmt";
 import { BackButton, Loading } from "@/components/Shell";
 import { friendlyError } from "@/lib/errors";
@@ -71,6 +74,7 @@ function CaseList() {
 
 function CaseDetail({ id }: { id: string }) {
   const { t, lang } = useCx();
+  const now = useNow(60_000);
   const [c, setC] = useState<Complaint | null>(null);
   const [orderNo, setOrderNo] = useState<number | null>(null);
   const [notes, setNotes] = useState<ComplaintNote[]>([]);
@@ -164,14 +168,6 @@ function CaseDetail({ id }: { id: string }) {
           <b>{t("caseStatus")}</b>
           <span className={`st ${tone(c.state)}`}>{t(`cxSt_${c.state}`)}</span>
         </div>
-        <div className="rq-r">
-          <span>{t("opened")}</span>
-          <b>{dtshort(c.created_at, lang)}</b>
-        </div>
-        <div className="rq-r">
-          <span>{c.state === "resolved" ? t("resolvedAt") : t("dueBy")}</span>
-          <b>{dtshort(c.state === "resolved" ? c.resolved_at : c.due_at, lang)}</b>
-        </div>
         {c.order_id && (
           <div className="rq-r">
             <span>{t("orderL")}</span>
@@ -195,7 +191,9 @@ function CaseDetail({ id }: { id: string }) {
           </div>
         )}
       </div>
+      <CaseTimeline c={c} now={now} />
       {c.resolution && <div className="banner okb">{c.resolution}</div>}
+      {Number(c.refund_amount) > 0 && <RefundPolicy part="complaint" amount={omr3(c.refund_amount, lang)} />}
       {photo && (
         <div className="photo" style={{ height: 160 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -225,6 +223,13 @@ function CaseDetail({ id }: { id: string }) {
           </button>
         </>
       )}
+      <EscalateBox
+        c={c}
+        onDone={(next) => {
+          setC(next);
+          loadNotes();
+        }}
+      />
     </main>
   );
 }

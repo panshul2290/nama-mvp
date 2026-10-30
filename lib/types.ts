@@ -217,6 +217,15 @@ export type Complaint = {
   id: string; case_no: number; order_id: string | null; customer_id: string | null; category: string; description: string; photo_path: string | null;
   channel: "app" | "call_centre" | "business"; genesys_id: string | null; state: "new" | "assigned" | "escalated" | "resolved"; owner_team: string | null;
   sla_hours: number; due_at: string; refund_amount: string; resolution: string | null; created_at: string; resolved_at: string | null;
+  /** 0035/0039: high when escalated by the customer to 1442, or a reported overcharge. */
+  priority?: "normal" | "high"; escalated_at?: string | null; escalated_by?: "customer" | "staff" | null;
+};
+/** complaint_escalations (0039): a customer's "Escalate to Nama 1442". */
+export type ComplaintEscalation = { id: number; complaint_id: string; by_user: string | null; by_role: string; from_state: string; reason: string | null; created_at: string };
+/** my_service_notices (0038): a live service-disruption notice for the caller's areas or sites. */
+export type ServiceNotice = {
+  id: string; title_en: string; title_ar: string; body_en: string; body_ar: string; severity: "info" | "warning" | "critical"; scope: "all" | "zones" | "clusters";
+  starts_at: string; ends_at: string | null; areas: { en: string[]; ar: string[] }; sites: string[];
 };
 export type ComplaintNote = { id: number; complaint_id: string; author_id: string | null; author_role: string; body: string; internal: boolean; created_at: string };
 export type Alert = { id: number; tanker_id: string | null; order_id: string | null; type: string; severity: "high" | "med" | "low"; message: string; lat: number | null; lng: number | null; state: "open" | "acknowledged" | "resolved"; created_at: string; acted_at: string | null; action_note: string | null };
@@ -227,7 +236,7 @@ export type Penalty = {
 };
 export type PenaltyRule = { code: string; label: string; party: "driver" | "customer" | "business"; amount: string; amount_kind: "omr" | "pct"; compensation: string; active: boolean };
 export type Notification = { id: number; user_id: string; event: string; channels: string[]; title: string; body: string; order_id: string | null; created_at: string; read_at: string | null };
-export type NotificationTemplate = { event: string; label: string; audience: string; title_en: string; body_en: string; title_ar: string; body_ar: string; push: boolean; sms: boolean; whatsapp: boolean; email?: boolean; category?: "service" | "reminder" | "marketing"; critical?: boolean };
+export type NotificationTemplate = { event: string; label: string; audience: string; title_en: string; body_en: string; title_ar: string; body_ar: string; push: boolean; sms: boolean; whatsapp: boolean; email?: boolean; category?: "service" | "reminder" | "marketing"; critical?: boolean; message_class?: "transactional" | "marketing" };
 export type Invoice = { id: string; invoice_no: number; org_id: string; period_start: string; period_end: string; orders: number; subtotal: string; vat: string; total: string; status: "issued" | "paid" | "overdue"; issued_at: string; due_at: string; paid_at: string | null };
 export type TankerDocument = {
   id: string; tanker_id: string | null; driver_id: string | null; kind: string; ref_no: string; valid_to: string; file_path: string | null;
@@ -265,6 +274,8 @@ export type OutboxRow = {
   destination_masked: string | null; title: string; body: string; status: "queued" | "sent" | "failed"; attempts: number; next_attempt_at: string;
   provider: string | null; provider_ref: string | null; provider_response: Record<string, unknown> | null; error: string | null;
   order_id: string | null; is_test: boolean; created_at: string; sent_at: string | null;
+  /** 0038: transactional or marketing, and the SMS sender ID used. */
+  message_class?: "transactional" | "marketing"; sender_id?: string | null;
 };
 
 /** dispatch_candidates (0026): a tanker ranked for an order, with the reasons. */

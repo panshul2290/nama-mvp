@@ -8,11 +8,11 @@ import { IdentityFields, ID_DICT, idNoProblem, saveIdentityPhotos, verifyIdNumbe
 import { NamaLogo } from "@/components/icons";
 import { AuthFrame } from "@/components/portal/AuthChrome";
 import { AUTH, authError } from "@/components/portal/authI18n";
-import { OtpStep } from "@/components/portal/OtpStep";
+import { ChannelPicker, chooseChannel, OtpStep, type CodeChannel } from "@/components/portal/OtpStep";
 import { admit, asApp, rememberSession, type AppKey } from "@/components/portal/session";
 import { WrongAccount } from "@/components/portal/WrongAccount";
 import { BackButton, Loading } from "@/components/Shell";
-import { LangToggle, useT } from "@/lib/i18n";
+import { LangToggle, useLang, useT } from "@/lib/i18n";
 import { isEmail, normalizePhone } from "@/lib/phone";
 import { scratchClient, supabase } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
@@ -38,13 +38,16 @@ export default function SignupPage() {
 }
 
 // Every account signs up with a mobile number and a password (email is optional).
-// Supabase sends an SMS code to verify the number; the second step enters it. The new
-// session is checked by admit() and kept in the new account's own app (its cookie).
+// Supabase sends a code (by SMS or WhatsApp, 0037) to verify the number; the second step
+// enters it. The new session is checked by admit() and kept in the new account's own app.
+// Customers may add their ID / resident card / passport now or later in Account (#10).
 function Signup() {
   const app = asApp(useSearchParams().get("app"));
   const router = useRouter();
   const t = useT(AUTH);
   const ti = useT(ID_DICT);
+  const { lang } = useLang();
+  const [channel, setChannel] = useState<CodeChannel>("sms");
   const [role, setRole] = useState<SignupRole>(() => roleFor(app));
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -54,7 +57,8 @@ function Signup() {
   const [codeFor, setCodeFor] = useState<string | null>(null); // E.164 the code was sent to
   const [busy, setBusy] = useState(false);
   const [wrong, setWrong] = useState<Role | null | undefined>(undefined);
-  // E1: customers register with their ID / resident card number and a photo of the card.
+  // E1 / #10: customers may give their ID / resident card / passport and a photo of it (optional).
+  const [addId, setAddId] = useState(false);
   const [idType, setIdType] = useState<IdType>("civil_id");
   const [idNo, setIdNo] = useState("");
   const [photos, setPhotos] = useState<IdPhotos>({});
@@ -70,11 +74,11 @@ function Signup() {
       return setWrong(res.wrong);
     }
     rememberSession(true, res.app);
-    if (role === "customer" && res.role === "customer") {
+    if (role === "customer" && res.role === "customer" && addId && (idNo.trim() || Object.values(photos).some(Boolean))) {
       // The account exists now: check the number (simulated) and upload the card photos. A problem
       // doesn't undo the sign-up; Account opens on the identity step instead.
       const db = supabase(res.app);
-      const idErr = await verifyIdNumber(db, idType, idNo);
+      const idErr = idNo.trim() ? await verifyIdNumber(db, idType, idNo) : null;
       const up = await saveIdentityPhotos(db, session.user.id, photos);
       if (idErr || up.problem) return router.replace(`/customer/account?identity=${idErr ? "number" : up.problem}`);
     }
@@ -89,12 +93,16 @@ function Signup() {
     if (!e164) return setError(t("badMobile"));
     const mail = email.trim().toLowerCase();
     if (mail && !isEmail(mail)) return setError(t("badEmail"));
-    if (role === "customer" && !desktop) {
+    if (role === "customer" && !desktop && addId && idNo.trim()) {
       const bad = idNoProblem(idType, idNo);
       if (bad) return setError(ti(bad));
-      if (!photos.id_front) return setError(ti("frontNeeded"));
     }
     setBusy(true);
+    const picked = await chooseChannel(e164, channel, lang);
+    if (picked) {
+      setBusy(false);
+      return setError(authError(t, picked));
+    }
     const scratch = scratchClient();
     const { data, error } = await scratch.auth.signUp({
       phone: e164,
@@ -116,6 +124,7 @@ function Signup() {
     <OtpStep
       phone={codeFor}
       desktop={desktop}
+      channel={channel}
       resend={() => supabase().auth.resend({ type: "sms", phone: codeFor })}
       onVerified={done}
       onChangeNumber={() => setCodeFor(null)}
@@ -147,6 +156,7 @@ function Signup() {
                 </div>
                 <small style={{ display: "block", marginTop: 6, fontSize: 12, opacity: 0.75 }}>{t("mobileHint")}</small>
               </div>
+              <ChannelPicker value={channel} onChange={setChannel} desktop />
               <div className="si-f">
                 <label htmlFor="suE">{role === "business" ? t("workEmailOpt") : t("emailOpt")}</label>
                 <div className="in">
@@ -219,6 +229,7 @@ function Signup() {
           <input id="phone" type="tel" required maxLength={20} autoComplete="tel" dir="ltr" placeholder="+968 9123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} />
           <small style={{ display: "block", marginTop: 4, fontSize: 12, color: "var(--muted)" }}>{t("mobileHint")}</small>
         </div>
+        <ChannelPicker value={channel} onChange={setChannel} desktop={false} />
         <div className="fld">
           <label htmlFor="email">{t("emailOpt")}</label>
           <input id="email" type="email" autoComplete="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -230,19 +241,29 @@ function Signup() {
         {role === "customer" && (
           <>
             <h4 className="ch-sec" style={{ margin: "16px 0 4px" }}>
-              {ti("idSec")}
+              {ti("idSecOpt")}
             </h4>
             <p className="mut small" style={{ marginTop: 0 }}>
-              {ti("idSecS")}
+              {ti("idSecOptS")}
             </p>
-            <IdentityFields
-              type={idType}
-              no={idNo}
-              photos={photos}
-              onType={setIdType}
-              onNo={setIdNo}
-              onPhoto={(k: DocKind, f) => setPhotos((p) => ({ ...p, [k]: f }))}
-            />
+            <div className="seg" role="radiogroup" aria-label={ti("idSecOpt")}>
+              <button type="button" role="radio" aria-checked={!addId} className={!addId ? "on" : ""} onClick={() => setAddId(false)}>
+                {ti("idAddLater")}
+              </button>
+              <button type="button" role="radio" aria-checked={addId} className={addId ? "on" : ""} onClick={() => setAddId(true)}>
+                {ti("idAddNow")}
+              </button>
+            </div>
+            {addId && (
+              <IdentityFields
+                type={idType}
+                no={idNo}
+                photos={photos}
+                onType={setIdType}
+                onNo={setIdNo}
+                onPhoto={(k: DocKind, f) => setPhotos((p) => ({ ...p, [k]: f }))}
+              />
+            )}
           </>
         )}
         <button className="cta" disabled={busy}>

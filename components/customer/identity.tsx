@@ -23,7 +23,22 @@ export const BUCKET = "identity";
 
 export const ID_DICT: Dict = {
   idSec: { en: "Your identity", ar: "هويتك" },
-  idSecS: { en: "NWS asks every account for a national ID or resident card. The check in this demo is simulated; your photos are kept privately for NWS to review.", ar: "تطلب نماء من كل حساب البطاقة المدنية أو بطاقة الإقامة. التحقق في هذا العرض محاكاة؛ وتُحفظ صورك بشكل خاص لتراجعها نماء." },
+  idSecS: { en: "Your Civil ID, resident card or passport. The check in this demo is simulated; your photos are kept privately for NWS to review.", ar: "بطاقتك المدنية أو بطاقة الإقامة أو جواز سفرك. التحقق في هذا العرض محاكاة؛ وتُحفظ صورك بشكل خاص لتراجعها نماء." },
+  idSecOpt: { en: "Your identity (optional)", ar: "هويتك (اختياري)" },
+  idSecOptS: {
+    en: "Add your Civil ID, resident card or passport now, or later in Account. NWS may ask for it for some orders, such as the subsidised household tariff or business accounts.",
+    ar: "أضف بطاقتك المدنية أو بطاقة الإقامة أو جواز سفرك الآن، أو لاحقاً من الحساب. قد تطلبها نماء لبعض الطلبات، مثل تعرفة المنازل المدعومة أو حسابات الأعمال.",
+  },
+  idAddNow: { en: "Add my ID now", ar: "أضف هويتي الآن" },
+  idAddLater: { en: "Add later in Account", ar: "أضفها لاحقاً من الحساب" },
+  idOptional: { en: "Optional: you can order without it.", ar: "اختياري: يمكنك الطلب بدونها." },
+  idNeeded: { en: "NWS needs it for {what}.", ar: "تحتاجها نماء من أجل {what}." },
+  scope_all: { en: "all orders", ar: "جميع الطلبات" },
+  scope_household: { en: "household orders (subsidised tariff)", ar: "طلبات المنازل (التعرفة المدعومة)" },
+  scope_business: { en: "business orders", ar: "طلبات الأعمال" },
+  scope_scheduled: { en: "scheduled orders", ar: "الطلبات المجدولة" },
+  scope_emergency: { en: "emergency orders", ar: "الطلبات الطارئة" },
+  passHint: { en: "Letters and digits, as printed in the passport", ar: "أحرف وأرقام كما هي مطبوعة في الجواز" },
   civil_id: { en: "Civil ID", ar: "البطاقة المدنية" },
   resident_card: { en: "Resident card", ar: "بطاقة الإقامة" },
   passport: { en: "Passport", ar: "جواز السفر" },
@@ -60,10 +75,31 @@ export const ID_DICT: Dict = {
   docsSaved: { en: "Photos uploaded — NWS will review them.", ar: "تم رفع الصور — ستراجعها نماء." },
 };
 
+/** The kinds of order NWS currently needs an ID for (app_settings IDENTITY_REQUIRED_FOR, 0037); [] = optional. */
+export function useIdentityRule(db: () => SupabaseClient) {
+  const [scopes, setScopes] = useState<string[]>([]);
+  useEffect(() => {
+    db()
+      .from("app_settings")
+      .select("value")
+      .eq("key", "IDENTITY_REQUIRED_FOR")
+      .maybeSingle<{ value: string }>()
+      .then(({ data }) => {
+        try {
+          const v = data ? (JSON.parse(data.value) as unknown) : [];
+          setScopes(Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+        } catch {
+          setScopes([]);
+        }
+      });
+  }, [db]);
+  return scopes;
+}
+
 /** Why the number can't be checked, as a dictionary key; null when it looks right. */
 export function idNoProblem(type: IdType, no: string): string | null {
   const v = no.trim();
-  if (type === "passport") return /^[A-Za-z0-9]{5,20}$/.test(v) ? null : "passNoBad";
+  if (type === "passport") return /^[A-Za-z0-9]{5,20}$/.test(v.replace(/[\s-]/g, "")) ? null : "passNoBad";
   return /^[0-9]{8}$/.test(v) ? null : "idNoBad";
 }
 
@@ -239,7 +275,7 @@ export function IdentityFields({
               value={no}
               onChange={(e) => onNo(e.target.value)}
             />
-            {type !== "passport" && <small className="idf-hint">{t("idNoHint")}</small>}
+            <small className="idf-hint">{t(type === "passport" ? "passHint" : "idNoHint")}</small>
           </div>
         </>
       )}

@@ -5,11 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { NamaLogo } from "@/components/icons";
 import { AUTH, authError } from "@/components/portal/authI18n";
-import { OtpStep } from "@/components/portal/OtpStep";
+import { ChannelPicker, chooseChannel, OtpStep, type CodeChannel } from "@/components/portal/OtpStep";
 import { admit, appHome, asApp, rememberSession, resetRedirect, type AppKey } from "@/components/portal/session";
 import { WrongAccount } from "@/components/portal/WrongAccount";
 import { Loading } from "@/components/Shell";
-import { LangToggle, useT } from "@/lib/i18n";
+import { LangToggle, useLang, useT } from "@/lib/i18n";
 import { formatPhone, parseContact } from "@/lib/phone";
 import { supabase } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
@@ -35,6 +35,8 @@ function Reset() {
   const app = asApp(params.get("app"));
   const router = useRouter();
   const t = useT(AUTH);
+  const { lang } = useLang();
+  const [channel, setChannel] = useState<CodeChannel>("sms");
   const [step, setStep] = useState<"loading" | "request" | "code" | "password">("loading");
   const [id, setId] = useState(() => formatPhone(params.get("phone")));
   const [phone, setPhone] = useState<string | null>(null);
@@ -75,7 +77,8 @@ function Reset() {
       if (error) return setError(authError(t, error));
       return setNote(t("resetEmailSent", { email: who.email }));
     }
-    const { error } = await sendCode(who.phone);
+    const picked = await chooseChannel(who.phone, channel, lang);
+    const { error } = picked ? { error: picked } : await sendCode(who.phone);
     setBusy(false);
     if (error) return setError(authError(t, error));
     setPhone(who.phone);
@@ -116,7 +119,7 @@ function Reset() {
           <LangToggle />
         </div>
         {step === "code" && phone ? (
-          <OtpStep phone={phone} desktop={false} resend={() => sendCode(phone)} onVerified={verified} onChangeNumber={() => setStep("request")} />
+          <OtpStep phone={phone} desktop={false} channel={channel} resend={() => sendCode(phone)} onVerified={verified} onChangeNumber={() => setStep("request")} />
         ) : step === "request" ? (
           <>
             <h2>{t("resetTitle")}</h2>
@@ -129,6 +132,7 @@ function Reset() {
                 <label htmlFor="rid">{t("idLabel")}</label>
                 <input id="rid" type="text" inputMode="tel" autoComplete="username" dir="ltr" required autoFocus placeholder={t("idHint")} value={id} onChange={(e) => setId(e.target.value)} />
               </div>
+              <ChannelPicker value={channel} onChange={setChannel} desktop={false} />
               <button className="cta" disabled={busy}>
                 {busy ? t("sending") : t("sendCode")}
               </button>

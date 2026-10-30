@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Empty, PageHead, ReadOnlyNote, Switch, useAudited } from "@/components/nws/admin/ui";
+import { IdentityRule } from "@/components/nws/CommsSettings";
 import { SET_ADMIN } from "@/components/nws/i18n/settingsAdmin";
 import { useStaff } from "@/components/nws/StaffContext";
 import { useFmt } from "@/components/portal/i18n";
@@ -255,6 +256,7 @@ export default function PrivacyPage() {
           </table>
         </div>
       </div>
+      <IdentityRule />
       {dialog}
     </>
   );

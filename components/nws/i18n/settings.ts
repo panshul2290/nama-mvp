@@ -20,6 +20,7 @@ export const SETTINGS: Dict = withCommon({
   navZones: { en: "Zones and geofences", ar: "المناطق والنطاقات الجغرافية" },
   navClusters: { en: "Clusters", ar: "المجموعات" },
   navEmergency: { en: "Emergency mode", ar: "وضع الطوارئ" },
+  navNotices: { en: "Service notices", ar: "إشعارات الخدمة" },
   navNotifications: { en: "Notifications", ar: "الإشعارات" },
   navPayments: { en: "Payments and settlements", ar: "المدفوعات والتسويات" },
   navFraud: { en: "Fraud detection", ar: "كشف الاحتيال" },

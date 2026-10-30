@@ -536,6 +536,31 @@ export const CX: Dict = {
   certCopied: { en: "Certificate details copied", ar: "تم نسخ تفاصيل الشهادة" },
   certShareText: { en: "Water quality certificate {c} — tanker {p}, tested {d} by {l}: {r}.", ar: "شهادة جودة المياه {c} — الصهريج {p}، فُحصت في {d} لدى {l}: {r}." },
   certBack: { en: "Back to the order", ar: "العودة إلى الطلب" },
+
+  // service-disruption notices (0038)
+  ntUntil: { en: "until {t}", ar: "حتى {t}" },
+  ntAreas: { en: "Affects {a}", ar: "تشمل {a}" },
+  ntAll: { en: "All areas", ar: "جميع المناطق" },
+
+  // complaint status, promise and escalation (0039)
+  tlReceived: { en: "Received", ar: "تم الاستلام" },
+  tlReview: { en: "In review", ar: "قيد المراجعة" },
+  tlResolved: { en: "Resolved", ar: "تم الحل" },
+  tlEscalated: { en: "Escalated to Nama 1442", ar: "مُصعّدة إلى نماء 1442" },
+  tlPromise: { en: "We’ll reply within {h} h, by {at}.", ar: "سنرد خلال {h} ساعة، قبل {at}." },
+  tlLate: { en: "We’re past our promised answer time. Sorry: you can escalate this to Nama 1442.", ar: "تجاوزنا موعد الرد الذي وعدنا به. نعتذر، يمكنك تصعيد الشكوى إلى نماء 1442." },
+  tlMet: { en: "Answered within our {h} h promise.", ar: "تم الرد ضمن وعدنا بـ {h} ساعة." },
+  tlMissed: { en: "Answered after our {h} h promise.", ar: "تم الرد بعد تجاوز وعدنا بـ {h} ساعة." },
+  escT: { en: "Escalate to Nama 1442", ar: "التصعيد إلى نماء 1442" },
+  escS: { en: "Not happy with how this is going? Escalating sends your case to the NWS complaints team with high priority.", ar: "غير راضٍ عن سير الشكوى؟ التصعيد يرسل قضيتك إلى فريق الشكاوى في نماء بأولوية عالية." },
+  escWhy: { en: "What’s wrong? (optional)", ar: "ما المشكلة؟ (اختياري)" },
+  escBtn: { en: "Escalate", ar: "تصعيد" },
+  escBusy: { en: "Escalating…", ar: "جارٍ التصعيد…" },
+  escDone: { en: "Escalated to Nama 1442. The complaints team will contact you.", ar: "تم التصعيد إلى نماء 1442. سيتواصل معك فريق الشكاوى." },
+  escAlready: { en: "You escalated this to Nama 1442 on {at}. The complaints team has it with high priority.", ar: "صعّدت هذه الشكوى إلى نماء 1442 في {at}. يتابعها فريق الشكاوى بأولوية عالية." },
+  call1442: { en: "Call Nama 1442", ar: "اتصل بنماء 1442" },
+  callNum: { en: "Nama call centre, 24 hours: {n}", ar: "مركز اتصال نماء على مدار الساعة: {n}" },
+  notNow: { en: "Not now", ar: "ليس الآن" },
 };
 
 /** t() for the customer dictionary, plus the current language and direction. */

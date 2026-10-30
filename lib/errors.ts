@@ -1,5 +1,9 @@
 // Maps the stable error codes raised by the database RPCs to UI copy.
 const MESSAGES: Record<string, string> = {
+  identity_required: "NWS needs your ID, resident card or passport for this order. Add it in Account → Your identity, then try again.",
+  invalid_channel: "Choose SMS or WhatsApp for the code.",
+  already_escalated: "This complaint is already escalated to Nama 1442.",
+  invalid_sender_id: "Sender IDs are 3–11 letters or digits, and transactional and marketing need different ones.",
   already_taken: "Already taken — another driver accepted this job first.",
   not_eligible: "This request doesn't match your tanker's type or capacity.",
   driver_busy: "Finish your current job before accepting another.",
@@ -54,7 +58,7 @@ const MESSAGES: Record<string, string> = {
   invalid_card: "Enter the last 4 digits of the card.",
   property_has_contract: "This property has an active contract. End the contract first.",
   invalid_id_type: "Choose an ID type.",
-  id_not_verified: "We couldn't verify that ID number. Civil ID and Resident card numbers have 8 digits.",
+  id_not_verified: "We couldn't verify that ID number. Civil ID and Resident card numbers have 8 digits; passport numbers 5–20 letters and digits.",
   invalid_category: "Choose what the problem is about.",
   chat_closed: "Messaging is only available while the job is in progress.",
   request_already_open: "You already have a request of this kind open.",
@@ -157,6 +161,10 @@ export function friendlyError(error: { message?: string } | null | undefined, la
 
 // Arabic for every code above (the web portals pass the viewer's language to friendlyError).
 const MESSAGES_AR: Record<string, string> = {
+  identity_required: "تحتاج نماء إلى بطاقتك المدنية أو بطاقة الإقامة أو جواز سفرك لهذا الطلب. أضفها من الحساب ← هويتك ثم حاول مجدداً.",
+  invalid_channel: "اختر الرسائل النصية أو واتساب لاستلام الرمز.",
+  already_escalated: "تم تصعيد هذه الشكوى إلى نماء 1442 بالفعل.",
+  invalid_sender_id: "معرّف المرسل من ٣ إلى ١١ حرفاً أو رقماً، ويجب أن يختلف معرّف الرسائل الخدمية عن التسويقية.",
   already_taken: "تم قبول هذه المهمة من سائق آخر.",
   not_eligible: "هذا الطلب لا يناسب نوع صهريجك أو سعته.",
   driver_busy: "أكمل مهمتك الحالية قبل قبول مهمة أخرى.",
@@ -210,7 +218,7 @@ const MESSAGES_AR: Record<string, string> = {
   invalid_card: "أدخل آخر 4 أرقام من البطاقة.",
   property_has_contract: "لهذا العقار عقد ساري. أنهِ العقد أولاً.",
   invalid_id_type: "اختر نوع الهوية.",
-  id_not_verified: "تعذّر التحقق من رقم الهوية. أرقام البطاقة المدنية وبطاقة الإقامة مكونة من 8 أرقام.",
+  id_not_verified: "تعذّر التحقق من رقم الهوية. أرقام البطاقة المدنية وبطاقة الإقامة مكونة من 8 أرقام، وأرقام جواز السفر من 5 إلى 20 حرفاً ورقماً.",
   invalid_category: "اختر موضوع المشكلة.",
   chat_closed: "المراسلة متاحة فقط أثناء تنفيذ المهمة.",
   request_already_open: "لديك طلب مفتوح من هذا النوع بالفعل.",

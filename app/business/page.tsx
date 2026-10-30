@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { ORDER_COLS, useBiz, type BizOrder, type BizProperty } from "@/components/business/BizContext";
 import { OPEN, slotText } from "@/components/business/data";
 import { BIZ } from "@/components/business/i18n";
+import { SiteNotices } from "@/components/business/Notices";
 import { StatusPill, TypeTag } from "@/components/OrderBits";
 import { useFmt } from "@/components/portal/i18n";
 import { Bars, Kpis, monthStart, useLive } from "@/components/portal/kit";
@@ -69,6 +70,7 @@ export default function BusinessDashboard() {
 
   return (
     <>
+      <SiteNotices />
       {error && (
         <div className="banner badb" role="alert">
           {t("errDash", { error })}

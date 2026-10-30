@@ -7,7 +7,7 @@ import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { dshort, gal } from "@/components/customer/fmt";
 import { usePrefs, useProperties, type Prefs } from "@/components/customer/hooks";
-import { IdentityFields, ID_DICT, idNoProblem, saveIdentityPhotos, useIdentityDocs, verifyIdNumber, type DocKind, type IdentityDoc, type IdPhotos, type IdType } from "@/components/customer/identity";
+import { IdentityFields, ID_DICT, idNoProblem, saveIdentityPhotos, useIdentityDocs, useIdentityRule, verifyIdNumber, type DocKind, type IdentityDoc, type IdPhotos, type IdType } from "@/components/customer/identity";
 import { SlaHistory } from "@/components/customer/sla";
 import { PropertySheet } from "@/components/customer/PropertySheet";
 import { Sheet, Toggle } from "@/components/customer/ui";
@@ -57,6 +57,7 @@ function Account() {
   const ti = useT(ID_DICT);
   const db = useCallback(() => supabase(), []);
   const { docs, urls, reload: reloadDocs } = useIdentityDocs(db, profile.id);
+  const idRule = useIdentityRule(db);
   const [propSheet, setPropSheet] = useState<Property | "new" | null>(params.get("add") === "property" ? "new" : null);
 
   // Identity fields are private columns: they come from my_private_profile(), not the table.
@@ -185,9 +186,14 @@ function Account() {
               · {ti("simulated")}
             </div>
           ) : (
-            <button className="cta sec" style={{ margin: 0 }} onClick={() => setSheet("id")}>
-              {t("idT")}
-            </button>
+            <>
+              <button className="cta sec" style={{ margin: 0 }} onClick={() => setSheet("id")}>
+                {t("idT")}
+              </button>
+              <small className="mut" style={{ display: "block", marginTop: 6 }}>
+                {idRule.length ? ti("idNeeded", { what: idRule.map((s) => ti(`scope_${s}`)).join(", ") }) : ti("idOptional")}
+              </small>
+            </>
           )}
           <IdDocsStatus docs={docs} urls={urls} onUpdate={() => setSheet("id")} />
         </div>
@@ -404,7 +410,6 @@ function IdDocsStatus({ docs, urls, onUpdate }: { docs: IdentityDoc[] | null; ur
 function IdSheet({
   userId,
   verified,
-  hasFront,
   existing,
   problem,
   onClose,
@@ -412,7 +417,8 @@ function IdSheet({
 }: {
   userId: string;
   verified: boolean;
-  hasFront: boolean;
+  /** Whether a card photo is on file (photos are optional since 0037). */
+  hasFront?: boolean;
   existing: Partial<Record<DocKind, string>>;
   problem: string | null;
   onClose: () => void;
@@ -432,7 +438,6 @@ function IdSheet({
       const bad = idNoProblem(type, no);
       if (bad) return setError(ti(bad));
     }
-    if (!hasFront && !photos.id_front) return setError(ti("frontNeeded"));
     setBusy(true);
     const db = supabase();
     if (!verified) {

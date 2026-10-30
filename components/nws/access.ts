@@ -22,6 +22,7 @@ export const SECTION_ROLES: Record<string, StaffRole[]> = {
   "/nws/settings/zones": ["admin"],
   "/nws/settings/clusters": ["admin", "permit_officer", "operator", "viewer"],
   "/nws/settings/emergency": ["admin", "operator"],
+  "/nws/settings/notices": ["admin", "operator"],
   "/nws/settings/notifications": ["admin"],
   "/nws/settings/payments": ["admin", "finance"],
   "/nws/settings/fraud": ["admin", "operator", "finance"],

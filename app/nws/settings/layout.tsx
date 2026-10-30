@@ -26,6 +26,7 @@ export const SETTINGS_NAV: { group: string; items: { href: string; label: string
       { href: "/nws/settings/zones", label: "navZones" },
       { href: "/nws/settings/clusters", label: "navClusters" },
       { href: "/nws/settings/emergency", label: "navEmergency" },
+      { href: "/nws/settings/notices", label: "navNotices" },
       { href: "/nws/settings/notifications", label: "navNotifications" },
     ],
   },

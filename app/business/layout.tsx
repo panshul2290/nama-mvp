@@ -76,6 +76,7 @@ export default function BusinessLayout({ children }: { children: React.ReactNode
     { href: "/business/invoices", label: t("tInvoices") },
     { href: "/business/team", label: t("tTeam") },
     { href: "/business/sla", label: t("tSla") },
+    { href: "/business/complaints", label: t("tComplaints") },
   ]
     .filter((t) => role !== "finance" || !financeHides.includes(t.href))
     // Members limited to some sites (Team → Sites): invoices are organisation-wide.

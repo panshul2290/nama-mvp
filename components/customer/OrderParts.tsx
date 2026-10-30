@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase/client";
 import type { Order, Pod } from "@/lib/types";
 import { useCx } from "./i18n";
 import { amt3, ddate, dshort, dtshort, gal, omr3, tshort } from "./fmt";
+import { RefundPolicy } from "./RefundPolicy";
 import { slotOptions } from "./slots";
 import { RuleFlag, Sheet } from "./ui";
 
@@ -289,6 +290,7 @@ export function CancelSheet({ order, feeOmr, feeStatus, onClose, onDone }: { ord
       ) : (
         <p>{t("cancelFree")}</p>
       )}
+      <RefundPolicy part="cancel" fee={omr3(Math.min(feeOmr, Number(order.total)), lang)} />
       {error && <div className="banner badb">{error}</div>}
       <button className="cta danger" disabled={busy} onClick={cancel}>
         {busy ? t("cancelling") : t("cancelYes")}
