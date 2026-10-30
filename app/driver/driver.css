@@ -88,8 +88,11 @@
 }
 .d-photo img { width: 100%; height: 100%; object-fit: cover; }
 /* Take photo / Choose from gallery: the hidden file input covers its label button (web fallback). */
-.d-photo-btns { margin: 0 0 6px; }
-.d-photo-btns > * { flex: 1 1 0; position: relative; justify-content: center; }
+/* Two equal columns, both buttons the same height (the camera one has an icon; a long Arabic label may wrap). */
+.d-photo-btns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; gap: 8px; margin: 0 0 6px; }
+.d-photo-btns > * { position: relative; justify-content: center; min-height: 46px; box-sizing: border-box; margin: 0; line-height: 1.2; white-space: normal; text-align: center; }
+.d-photo-btns > .sm { min-height: 38px; }
+.d-photo-btns .ic { flex: none; }
 .d-photo-btns > label[aria-disabled="true"] { opacity: .55; pointer-events: none; }
 .d-file { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
 .d-sig {

@@ -6,7 +6,7 @@ import { useCustomer } from "@/components/CustomerContext";
 import { useCx } from "@/components/customer/i18n";
 import { dshort, gal, windowText } from "@/components/customer/fmt";
 import { useEmergency, useNow, useOnline, useProperties } from "@/components/customer/hooks";
-import { Progress5, StatusTag, useUnread } from "@/components/customer/ui";
+import { fillPending, Progress5, StatusTag, statusKey, useUnread } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
 import { firstName } from "@/lib/format";
 import { LangToggle } from "@/lib/i18n";
@@ -134,7 +134,7 @@ export default function CustomerHome() {
           </small>
           <Progress5 order={o} />
           <span className="row">
-            <strong>{o.status === "scheduled" ? windowText(o.slot_start, o.slot_end, lang) : t(`st_${o.status}`)}</strong>
+            <strong>{o.status === "scheduled" ? windowText(o.slot_start, o.slot_end, lang) : t(fillPending(o) ? "st_toFill" : statusKey(o))}</strong>
             <span className="lk">{t("track")}</span>
           </span>
         </Link>

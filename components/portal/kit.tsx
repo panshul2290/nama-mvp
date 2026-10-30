@@ -4,6 +4,7 @@ import { createContext, use, useCallback, useEffect, useRef, useState } from "re
 import { saveCsv, type CsvCell } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
 import { muscatDayStart, muscatWeekStart } from "@/lib/sla";
+import { omanDate, omanDateTime, omanDay, omanDayEndIso, omanTime } from "@/lib/time";
 import { supabase } from "@/lib/supabase/client";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
@@ -20,18 +21,16 @@ export const omr = (v: number | string | null | undefined) =>
 export const n3 = (v: number | string | null | undefined) => num(v).toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 export const gal = (v: number | null | undefined) => (v ?? 0).toLocaleString("en-US");
 
-export const fmtDate = (iso: string | null | undefined) =>
-  iso ? new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
-export const fmtShort = (iso: string | null | undefined) =>
-  iso ? new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—";
-export const fmtDateTime = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-export const fmtTime = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—");
+// Muscat time whatever the viewer's time zone (lib/time); plain "YYYY-MM-DD" dates are shown as they are.
+export const fmtDate = (iso: string | null | undefined) => omanDate(iso) || "—";
+export const fmtShort = (iso: string | null | undefined) => omanDay(iso) || "—";
+export const fmtDateTime = (iso: string | null | undefined) => omanDateTime(iso) || "—";
+export const fmtTime = (iso: string | null | undefined) => omanTime(iso) || "—";
 
 const DAY = 86_400_000;
 /** Whole days from now until a date (negative = in the past). */
 export function daysUntil(iso: string, now = Date.now()) {
-  const t = Date.parse(iso.length === 10 ? `${iso}T23:59:59` : iso);
+  const t = Date.parse(iso.length === 10 ? omanDayEndIso(iso) : iso); // a plain date runs to midnight in Muscat
   return Math.ceil((t - now) / DAY);
 }
 

@@ -8,6 +8,7 @@ import { StatusPill, TypeTag } from "@/components/OrderBits";
 import { Dialog, fmtDateTime, gal, n3, omr, useAction, useLive } from "@/components/portal/kit";
 import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
+import { addDaysKey } from "@/lib/time";
 import { ref } from "@/lib/types";
 
 type Loc = { order_id: string; lat: number; lng: number };
@@ -285,11 +286,7 @@ function BulkOrder({ sites, onPlaced }: { sites: BizProperty[]; onPlaced: () => 
   const [type, setType] = useState<ServiceType>("DW");
   const [gallons, setGallons] = useState(5000);
   const [count, setCount] = useState(2);
-  const [date, setDate] = useState(() => {
-    const t = new Date(`${muscatToday()}T12:00:00Z`);
-    t.setUTCDate(t.getUTCDate() + 1);
-    return t.toISOString().slice(0, 10);
-  });
+  const [date, setDate] = useState(() => addDaysKey(muscatToday(), 1)); // tomorrow in Muscat
   const [win, setWin] = useState<WindowKey>("morning");
   const [po, setPo] = useState("");
   const [note, setNote] = useState("");

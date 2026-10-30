@@ -80,4 +80,27 @@ export async function gpsSuite(t: Target, r: Reporter) {
   } else {
     r.skip("REST API returns location_stale", "PGlite has no PostgREST; covered by the Supabase run");
   }
+
+  // "IVMS signal lost" closes itself when a fresh fix arrives (0025).
+  const signal = async () =>
+    (await t.admin<{ id: number; state: string; acted_at: string | null; action_note: string | null }>(
+      "select id, state, acted_at, action_note from alerts where tanker_id = $1 and type = 'IVMS signal lost' order by id desc limit 1",
+      [w.tk.D1],
+    ))[0];
+  const raiseSignal = () =>
+    t.admin("select raise_alert($1::uuid, null, 'IVMS signal lost', 'med', 'TEST online with no GPS for over 5 minutes', null, null, 'signal:' || $1::text)", [w.tk.D1]);
+  await t.admin("update tankers set last_fix_at = now() - interval '10 minutes' where id = $1", [w.tk.D1]);
+  await raiseSignal();
+  r.check("a signal-lost alert is open for the silent tanker", (await signal())?.state === "open");
+  await t.admin("update tankers set last_fix_at = now() - interval '8 minutes' where id = $1", [w.tk.D1]);
+  r.check("a fix older than 5 minutes leaves it open", (await signal())?.state === "open");
+  await t.as(D1.id, "select report_location(23.599, 58.199, 7, now())");
+  const back = await signal();
+  r.check("report_location with a fresh fix resolves it (acted_at and a note set)", back?.state === "resolved" && back.acted_at !== null && /GPS signal restored/.test(back.action_note ?? ""), back);
+  await raiseSignal();
+  const reopened = await signal();
+  r.check("a later loss raises a new alert (the resolved one no longer blocks the dedupe key)", reopened?.state === "open" && reopened.id !== back?.id, reopened);
+  await t.admin("update alerts set state = 'acknowledged' where id = $1", [reopened.id]);
+  await t.admin("update tankers set last_fix_at = now() where id = $1", [w.tk.D1]);
+  r.check("an acknowledged alert is resolved too when the fix is stored by another path (IVMS feed)", (await signal())?.state === "resolved");
 }

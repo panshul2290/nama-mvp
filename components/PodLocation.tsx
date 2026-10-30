@@ -1,9 +1,10 @@
 "use client";
 
 import { coords, mapLink, metres, podCheck, POD_FAR_M } from "@/lib/podLocation";
+import { omanTime } from "@/lib/time";
 import type { Pod } from "@/lib/types";
 
-const time = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Muscat" }) : null);
+const time = (iso: string | null | undefined) => omanTime(iso) || null;
 
 /**
  * Where a proof of delivery was recorded (staff and business screens, English): the photo's fix and

@@ -8,6 +8,7 @@ import { saveCsv, saveTable, TABLE_FORMATS, type CsvCell, type TableFormat } fro
 import { friendlyError } from "@/lib/errors";
 import { servedAt, slaDue } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
+import { omanTime } from "@/lib/time";
 import type { OrderStatus } from "@/lib/types";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
@@ -20,7 +21,7 @@ export const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArr
 export const n3 = (v: number | string | null | undefined) => Number(v ?? 0).toFixed(3);
 export const omr3 = (v: number | string | null | undefined) => `${n3(v)} OMR`;
 export const pct = (num: number, den: number) => (den ? `${Math.round((num / den) * 1000) / 10}%` : "—");
-export const hm = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—");
+export const hm = (iso: string | null | undefined) => omanTime(iso) || "—";
 
 /** "4 min ago" from an ISO time and a ticking clock (keeps render pure). */
 export function ago(iso: string | null | undefined, now: number) {

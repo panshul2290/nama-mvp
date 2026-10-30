@@ -9,6 +9,7 @@ import type { Order, OrderStatus } from "@/lib/types";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 import { useCx } from "./i18n";
 import { amt3, omr3, tshort } from "./fmt";
+import { fillPending, statusKey, type TagOrder } from "./status";
 
 /** Bottom sheet over the whole phone frame (portalled, so it can be opened from anywhere). Only ever opened by a tap, never in the first render. */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -47,10 +48,11 @@ export const STATUS_TONE: Record<OrderStatus, "act" | "ok" | "warn" | "bad"> = {
   cancelled: "bad",
 };
 
-export function StatusTag({ order }: { order: Pick<Order, "status" | "service_type" | "payment_status"> }) {
+export { fillPending, statusKey };
+
+export function StatusTag({ order }: { order: TagOrder }) {
   const { t } = useCx();
-  const key = order.status === "cancelled" && order.payment_status === "failed" ? "st_payfail" : order.status === "delivered" && order.service_type === "WW" ? "st_completed" : `st_${order.status}`;
-  return <span className={`st ${STATUS_TONE[order.status]}`}>{t(key)}</span>;
+  return <span className={`st ${STATUS_TONE[fillPending(order) ? "accepted" : order.status]}`}>{t(statusKey(order))}</span>;
 }
 
 export function SvcTag({ type }: { type: ServiceType }) {

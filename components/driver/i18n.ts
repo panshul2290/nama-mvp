@@ -5,10 +5,11 @@
 import { useCallback, useMemo } from "react";
 import { errorCode, friendlyError } from "@/lib/errors";
 import { localDigits, useLang, type Dict } from "@/lib/i18n";
+import { omanDate, omanTime, omanToday } from "@/lib/time";
 import { ref } from "@/lib/types";
 
 /** Today's date in Muscat (YYYY-MM-DD), matching shift_checks.day on the server. */
-export const muscatDay = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Muscat" });
+export const muscatDay = () => omanToday();
 
 export function useFmt() {
   const { lang } = useLang();
@@ -23,8 +24,9 @@ export function useFmt() {
       money,
       omr: (v: number | string) => `${money(v)} ${ar ? "ر.ع." : "OMR"}`,
       km: (km: number) => (km < 1 ? `${d(Math.round(km * 1000))} ${ar ? "م" : "m"}` : `${d(km.toFixed(1))} ${ar ? "كم" : "km"}`),
-      date: (iso: string) => new Date(iso).toLocaleDateString(loc, { day: "numeric", month: "short", year: "numeric" }),
-      time: (iso: string) => new Date(iso).toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" }),
+      // Muscat time whatever the phone is set to.
+      date: (iso: string) => omanDate(iso, loc),
+      time: (iso: string) => omanTime(iso, loc),
       order: (n: number | string) => d(ref.order(n)),
     };
   }, [lang]);

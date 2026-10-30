@@ -2,6 +2,7 @@
 
 import { createContext, use, useCallback, useState } from "react";
 import type { Profile, StaffRole } from "@/lib/types";
+import { omanDate, omanDateTime } from "@/lib/time";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
 export type Staff = Profile & { staff_role: StaffRole };
@@ -98,6 +99,6 @@ export function ReasonDialog({
   );
 }
 
-export const fmtDateTime = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-export const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—");
+// Muscat time whatever the viewer's time zone (lib/time).
+export const fmtDateTime = (iso: string | null | undefined) => omanDateTime(iso) || "—";
+export const fmtDate = (iso: string | null | undefined) => omanDate(iso) || "—";

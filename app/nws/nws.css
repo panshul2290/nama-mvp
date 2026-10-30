@@ -108,6 +108,8 @@
 .nws .kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 14px; font-size: 13.5px; margin: 0; padding: 4px 16px 16px; }
 .nws .kv dt { color: var(--muted); }
 .nws .kv dd { margin: 0; font-weight: 600; }
+/* Proof-of-delivery and complaint photos (NWS, Company and Business): fit the card whatever the camera's resolution. */
+.nws .pod-img { display: block; width: auto; max-width: 100%; height: auto; max-height: 320px; object-fit: contain; border-radius: 10px; border: 1px solid var(--line); background: var(--sunk); }
 .nws .tl { list-style: none; padding: 4px 16px 8px; margin: 0; }
 .nws .tl li { position: relative; padding: 0 0 14px 24px; font-size: 13.5px; color: var(--muted); }
 .nws .tl li::before { content: ""; position: absolute; left: 5px; top: 6px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--line); background: var(--panel); }

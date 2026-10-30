@@ -1,8 +1,8 @@
 // Locale-aware display helpers for the customer app. Times are shown in
 // Asia/Muscat (the service's time zone) whatever the phone is set to.
 import { localDigits, type Lang } from "@/lib/i18n";
+import { TZ } from "@/lib/time";
 
-export const TZ = "Asia/Muscat";
 const locale = (l: Lang) => (l === "ar" ? "ar-OM" : "en-GB");
 
 /** 12.345 → "12.345 OMR" / "١٢٫٣٤٥ ر.ع." */

@@ -12,6 +12,7 @@ import { orderNo } from "@/lib/format";
 import { type ServiceType } from "@/lib/pricing";
 import { muscatDayStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
+import { omanDayEndIso, omanDayStartIso } from "@/lib/time";
 import type { OrderStatus } from "@/lib/types";
 
 type Row = {
@@ -61,8 +62,8 @@ export default function OrdersPage() {
     const st = GROUPS.find((g) => g[0] === group)?.[2];
     if (st) query = query.in("status", st);
     if (type) query = query.eq("service_type", type);
-    if (from) query = query.gte("created_at", new Date(`${from}T00:00:00`).toISOString());
-    if (to) query = query.lte("created_at", new Date(`${to}T23:59:59.999`).toISOString());
+    if (from) query = query.gte("created_at", omanDayStartIso(from));
+    if (to) query = query.lte("created_at", omanDayEndIso(to));
     if (area.trim()) query = query.ilike("area", `%${area.trim()}%`);
     const n = q.trim().toUpperCase().replace(/^TO-?/, "");
     if (n) {

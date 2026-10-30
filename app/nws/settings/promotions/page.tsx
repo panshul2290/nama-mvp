@@ -5,6 +5,7 @@ import { Empty, int, PageHead, ReadOnlyNote, Switch, useAudited } from "@/compon
 import { fmtDate, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { friendlyError } from "@/lib/errors";
 import { supabase } from "@/lib/supabase/client";
+import { omanToday } from "@/lib/time";
 import type { Promotion } from "@/lib/types";
 
 type Loyalty = { points_per_omr: number; redeem_points: number; redeem_omr: number };
@@ -82,7 +83,7 @@ export default function PromotionsPage() {
                 {!promos && <Empty cols={7}>Loading…</Empty>}
                 {promos?.length === 0 && <Empty cols={7}>No campaigns yet.</Empty>}
                 {promos?.map((p) => {
-                  const expired = p.valid_to != null && p.valid_to < new Date().toLocaleDateString("en-CA");
+                  const expired = p.valid_to != null && p.valid_to < omanToday();
                   return (
                     <tr key={p.code}>
                       <td><b>{p.code}</b><small style={{ display: "block" }}>{p.label}</small></td>

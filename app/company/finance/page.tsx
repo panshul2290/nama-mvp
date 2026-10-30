@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useCompany, useCompanyTx, useFleet } from "@/components/company/CompanyContext";
 import { Bars, Columns, Dialog, Kpis, St, dayStart, downloadCsv, fmtDate, fmtDateTime, n3, omr, useAction, useLive, weekStart } from "@/components/portal/kit";
 import { supabase } from "@/lib/supabase/client";
+import { fmtOman, omanToday } from "@/lib/time";
 import { PENALTY_STATE } from "@/lib/labels";
 import { ref, type Penalty } from "@/lib/types";
 
@@ -52,12 +53,10 @@ export default function CompanyFinance() {
     .map((t) => ({ label: t.plate, value: Math.round(sum(thisWeek.filter((x) => x.tanker_id === t.id), ["earning", "tip", "cancel_fee"]) * 1000) / 1000 }))
     .sort((a, b) => b.value - a.value);
   const days = Array.from({ length: 7 }, (_, i) => {
-    const d = dayStart();
-    d.setDate(d.getDate() - (6 - i));
-    const from = d.getTime();
+    const from = dayStart().getTime() - (6 - i) * 86_400_000; // Muscat days (no DST)
     const to = from + 86_400_000;
     return {
-      label: d.toLocaleDateString("en-GB", { weekday: "short" }),
+      label: fmtOman(from, { weekday: "short" }),
       value: sum(tx.filter((x) => x.bucket === "earnings" && Date.parse(x.created_at) >= from && Date.parse(x.created_at) < to), ["earning", "tip", "cancel_fee"]),
     };
   });
@@ -69,7 +68,7 @@ export default function CompanyFinance() {
   const bank = company.bank_name ? `${company.bank_name}${iban ? ` ${iban}` : ""}` : "your bank (add details with NWS finance)";
 
   function exportCsv() {
-    downloadCsv(`statement-${company.cr_no}-${new Date().toISOString().slice(0, 10)}.csv`, [
+    downloadCsv(`statement-${company.cr_no}-${omanToday()}.csv`, [
       ["Date", "Type", "Account", "Tanker", "Reference", "Amount (OMR)"],
       ...statement.map((x) => [new Date(x.created_at).toISOString(), KIND_LABEL[x.kind] ?? x.kind, x.bucket === "fill_credit" ? "Filling credit" : "Earnings", plate(x.tanker_id), x.memo, Number(x.amount).toFixed(3)]),
     ]);

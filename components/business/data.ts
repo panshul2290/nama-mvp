@@ -1,6 +1,7 @@
 // Business portal helpers: slot windows (Asia/Muscat), ETA text and labels.
 import { distanceKm } from "@/lib/geo";
 import { slaDue } from "@/lib/sla";
+import { fmtOman, omanToday } from "@/lib/time";
 import type { OrderStatus } from "@/lib/types";
 
 export type WindowKey = "morning" | "afternoon" | "evening";
@@ -12,7 +13,7 @@ export const WINDOWS: Record<WindowKey, { label: string; start: string; end: str
 
 /** Today's date in Muscat as YYYY-MM-DD. */
 export function muscatToday(now = new Date()): string {
-  return new Date(now.getTime() + 4 * 3_600_000).toISOString().slice(0, 10);
+  return omanToday(now);
 }
 
 /** Slot start/end as ISO strings with the Muscat offset (+04:00, no DST) and a label. */
@@ -20,7 +21,7 @@ export function slotFor(date: string, w: WindowKey) {
   const win = WINDOWS[w];
   const start = `${date}T${win.start}:00+04:00`;
   const end = `${date}T${win.end}:00+04:00`;
-  const day = new Date(`${date}T12:00:00+04:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Muscat" });
+  const day = fmtOman(date, { weekday: "short", day: "numeric", month: "short" });
   return { start, end, label: `${day} · ${win.text}` };
 }
 

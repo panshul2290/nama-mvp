@@ -113,12 +113,11 @@
 .nws .msg small { display: block; color: var(--muted); font-size: 11.5px; }
 .nws .sendrow { display: flex; gap: 8px; padding: 0 16px 16px; }
 .nws .sendrow .in { flex: 1; }
-.nws .pod-img { display: block; max-width: 100%; max-height: 240px; border-radius: 10px; border: 1px solid var(--line); }
 .nws .sig { background: #fff; border-radius: 10px; padding: 6px; max-width: 280px; }
 .nws .sig svg { width: 100%; height: auto; display: block; }
 .nws .tl li.int { color: var(--warn); }
 .nws .tl li.int::before { background: var(--warn); border-color: var(--warn); }
-.nws .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.nws .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .nws .pickrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); cursor: pointer; text-align: left; color: var(--ink); width: 100%; font: inherit; font-size: 13px; }
 .nws .pickrow.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .nws .picklist { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; margin-bottom: 12px; }

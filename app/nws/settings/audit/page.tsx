@@ -5,6 +5,7 @@ import { downloadCsv } from "@/components/nws/admin/ui";
 import { fmtDateTime } from "@/components/nws/StaffContext";
 import { friendlyError } from "@/lib/errors";
 import { supabase } from "@/lib/supabase/client";
+import { omanDayEndIso, omanDayStartIso } from "@/lib/time";
 
 const PAGE = 300;
 
@@ -28,8 +29,8 @@ export default function AuditLogPage() {
     const term = q.trim().replace(/[%,()]/g, " ");
     if (term) query = query.or(`actor_email.ilike.%${term}%,target_id.ilike.%${term}%,reason.ilike.%${term}%,action.ilike.%${term}%`);
     if (action) query = query.like("action", `${action}%`);
-    if (from) query = query.gte("at", new Date(`${from}T00:00:00`).toISOString());
-    if (to) query = query.lte("at", new Date(`${to}T23:59:59.999`).toISOString());
+    if (from) query = query.gte("at", omanDayStartIso(from));
+    if (to) query = query.lte("at", omanDayEndIso(to));
     const { data, error } = await query;
     setErr(error ? friendlyError(error) : null);
     setRows((data ?? []) as Row[]);

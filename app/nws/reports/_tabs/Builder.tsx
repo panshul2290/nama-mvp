@@ -7,6 +7,7 @@ import { saveTable, type CsvCell } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
 import { SERVICE_LABEL, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
+import { fmtOman, omanStamp } from "@/lib/time";
 import { CHANNEL_LABEL, companyName, ORDER_COLS, RANGES, ROW_CAP, zoneName, type ORow, type Ref } from "./data";
 
 type Dataset = "Orders" | "Revenue" | "Complaints" | "Ratings" | "Fleet" | "Payments" | "Permits";
@@ -238,7 +239,7 @@ export default function Builder({ refData }: { refData: Ref | null }) {
                 {lines?.length === 0 && <Empty cols={COLUMNS[ds].length + 1}>No rows in this range.</Empty>}
                 {lines?.map(([k, v]) => (
                   <tr key={k}>
-                    <td>{g === "day" ? new Date(`${k}T12:00:00+04:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Muscat" }) : k}</td>
+                    <td>{g === "day" ? fmtOman(k, { weekday: "short", day: "numeric", month: "short" }) : k}</td>
                     {v.map((x, i) => <td key={i} className="num">{cell(x, i)}</td>)}
                   </tr>
                 ))}
@@ -313,7 +314,7 @@ function printTable(title: string, rows: CsvCell[][]) {
   if (!w) return;
   w.document.write(
     `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font:13px system-ui,sans-serif;margin:24px}h1{font-size:18px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:5px 8px;text-align:left}td+td,th+th{text-align:right}tr:last-child td{font-weight:700}</style></head><body>` +
-      `<h1>Nama Water Services — ${esc(title)}</h1><p>Generated ${esc(new Date().toLocaleString())}</p><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>` +
+      `<h1>Nama Water Services — ${esc(title)}</h1><p>Generated ${esc(omanStamp(Date.now()))} (Muscat time)</p><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>` +
       body.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("") +
       `</tbody></table><script>window.onload=()=>{window.print()}</script></body></html>`,
   );

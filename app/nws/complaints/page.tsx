@@ -9,6 +9,7 @@ import { fmtDateTime, useStaff } from "@/components/nws/StaffContext";
 import { Loading } from "@/components/Shell";
 import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
+import { muscatDayStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
 
 type State = "new" | "assigned" | "escalated" | "resolved";
@@ -127,7 +128,8 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
   const label = (cat: string) => slas.find((s) => s.category === cat)?.label ?? cat.replace(/_/g, " ");
   const selected = all.find((c) => c.id === sel) ?? null;
   const canLog = can("complaints_agent", "operator");
-  const today = all.filter((c) => now - Date.parse(c.created_at) < 86_400_000).length;
+  const midnight = muscatDayStart(now).getTime(); // "today" is the Muscat day
+  const today = all.filter((c) => Date.parse(c.created_at) >= midnight).length;
 
   return (
     <>
@@ -135,7 +137,7 @@ function CasesTab({ cases, slas, sel, setSel, reload }: { cases: Case[] | null; 
         <Kpi label="Open cases" value={cases ? all.filter((c) => c.state !== "resolved").length : "—"} sub={`${all.filter((c) => c.state === "new").length} new, not yet assigned`} tone="warn" />
         <Kpi label="Past SLA" value={cases ? all.filter(overdue).length : "—"} sub="open cases over their resolution time" tone={all.some(overdue) ? "bad" : "ok"} />
         <Kpi label="Escalated" value={cases ? all.filter((c) => c.state === "escalated").length : "—"} sub="with a supervisor" />
-        <Kpi label="Opened today" value={cases ? today : "—"} sub={`${all.filter((c) => c.channel === "call_centre" && now - Date.parse(c.created_at) < 86_400_000).length} from the call centre`} />
+        <Kpi label="Opened today" value={cases ? today : "—"} sub={`${all.filter((c) => c.channel === "call_centre" && Date.parse(c.created_at) >= midnight).length} from the call centre`} />
       </div>
       <div className="two">
         <div className="panel">

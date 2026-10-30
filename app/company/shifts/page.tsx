@@ -5,6 +5,7 @@ import { tankerOf, useFleet } from "@/components/company/CompanyContext";
 import { St, useAction, useLive } from "@/components/portal/kit";
 import { SHIFT_KEYS, shiftHours, type Shift } from "@/lib/shifts";
 import { supabase } from "@/lib/supabase/client";
+import { omanToday, omanWeekday } from "@/lib/time";
 
 type Avail = { driver_id: string; weekday: number; available: boolean; shift: Shift };
 type Emergency = { on: boolean; zone: string | null; reason: string | null };
@@ -13,7 +14,7 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const SHIFT_NAME: Record<Shift, string> = { day: "Day", evening: "Evening", night: "Night" };
 
 // Today's weekday in Muscat (0 = Sunday), as the database stores it.
-const muscatWeekday = () => new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Muscat" })).getDay();
+const muscatWeekday = () => omanWeekday();
 
 export default function CompanyShifts() {
   const fleet = useFleet("shifts");
@@ -24,7 +25,7 @@ export default function CompanyShifts() {
 
   const load = useCallback(async () => {
     const db = supabase();
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Muscat" });
+    const today = omanToday();
     const [a, s, e] = await Promise.all([
       db.from("driver_availability").select("driver_id, weekday, available, shift"),
       db.from("shift_checks").select("driver_id").eq("day", today),

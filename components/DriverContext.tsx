@@ -16,6 +16,7 @@ import { getCurrentPosition, keepScreenOn, wakeLockSupported, watchPosition, typ
 import { useT } from "@/lib/i18n";
 import { buildDemoRoute, DEMO_MODE, positionAt, travelled, type SimRoute } from "@/lib/simulator";
 import { supabase } from "@/lib/supabase/client";
+import { muscatDayStart } from "@/lib/sla";
 import { MAX_ACCURACY_M, MOVING_INTERVAL_MS, shouldSend, usable, type Fix, type Sent } from "@/lib/tracking";
 import type { LngLat, Notification, OpenRequest, Order, OrderLocation, Profile, Site, Tanker } from "@/lib/types";
 
@@ -151,8 +152,7 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   }, []);
 
   const loadToday = useCallback((driverId: string) => {
-    const midnight = new Date();
-    midnight.setHours(0, 0, 0, 0);
+    const midnight = muscatDayStart(); // today's earnings: since 00:00 Muscat, whatever the phone's zone
     supabase()
       .from("orders")
       .select("driver_earnings, tip")

@@ -14,6 +14,7 @@ import { friendlyError } from "@/lib/errors";
 import { localDigits } from "@/lib/i18n";
 import { ruleNumber, VOLUME_PRESETS, type ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
+import { omanDateKey } from "@/lib/time";
 import type { Company, Contract } from "@/lib/types";
 
 const TYPES: ServiceType[] = ["DW", "WW", "TE"];
@@ -50,9 +51,9 @@ function ContractWizard() {
   const [freq, setFreq] = useState<Contract["frequency"]>("weekly");
   const [plan, setPlan] = useState<Contract["plan"]>(p0 === "yearly" ? "yearly" : "monthly");
   const [months, setMonths] = useState(p0 === "yearly" ? 12 : 1);
-  const minDate = new Date(now + 4 * 3600_000 + 86_400_000).toISOString().slice(0, 10);
+  const minDate = omanDateKey(now, 1); // Muscat dates
   const [start, setStart] = useState<string | null>(null);
-  const startDate = start ?? new Date(now + 4 * 3600_000 + 2 * 86_400_000).toISOString().slice(0, 10);
+  const startDate = start ?? omanDateKey(now, 2);
   const [slot, setSlot] = useState<Contract["slot"]>("morning");
   const [companies, setCompanies] = useState<Company[] | null>(null);
   const [company, setCompany] = useState<string | null>(null);

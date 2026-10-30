@@ -6,6 +6,7 @@ import { NamaLogo } from "@/components/icons";
 import { LangProvider, useLang } from "@/lib/i18n";
 import { signOutApp } from "@/components/portal/session";
 import { currentApp, supabase } from "@/lib/supabase/client";
+import { fmtOman } from "@/lib/time";
 
 function appTitle(path: string): [string, string] {
   if (path.startsWith("/customer")) return ["Customer app", "For households · iOS and Android"];
@@ -16,7 +17,7 @@ function appTitle(path: string): [string, string] {
 function Clock() {
   const [now, setNow] = useState<string | null>(null);
   useEffect(() => {
-    const tick = () => setNow(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: false }));
+    const tick = () => setNow(fmtOman(Date.now(), { hour: "numeric", minute: "2-digit", hourCycle: "h23" })); // Muscat time, like the apps
     const first = setTimeout(tick, 0);
     const t = setInterval(tick, 20_000);
     return () => {

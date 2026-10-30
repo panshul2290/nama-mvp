@@ -5,6 +5,7 @@ import { Empty, PageHead, ReadOnlyNote, useAudited } from "@/components/nws/admi
 import { ReasonDialog, STAFF_ROLE_LABEL, useStaff } from "@/components/nws/StaffContext";
 import { friendlyError } from "@/lib/errors";
 import { supabase } from "@/lib/supabase/client";
+import { fmtOman } from "@/lib/time";
 import type { StaffRole } from "@/lib/types";
 
 type StaffRow = { id: string; full_name: string; staff_role: StaffRole; staff_zones: string[]; created_at: string };
@@ -103,7 +104,7 @@ export default function UsersPage() {
                         </button>
                       )}
                     </td>
-                    <td><small>{new Date(u.created_at).toLocaleDateString(undefined, { month: "short", year: "numeric" })}</small></td>
+                    <td><small>{fmtOman(u.created_at, { month: "short", year: "numeric" })}</small></td>
                     <td className="num">{admin && !self && <button className="btn sm bad" onClick={() => remove(u)}>Remove</button>}</td>
                   </tr>
                 );

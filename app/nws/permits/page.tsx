@@ -9,6 +9,7 @@ import { Loading } from "@/components/Shell";
 import { friendlyError } from "@/lib/errors";
 import { PENALTY_STATE, PERMIT_STAGE } from "@/lib/labels";
 import { supabase } from "@/lib/supabase/client";
+import { omanDateKey, omanDayEndIso, omanDayStartIso } from "@/lib/time";
 import type { ServiceType } from "@/lib/pricing";
 
 export default function PermitsPage() {
@@ -70,7 +71,7 @@ const DOC_LABEL: Record<string, string> = {
 };
 const PEN_TONE = Object.fromEntries(Object.entries(PENALTY_STATE).map(([k, v]) => [k, v[1]])) as Record<Penalty["state"], string>;
 const PEN_LABEL = Object.fromEntries(Object.entries(PENALTY_STATE).map(([k, v]) => [k, v[0]])) as Record<Penalty["state"], string>;
-const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+const isoDay = (d: Date) => omanDateKey(d); // Muscat calendar date
 const CHECKLIST: [keyof Checklist, string][] = [["tank_hygiene", "Tank hygiene"], ["valves", "Valves and hoses"], ["ivms_seal", "IVMS seal intact"], ["ppe", "Driver PPE"]];
 type Checklist = { tank_hygiene: boolean; valves: boolean; ivms_seal: boolean; ppe: boolean };
 const ALL_OK: Checklist = { tank_hygiene: true, valves: true, ivms_seal: true, ppe: true };
@@ -249,7 +250,7 @@ function Permits() {
     e.preventDefault();
     const ok = await rpc(
       "staff_create_permit",
-      { p_tanker_id: form.tanker, p_permit_no: form.permit_no, p_type: form.type, p_issued_at: new Date(`${form.issued}T00:00:00`).toISOString(), p_expires_at: new Date(`${form.expires}T23:59:59`).toISOString() },
+      { p_tanker_id: form.tanker, p_permit_no: form.permit_no, p_type: form.type, p_issued_at: omanDayStartIso(form.issued), p_expires_at: omanDayEndIso(form.expires) },
       "Permit created (pending review)",
     );
     if (ok) {
@@ -899,7 +900,7 @@ function Permits() {
           onConfirm={async (reason) =>
             void (await rpc(
               "staff_resubmit_permit",
-              { p_permit_id: selected.id, p_expires_at: newExpiry ? new Date(`${newExpiry}T23:59:59`).toISOString() : null, p_reason: reason },
+              { p_permit_id: selected.id, p_expires_at: newExpiry ? omanDayEndIso(newExpiry) : null, p_reason: reason },
               "Permit resubmitted",
             ))
           }

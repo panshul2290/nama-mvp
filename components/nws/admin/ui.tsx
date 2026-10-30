@@ -5,6 +5,7 @@ import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { saveCsv, type CsvCell } from "@/lib/csv";
 import { friendlyError } from "@/lib/errors";
 import { muscatDayStart } from "@/lib/sla";
+import { omanDateKey, omanDay } from "@/lib/time";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
 // Shared bits for the Reports and Settings screens.
@@ -22,8 +23,8 @@ export function sinceIso(days: number) {
 }
 
 /** Muscat calendar day key, YYYY-MM-DD. */
-export const dayKey = (iso: string | Date) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Muscat" });
-export const dayLabel = (key: string) => new Date(`${key}T12:00:00+04:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "Asia/Muscat" });
+export const dayKey = (iso: string | Date) => omanDateKey(iso);
+export const dayLabel = (key: string) => omanDay(key);
 
 /** Every day key from `days` days ago to today, for gap-free time series. */
 export function dayKeys(days: number) {

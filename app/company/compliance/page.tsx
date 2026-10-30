@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { DOC_KINDS, DOC_LABEL, currentDoc, rejectedDoc, useCompany, useFleet } from "@/components/company/CompanyContext";
 import { Dialog, St, daysUntil, fmtDate, fmtShort, useAction } from "@/components/portal/kit";
 import { supabase } from "@/lib/supabase/client";
+import { omanToday } from "@/lib/time";
 import type { TankerDocument } from "@/lib/types";
 
 type Target = { kind: string; tankerId?: string; driverId?: string; label: string };
@@ -159,7 +160,7 @@ function UploadDoc({ target, onClose, onDone }: { target: Target; onClose: () =>
   const [validTo, setValidTo] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = omanToday();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

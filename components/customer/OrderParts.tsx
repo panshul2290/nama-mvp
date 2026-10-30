@@ -165,10 +165,10 @@ export function PodCard({ order }: { order: Order }) {
         <b>{t(pod.kind === "collection" ? "poc" : "pod")}</b>
         {pod.status === "rejected" && <span className="st bad">{t("podRejected")}</span>}
       </div>
-      <div className="photo pod-photo">
+      <div className={`photo pod-photo${photo ? " shown" : ""}`}>
         {photo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo} alt={t("podPhoto")} />
+          <img className="pod-img" src={photo} alt={t("podPhoto")} />
         ) : (
           <svg viewBox="0 0 300 110" width="100%" height="100%" role="img" aria-label={t("podPhoto")}>
             <rect width="300" height="110" fill="#dfeaec" />

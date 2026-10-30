@@ -253,4 +253,6 @@ export const ref = {
   incident: (n: number | string) => `INC-${n}`,
   payout: (n: number | string) => `PB-${n}`,
   dataRequest: (n: number | string) => `DSR-${n}`,
+  // The customer's own PO number, labelled "PO …" unless it already says so ("PO-1234", "PO 77", "PO123").
+  po: (s: string) => (/^\s*P\.?O(?![a-z])/i.test(s) ? s.trim() : `PO ${s.trim()}`),
 };

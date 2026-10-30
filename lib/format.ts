@@ -1,10 +1,11 @@
 // Display helpers shared by the customer and driver screens.
+import { omanHour, omanTime } from "@/lib/time";
 
 // Order reference shown to people, from the database's order_no sequence.
 export const orderNo = (n: number | string) => `TO-${n}`;
 
 export function greeting(d = new Date()): string {
-  const h = d.getHours();
+  const h = omanHour(d);
   return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 }
 
@@ -18,4 +19,4 @@ export function initials(name: string | null | undefined): string {
 export const kmText = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`);
 
 
-export const hhmm = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
+export const hhmm = (iso: string | null) => omanTime(iso);

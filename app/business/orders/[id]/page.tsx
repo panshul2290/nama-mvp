@@ -87,7 +87,7 @@ export default function BusinessOrderDetail() {
             <span>
               {ref.order(o.order_no)} <StatusPill status={o.status} type={o.service_type} />
             </span>
-            <small>{o.contract_id ? "Contract delivery" : o.po_number ? `PO ${o.po_number}` : "Bulk order"}</small>
+            <small>{o.contract_id ? "Contract delivery" : o.po_number ? ref.po(o.po_number) : "Bulk order"}</small>
           </h2>
           <dl className="kv" style={{ paddingTop: 8 }}>
             <dt>Site</dt>

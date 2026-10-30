@@ -8,6 +8,7 @@ import { useAction, useLive } from "@/components/portal/kit";
 import { PortalLoading, PortalShell, usePortalProfile, type PortalTab } from "@/components/portal/PortalShell";
 import { useMyInvitations } from "@/components/useInvitations";
 import { supabase } from "@/lib/supabase/client";
+import { omanDate } from "@/lib/time";
 
 const DESCRIPTION =
   "Web portal for commercial and government customers: multi-site ordering on credit, contracts, monthly invoices, team access by site, and delivery performance against the SLA.";
@@ -104,7 +105,7 @@ function OrgInvitations({ onJoined }: { onJoined: () => void }) {
       <div className="pad">
         {invitations.map((i) => (
           <div key={i.id} className="banner info" role="status">
-            <b>{i.from ?? "A business account"}</b> invited you to join as {i.org_role ? ORG_ROLE_LABEL[i.org_role] : "a member"}. Expires {new Date(i.expires_at).toLocaleDateString("en-GB")}.
+            <b>{i.from ?? "A business account"}</b> invited you to join as {i.org_role ? ORG_ROLE_LABEL[i.org_role] : "a member"}. Expires {omanDate(i.expires_at)}.
             <div className="btns" style={{ marginTop: 8 }}>
               <button className="btn pri" disabled={busy !== null} onClick={() => run(i.id, () => respond(i.id, true).then((error) => ({ error })), "You joined the business account", onJoined)}>
                 Accept

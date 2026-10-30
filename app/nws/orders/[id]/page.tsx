@@ -19,7 +19,7 @@ import { friendlyError } from "@/lib/errors";
 import { orderNo } from "@/lib/format";
 import type { ServiceType } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
-import type { Order, OrderLocation, OrderMessage, Pod as BasePod } from "@/lib/types";
+import { ref, type Order, type OrderLocation, type OrderMessage, type Pod as BasePod } from "@/lib/types";
 
 type One<T> = T | T[] | null;
 type Detail = Order & {
@@ -401,7 +401,7 @@ export default function OrderDetail() {
                   <dt>Business account</dt>
                   <dd>
                     {one(o.org)!.name}
-                    {o.po_number ? <small className="mut"> · PO {o.po_number}</small> : null}
+                    {o.po_number ? <small className="mut"> · {ref.po(o.po_number)}</small> : null}
                   </dd>
                 </>
               )}

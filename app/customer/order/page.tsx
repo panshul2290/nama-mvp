@@ -9,7 +9,7 @@ import { gal, omr3, tshort, windowText } from "@/components/customer/fmt";
 import { useNow } from "@/components/customer/hooks";
 import { ChatButton, ChatSheet, useChatHub, useOrderChat, type ChatLabels } from "@/components/chat/OrderChat";
 import { CancelSheet, DriverCard, PodCard, RateCard, ReschedSheet, useVerification } from "@/components/customer/OrderParts";
-import { Bill, orderToBill, StatusTag, TimelineH, useUnread } from "@/components/customer/ui";
+import { Bill, fillPending, orderToBill, StatusTag, TimelineH, useUnread } from "@/components/customer/ui";
 import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { BackButton, Loading } from "@/components/Shell";
@@ -23,6 +23,7 @@ import { STALE_AFTER_S } from "@/lib/gps";
 import { localDigits } from "@/lib/i18n";
 import { ruleNumber } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase/client";
+import { omanToday } from "@/lib/time";
 import { ON_JOB_STATUSES, ref, type LngLat, type Order, type OrderLocation, type Tanker } from "@/lib/types";
 
 // The customer may see the tanker's position while it is on its way (RLS: tankers_customer_active_order).
@@ -172,7 +173,7 @@ function OrderDetail() {
   if (missing || !id) return <main className="screen">{back}</main>;
   if (!order) return <Loading />;
 
-  const today = new Date(now + 4 * 3600_000).toISOString().slice(0, 10);
+  const today = omanToday(now);
   const bill = { ...orderToBill(order), vatPct: rules ? Math.round(ruleNumber(rules, "vat_rate") * 1000) / 10 : null };
   const feeOmr = rules ? ruleNumber(rules, "cancel_fee_omr") : 1;
   const place = [propLabel, order.area, loc?.address].filter(Boolean).join(" · ");
@@ -308,6 +309,7 @@ function OrderDetail() {
   const waitingSince = new Date(order.released_at ?? order.created_at).getTime();
   const slow = order.status === "requested" && now - waitingSince > NO_TANKER_AFTER_MS;
   const onJob = ON_JOB_STATUSES.includes(order.status);
+  const toFill = fillPending(order);
   const ago = (s: number) => (s < 60 ? t("agoS", { n: localDigits(Math.floor(s), lang) }) : t("agoM", { n: localDigits(Math.floor(s / 60), lang) }));
 
   return (
@@ -359,23 +361,32 @@ function OrderDetail() {
             </div>
           ) : (
             <div className="tr-eta">
-              <div>
-                <small>{order.status === "arrived" ? t("yourTanker") : order.status === "collected" ? t("tl_disNow") : t("tankerIs")}</small>
-                <strong>
-                  {order.status === "arrived"
-                    ? t("atDoor")
-                    : order.status === "collected"
-                      ? t("toPlant")
-                      : eta
-                        ? localDigits(kmText(eta.km), lang)
-                        : order.status === "accepted"
-                          ? t("starting")
-                          : t("st_arriving")}
-                </strong>
-                {eta && TRACKED.includes(order.status) && order.status !== "arrived" && (
-                  <small>{t(eta.source === "osrm" ? "etaRoad" : "etaLine", { m: localDigits(eta.minutes, lang) })}</small>
-                )}
-              </div>
+              {toFill ? (
+                // Driving to (or at) the filling station: the distance to the customer isn't the trip yet.
+                <div>
+                  <small>{t("st_accepted")}</small>
+                  <strong>{t("fillingT")}</strong>
+                  <small>{t("fillingS")}</small>
+                </div>
+              ) : (
+                <div>
+                  <small>{order.status === "arrived" ? t("yourTanker") : order.status === "collected" ? t("tl_disNow") : t("tankerIs")}</small>
+                  <strong>
+                    {order.status === "arrived"
+                      ? t("atDoor")
+                      : order.status === "collected"
+                        ? t("toPlant")
+                        : eta
+                          ? localDigits(kmText(eta.km), lang)
+                          : order.status === "accepted"
+                            ? t("starting")
+                            : t("st_arriving")}
+                  </strong>
+                  {eta && TRACKED.includes(order.status) && order.status !== "arrived" && (
+                    <small>{t(eta.source === "osrm" ? "etaRoad" : "etaLine", { m: localDigits(eta.minutes, lang) })}</small>
+                  )}
+                </div>
+              )}
               <StatusTag order={order} />
             </div>
           )}
@@ -409,10 +420,12 @@ function OrderDetail() {
               </p>
             </DriverCard>
           ) : (
-            // Before a driver accepts: the chat explains when it opens (and shows any NWS messages).
-            <div className="oc-actions" style={{ marginBottom: 12 }}>
-              <ChatButton label={chat.msgs.length ? t("nwsMsgs") : t("msgDriver")} unread={chat.unread} lang={lang} onClick={() => setChatTapped(true)} className="sec" />
-            </div>
+            // No driver yet, so nobody to message: only NWS messages, if any, can be opened.
+            chat.msgs.length > 0 && (
+              <div className="oc-actions" style={{ marginBottom: 12 }}>
+                <ChatButton label={t("nwsMsgs")} unread={chat.unread} lang={lang} onClick={() => setChatTapped(true)} className="sec" />
+              </div>
+            )
           )}
 
           {order.driver_note && (

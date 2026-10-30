@@ -16,6 +16,7 @@ import { agoText, STALE_AFTER_S } from "@/lib/gps";
 import { orderNo } from "@/lib/format";
 import { muscatDayStart } from "@/lib/sla";
 import { supabase } from "@/lib/supabase/client";
+import { fmtOman } from "@/lib/time";
 import { inTestArea, useTestAreas } from "@/lib/testArea";
 import { ON_JOB_STATUSES, type OrderStatus } from "@/lib/types";
 import type { ServiceType } from "@/lib/pricing";
@@ -287,7 +288,7 @@ export default function LiveOperations() {
         <div>
           <h1>Live operations</h1>
           <p>
-            {new Date(now).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })} · Muscat Governorate
+            {fmtOman(now, { weekday: "long", day: "numeric", month: "long" })} · Muscat Governorate
             {lastScan ? ` · control-room scan ${ago(new Date(lastScan).toISOString(), now)}` : ""}
           </p>
         </div>
