@@ -30,15 +30,37 @@ export function saveCsv(filename: string, rows: CsvCell[][]) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export type TableFormat = "csv" | "xls" | "xml" | "txt";
-export const TABLE_FORMATS: TableFormat[] = ["csv", "xls", "xml", "txt"];
+export type TableFormat = "csv" | "xls" | "xml" | "txt" | "html" | "ascii";
+export const TABLE_FORMATS: TableFormat[] = ["csv", "xls", "xml", "txt", "html", "ascii"];
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const text = (v: CsvCell) => (v == null ? "" : typeof v === "number" ? (Number.isFinite(v) ? String(v) : "") : String(v));
 
-/** First row = headers. XLS is SpreadsheetML 2003 (opens in Excel); XML is one <row> per line; TXT is tab-separated. */
+/**
+ * First row = headers. XLS is SpreadsheetML 2003 (opens in Excel); XML is one <row> per line; TXT is
+ * tab-separated; HTML is a plain table page; ASCII is a fixed-width text table (non-ASCII characters
+ * such as Arabic become "?", as the format requires).
+ */
 export function toTable(rows: CsvCell[][], fmt: TableFormat): { body: string; type: string; ext: string } {
   if (fmt === "csv") return { body: toCsv(rows), type: "text/csv;charset=utf-8", ext: "csv" };
+  if (fmt === "html") {
+    const [h = [], ...b] = rows;
+    const tr = (r: CsvCell[], tag: string) => `<tr>${r.map((c) => `<${tag}>${esc(text(c))}</${tag}>`).join("")}</tr>`;
+    return {
+      body: `<!doctype html><html><head><meta charset="utf-8"><title>Export</title></head><body><table border="1" cellspacing="0" cellpadding="4"><thead>${tr(h, "th")}</thead><tbody>${b.map((r) => tr(r, "td")).join("")}</tbody></table></body></html>`,
+      type: "text/html;charset=utf-8",
+      ext: "html",
+    };
+  }
+  if (fmt === "ascii") {
+    const cells = rows.map((r) => r.map((c) => text(c).replace(/[\t\r\n]+/g, " ").replace(/[^\x20-\x7e]/g, "?")));
+    const cols = Math.max(0, ...cells.map((r) => r.length));
+    const w = Array.from({ length: cols }, (_, i) => Math.max(0, ...cells.map((r) => (r[i] ?? "").length)));
+    const line = "+" + w.map((n) => "-".repeat(n + 2)).join("+") + "+";
+    const row = (r: string[]) => "| " + w.map((n, i) => (r[i] ?? "").padEnd(n)).join(" | ") + " |";
+    const [h = [], ...b] = cells;
+    return { body: [line, row(h), line, ...b.map(row), line].join("\r\n") + "\r\n", type: "text/plain;charset=us-ascii", ext: "ascii.txt" };
+  }
   if (fmt === "txt") return { body: "﻿" + rows.map((r) => r.map((c) => text(c).replace(/[\t\r\n]+/g, " ")).join("\t")).join("\r\n"), type: "text/plain;charset=utf-8", ext: "txt" };
   const [head = [], ...body] = rows;
   if (fmt === "xml") {

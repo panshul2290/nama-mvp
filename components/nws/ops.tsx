@@ -139,12 +139,12 @@ export function downloadCsv(name: string, rows: CsvCell[][]) {
   saveCsv(`${name}.csv`, rows);
 }
 
-/** Save rows in any of the export formats the RFP lists (CSV, XLS, XML, TXT). */
+/** Save rows in any of the export formats the design lists (CSV, XLS, XML, TXT, HTML, ASCII). */
 export function downloadTable(name: string, rows: CsvCell[][], fmt: TableFormat) {
   saveTable(name, rows, fmt);
 }
 
-/** One button per export format, as in the prototype (Export CSV / XLS / XML / TXT). */
+/** One button per export format, as in the prototype (Export CSV / XLS / XML / TXT / HTML / ASCII). */
 export function ExportButtons({ onExport, disabled }: { onExport: (fmt: TableFormat) => void; disabled?: boolean }) {
   return (
     <div className="btns">

@@ -3,7 +3,7 @@
 import "../ops.css";
 import { useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { DAY, Modal, n3, one, St, Tabs, useNow, useRealtime, useRpc, useSignedUrl, SERVICE_NAME } from "@/components/nws/ops";
+import { DAY, Kpi, Modal, n3, one, St, Tabs, useNow, useRealtime, useRpc, useSignedUrl, SERVICE_NAME } from "@/components/nws/ops";
 import { fmtDate, fmtDateTime, ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { Loading } from "@/components/Shell";
 import { friendlyError } from "@/lib/errors";
@@ -48,7 +48,7 @@ type Inspection = {
   inspector: { full_name: string } | { full_name: string }[] | null;
 };
 type Company = { id: string; name: string; cr_no: string; phone: string | null; rating: number; since: string; status: "pending" | "active" | "suspended" };
-type Tab = "apps" | "exp" | "viol" | "insp" | "co";
+type Tab = "reg" | "apps" | "exp" | "viol" | "insp" | "co";
 type Dlg =
   | { k: "reject" | "resubmit" | "info" | "pass" | "fail" | "issue" | "schedule" }
   | { k: "doc_reject"; id: string }
@@ -105,7 +105,7 @@ function Permits() {
 
   const [tab, setTab] = useState<Tab>(() => {
     const t = params.get("tab");
-    return t === "exp" || t === "viol" || t === "insp" || t === "co" ? t : "apps";
+    return t === "reg" || t === "exp" || t === "viol" || t === "insp" || t === "co" ? t : "apps";
   });
   const [rows, setRows] = useState<PermitRow[] | null>(null);
   const [tankers, setTankers] = useState<TankerRef[]>([]);
@@ -125,6 +125,7 @@ function Permits() {
   const [missingDocs, setMissingDocs] = useState<string[] | null>(null);
   const [checklist, setChecklist] = useState<Checklist>(ALL_OK);
   const [kind, setKind] = useState<"all" | "renewal" | "new">("all");
+  const [regFilter, setRegFilter] = useState<"all" | ServiceType | "exp">("all");
   const [creating, setCreating] = useState(false);
   const [newExpiry, setNewExpiry] = useState("");
   const [form, setForm] = useState(() => ({ tanker: "", permit_no: "", type: "DW" as ServiceType, issued: isoDay(new Date()), expires: isoDay(new Date(Date.now() + 365 * DAY)) }));
@@ -334,6 +335,7 @@ function Permits() {
         value={tab}
         onChange={setTab}
         tabs={[
+          ["reg", "Register", tankers.length],
           ["apps", "Applications", pending.length],
           ["exp", "Expiring", expiring.length],
           ["viol", "Violations", openPen.length],
@@ -623,6 +625,22 @@ function Permits() {
             </div>
           </div>
         </>
+      )}
+
+      {tab === "reg" && (
+        <Register
+          tankers={tankers}
+          latest={latestApproved}
+          pendingFor={(tid) => pending.find((x) => one(x.tanker)?.id === tid) ?? null}
+          now={now}
+          filter={regFilter}
+          setFilter={setRegFilter}
+          onOpen={(id) => {
+            setSel(id);
+            setAppFilter("all");
+            setTab("apps");
+          }}
+        />
       )}
 
       {tab === "exp" && (
@@ -1004,6 +1022,100 @@ function Permits() {
           />
         </Modal>
       )}
+    </>
+  );
+}
+
+/**
+ * The permit register (new prototype, Permits → Register): every tanker with its current permit and
+ * what that means on the platform. A tanker without a valid permit can't take jobs or fill.
+ */
+function Register({
+  tankers, latest, pendingFor, now, filter, setFilter, onOpen,
+}: {
+  tankers: TankerRef[];
+  latest: Map<string, PermitRow>;
+  pendingFor: (tankerId: string) => PermitRow | null;
+  now: number;
+  filter: "all" | ServiceType | "exp";
+  setFilter: (f: "all" | ServiceType | "exp") => void;
+  onOpen: (permitId: string) => void;
+}) {
+  const state = (t: TankerRef): [string, string] => {
+    const p = latest.get(t.id);
+    if (!p) return ["No permit", "bad"];
+    // A permit for another service type doesn't count (permit_auto_checks says the same).
+    if (p.type !== t.service_type) return ["Wrong type", "bad"];
+    const left = Date.parse(p.expires_at) - now;
+    return left < 0 ? ["Expired", "bad"] : left < 30 * DAY ? ["Expiring", "warn"] : ["Valid", "ok"];
+  };
+  const rows = tankers.filter((t) => (filter === "all" ? true : filter === "exp" ? state(t)[0] !== "Valid" : t.service_type === filter));
+  const count = (s: string) => tankers.filter((t) => state(t)[0] === s).length;
+  return (
+    <>
+      <div className="okpis">
+        <Kpi label="Valid permits" value={count("Valid")} sub="can take jobs and fill" tone="ok" />
+        <Kpi label="Expiring in 30 days" value={count("Expiring")} sub="owners get reminders" tone={count("Expiring") ? "warn" : ""} />
+        <Kpi label="Blocked" value={tankers.length - count("Valid") - count("Expiring")} sub="no valid permit for the tanker's type" tone="bad" />
+        <Kpi label="Applications in review" value={tankers.filter((t) => pendingFor(t.id)).length} sub="new permits and renewals" />
+      </div>
+      <div className="panel">
+        <div className="toolbar">
+          <div className="chips">
+            {(
+              [
+                ["all", "All tankers"],
+                ["DW", "Drinking water"],
+                ["WW", "Wastewater"],
+                ["TE", "Treated effluent"],
+                ["exp", "Expiring or blocked"],
+              ] as const
+            ).map(([k, l]) => (
+              <button key={k} className={`chip ${filter === k ? "on" : ""}`} onClick={() => setFilter(k)}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="tblwrap" style={{ maxHeight: 520, overflowY: "auto" }}>
+          <table>
+            <thead>
+              <tr><th>Tanker</th><th>Type</th><th>Owner</th><th>Permit no.</th><th>Valid until</th><th>Status</th><th>Effect on this platform</th><th></th></tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && <tr><td colSpan={8} className="empty">No tankers match.</td></tr>}
+              {rows.map((t) => {
+                const p = latest.get(t.id);
+                const [s, tone] = state(t);
+                const app = pendingFor(t.id);
+                const ok = s === "Valid" || s === "Expiring";
+                return (
+                  <tr key={t.id}>
+                    <td style={{ whiteSpace: "nowrap" }}>{t.plate}</td>
+                    <td><span className={`tag ${t.service_type}`}>{SERVICE_NAME[t.service_type]}</span></td>
+                    <td>{one(t.company)?.name ?? "Independent"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{p?.permit_no ?? "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{p ? fmtDate(p.expires_at) : "—"}</td>
+                    <td>
+                      <St tone={tone}>{s}</St>
+                      {app && <small style={{ display: "block" }}>{app.permit_no} in review</small>}
+                    </td>
+                    <td>{ok ? "Can take jobs and fill" : <span style={{ color: "var(--bad)" }}>Blocked from jobs and filling</span>}</td>
+                    <td>
+                      {(p || app) && (
+                        <button className="btn sm" onClick={() => onOpen((app ?? p)!.id)}>
+                          {app ? "Review application" : "View permit"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="note">The platform enforces the register: a tanker without a valid permit for its service type can’t accept jobs or go online, and NWS stations refuse to fill it.</p>
+      </div>
     </>
   );
 }
