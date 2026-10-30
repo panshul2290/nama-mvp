@@ -55,9 +55,8 @@ export async function startPush(app: "customer" | "driver", open: (route: string
   const { PushNotifications } = await import("@capacitor/push-notifications");
   handles.push(
     await PushNotifications.addListener("registration", async (t) => {
-      // register_push_token(token, platform); the p_-prefixed names are tried too.
-      let { error } = await supabase().rpc("register_push_token", { token: t.value, platform: platform() });
-      if (error && isMissing(error)) ({ error } = await supabase().rpc("register_push_token", { p_token: t.value, p_platform: platform() }));
+      // register_push_token(p_token, p_platform, p_app) (0026).
+      const { error } = await supabase().rpc("register_push_token", { p_token: t.value, p_platform: platform(), p_app: app });
       if (error && isMissing(error)) logOnce("register_push_token isn't in this database yet; token not stored");
       else if (error) console.warn("[push] token not stored:", error.message);
     }),

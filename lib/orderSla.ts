@@ -25,8 +25,8 @@ export function appSla(o: SlaOrder): OrderSla {
 }
 
 /**
- * Read what my_order_sla() returned: a boolean, a row, or a one-row array, with the on-time flag
- * under on_time / is_on_time / met and optional due / served times. Anything unreadable → the app rule.
+ * Read what my_order_sla() returned: its row ({ state, due_at, served_at, … }), a boolean, or a
+ * one-row array; an on_time / is_on_time / met flag is read too. Anything unreadable → the app rule.
  */
 export function readSla(raw: unknown, o: SlaOrder): OrderSla {
   const fallback = appSla(o);
@@ -34,7 +34,9 @@ export function readSla(raw: unknown, o: SlaOrder): OrderSla {
   if (typeof row === "boolean") return { ...fallback, onTime: row, source: "db" };
   if (!row || typeof row !== "object") return fallback;
   const r = row as Record<string, unknown>;
-  const onTime = pickBool(r, ["on_time", "is_on_time", "met", "sla_met"]);
+  // my_order_sla (0026) answers with state: on_time | late once served; open states have no verdict yet.
+  const state = typeof r.state === "string" ? r.state : null;
+  const onTime = state ? (state === "on_time" ? true : state === "late" ? false : null) : pickBool(r, ["on_time", "is_on_time", "met", "sla_met"]);
   if (onTime === undefined) return fallback;
   return {
     onTime,

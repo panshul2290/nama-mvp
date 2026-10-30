@@ -57,6 +57,8 @@ eq("app rule: open orders have no verdict", appSla({ ...o, delivered_at: null })
 eq("database boolean", readSla(false, o).onTime, false);
 eq("database row with on_time", [readSla({ on_time: false, due_at: "2026-10-01T09:00:00Z" }, o).onTime, readSla({ on_time: false, due_at: "2026-10-01T09:00:00Z" }, o).source], [false, "db"]);
 eq("database row: due time read", readSla([{ is_on_time: true, deadline: "2026-10-01T09:00:00Z" }], o).dueAt, Date.parse("2026-10-01T09:00:00Z"));
+eq("my_order_sla state late", [readSla({ state: "late", due_at: "2026-10-01T09:00:00Z", served_at: "2026-10-01T09:30:00Z" }, o).onTime, readSla({ state: "late" }, o).source], [false, "db"]);
+eq("my_order_sla open state has no verdict yet", readSla({ state: "at_risk", due_at: "2026-10-01T09:00:00Z" }, o).onTime, null);
 eq("unreadable answer falls back to the app rule", readSla({ something: 1 }, o).source, "app");
 eq("summary", slaSummary([appSla(o), appSla({ ...o, delivered_at: "2026-10-01T11:00:00Z" }), appSla({ ...o, delivered_at: null })]), { served: 2, onTime: 1, late: 1, pct: 50 });
 

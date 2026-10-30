@@ -16,7 +16,7 @@ let rpcArg: string | false | null = null;
 /** One order's SLA: my_order_sla() when the database has it, otherwise the shared lib/sla.ts rule. */
 export async function fetchOrderSla(o: SlaOrder & { id: string }): Promise<OrderSla> {
   if (rpcArg === false) return appSla(o);
-  for (const arg of rpcArg ? [rpcArg] : ["p_order_id", "order_id", "p_order"]) {
+  for (const arg of rpcArg ? [rpcArg] : ["p_order_id"]) {
     const { data, error } = await supabase().rpc("my_order_sla", { [arg]: o.id });
     if (!error) {
       rpcArg = arg;
