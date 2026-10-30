@@ -1,18 +1,20 @@
 "use client";
 
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import { AUTH, authError } from "@/components/portal/authI18n";
 import { useT } from "@/lib/i18n";
 import { formatPhone } from "@/lib/phone";
-import { supabase } from "@/lib/supabase/client";
+import { scratchClient, supabase } from "@/lib/supabase/client";
 
 const COOLDOWN_S = 60;
 const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 /**
  * "Enter the SMS code" step shared by sign-up and password reset. The code was just
- * sent when this mounts; resend() sends another (after a cooldown). On a correct code
- * Supabase signs the user in and onVerified() runs.
+ * sent when this mounts; resend() sends another (after a cooldown). A correct code signs
+ * the user in on a scratch client (memory only); onVerified() gets that client and the
+ * session and decides which app keeps it (admit() in components/portal/session.ts).
  * Demo mode shows the code on screen when the database's DEMO_SMS_CODES setting is on.
  */
 export function OtpStep({
@@ -25,7 +27,7 @@ export function OtpStep({
   phone: string;
   desktop: boolean;
   resend: () => Promise<{ error: { message?: string; code?: string } | null }>;
-  onVerified: () => void;
+  onVerified: (scratch: SupabaseClient, session: Session) => void | Promise<void>;
   onChangeNumber: () => void;
 }) {
   const t = useT(AUTH);
@@ -68,10 +70,14 @@ export function OtpStep({
     if (token.length !== 6) return setError(t("badCode"));
     setBusy(true);
     setError(null);
-    const { error } = await supabase().auth.verifyOtp({ phone, token, type: "sms" });
+    const scratch = scratchClient();
+    const { data, error } = await scratch.auth.verifyOtp({ phone, token, type: "sms" });
+    if (error || !data.session) {
+      setBusy(false);
+      return setError(authError(t, error));
+    }
+    await onVerified(scratch, data.session);
     setBusy(false);
-    if (error) return setError(authError(t, error));
-    onVerified();
   }
 
   async function again() {

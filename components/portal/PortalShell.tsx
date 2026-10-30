@@ -9,13 +9,15 @@ import { Icon, NamaLogo, type IconName } from "@/components/icons";
 import { supabase } from "@/lib/supabase/client";
 import type { OrgRole, Profile, Role } from "@/lib/types";
 import { ToastProvider } from "./kit";
-import { appFor, enforceSessionChoice } from "./session";
+import { appFor, areaApp, enforceSessionChoice, signOutApp } from "./session";
 
 export type PortalProfile = Profile & { company_id: string | null; org_id: string | null; org_role: OrgRole | null };
 
 /**
- * Loads the signed-in user's profile (with company/org links) and sends anyone
- * whose role doesn't match to their own home. RLS guards every query anyway.
+ * Loads the signed-in user's profile (with company/org links) from this portal's own
+ * session. A role that doesn't match (an edge case: each sign-in admits only its own
+ * accounts) signs this portal out and its sign-in says which app to use. A portal never
+ * opens another app. RLS guards every query anyway.
  */
 export function usePortalProfile(expected: Role) {
   const router = useRouter();
@@ -25,14 +27,18 @@ export function usePortalProfile(expected: Role) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (await enforceSessionChoice()) return router.replace("/");
+      const signIn = `/login?app=${appFor(expected)}`;
+      if (await enforceSessionChoice()) return router.replace(signIn);
       const db = supabase();
       const { data: auth } = await db.auth.getUser();
-      if (!auth.user) return router.replace(`/login?app=${appFor(expected)}`);
+      if (!auth.user) return router.replace(signIn);
       const { data } = await db.from("profiles").select("id, role, full_name, phone, company_id, org_id, org_role").eq("id", auth.user.id).single();
       if (cancelled) return;
-      if (!data) return router.replace(`/login?app=${appFor(expected)}`);
-      if (data.role !== expected) return router.replace(`/switch?app=${appFor(expected)}`);
+      if (!data) return router.replace(signIn);
+      if (data.role !== expected) {
+        await signOutApp();
+        return router.replace(`${signIn}&wrong=${data.role}`);
+      }
       setProfile(data as PortalProfile);
     })();
     return () => {
@@ -69,9 +75,11 @@ export function PortalShell({
   const router = useRouter();
   const root = tabs?.[0]?.href;
 
+  // Signs out of this portal only; its sign-in opens again.
   async function signOut() {
-    await supabase().auth.signOut();
-    router.replace("/");
+    const key = areaApp(path);
+    await signOutApp(key);
+    router.replace(key ? `/login?app=${key}` : "/");
   }
 
   return (

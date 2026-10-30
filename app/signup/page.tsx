@@ -1,17 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { NamaLogo } from "@/components/icons";
 import { AuthFrame } from "@/components/portal/AuthChrome";
 import { AUTH, authError } from "@/components/portal/authI18n";
 import { OtpStep } from "@/components/portal/OtpStep";
-import { asApp, homeFor, rememberSession, type AppKey } from "@/components/portal/session";
+import { admit, asApp, rememberSession, type AppKey } from "@/components/portal/session";
+import { WrongAccount } from "@/components/portal/WrongAccount";
 import { BackButton, Loading } from "@/components/Shell";
 import { LangToggle, useT } from "@/lib/i18n";
 import { isEmail, normalizePhone } from "@/lib/phone";
-import { supabase } from "@/lib/supabase/client";
+import { scratchClient, supabase } from "@/lib/supabase/client";
+import type { Role } from "@/lib/types";
 
 type SignupRole = "customer" | "driver" | "owner" | "business";
 
@@ -34,7 +37,8 @@ export default function SignupPage() {
 }
 
 // Every account signs up with a mobile number and a password (email is optional).
-// Supabase sends an SMS code to verify the number; the second step enters it.
+// Supabase sends an SMS code to verify the number; the second step enters it. The new
+// session is checked by admit() and kept in the new account's own app (its cookie).
 function Signup() {
   const app = asApp(useSearchParams().get("app"));
   const router = useRouter();
@@ -47,34 +51,45 @@ function Signup() {
   const [error, setError] = useState<string | null>(null);
   const [codeFor, setCodeFor] = useState<string | null>(null); // E.164 the code was sent to
   const [busy, setBusy] = useState(false);
+  const [wrong, setWrong] = useState<Role | null | undefined>(undefined);
   const copy = COPY[role];
   const desktop = role === "owner" || role === "business";
-  // Phone apps let people switch between customer and driver, as before.
-  const pickable = !app || app === "customer" || app === "driver";
+  // Without an app (older links) people pick customer or driver; each app signs up its own kind only.
+  const pickable = !app;
 
-  function done() {
-    rememberSession(true);
-    router.replace(homeFor(role));
+  async function done(scratch: SupabaseClient, session: Session) {
+    const res = await admit(copy.app, scratch, session);
+    if (!res.ok) {
+      setCodeFor(null);
+      return setWrong(res.wrong);
+    }
+    rememberSession(true, res.app);
+    router.replace(res.home);
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setWrong(undefined);
     const e164 = normalizePhone(phone);
     if (!e164) return setError(t("badMobile"));
     const mail = email.trim().toLowerCase();
     if (mail && !isEmail(mail)) return setError(t("badEmail"));
     setBusy(true);
-    const { data, error } = await supabase().auth.signUp({
+    const scratch = scratchClient();
+    const { data, error } = await scratch.auth.signUp({
       phone: e164,
       password,
       // The sign-up trigger copies these into the profile (contact_email: optional, unverified).
       options: { data: { role, full_name: fullName.trim(), phone: e164, contact_email: mail || null } },
     });
+    if (error) {
+      setBusy(false);
+      return setError(authError(t, error));
+    }
+    if (data.session) await done(scratch, data.session); // phone confirmation switched off in Supabase
+    else setCodeFor(e164);
     setBusy(false);
-    if (error) return setError(authError(t, error));
-    if (data.session) return done(); // phone confirmation switched off in Supabase
-    setCodeFor(e164);
   }
 
   const loginHref = `/login?app=${copy.app}`;
@@ -99,6 +114,7 @@ function Signup() {
             </div>
             <form onSubmit={submit}>
               {error && <div className="si-msg">{error}</div>}
+              {wrong !== undefined && <WrongAccount role={wrong} desktop />}
               <div className="si-f">
                 <label htmlFor="suN">{t(copy.nameLabel)}</label>
                 <div className="in">
@@ -174,6 +190,7 @@ function Signup() {
         )}
         {role === "driver" && <div className="banner info">{t("driverBanner")}</div>}
         {error && <div className="banner badb">{error}</div>}
+        {wrong !== undefined && <WrongAccount role={wrong} desktop={false} />}
         <div className="fld">
           <label htmlFor="name">{t("fullName")}</label>
           <input id="name" required maxLength={120} autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />

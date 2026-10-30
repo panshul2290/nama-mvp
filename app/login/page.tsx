@@ -6,18 +6,26 @@ import { Suspense, useRef, useState } from "react";
 import { NamaLogo } from "@/components/icons";
 import { APP_INFO, AuthFrame } from "@/components/portal/AuthChrome";
 import { AUTH, authError } from "@/components/portal/authI18n";
-import { asApp, isDesktopApp, rememberSession, type AppKey } from "@/components/portal/session";
+import { admit, asApp, isDesktopApp, rememberSession, resetRedirect, type AppKey } from "@/components/portal/session";
+import { asRole, WrongAccount } from "@/components/portal/WrongAccount";
 import { Loading } from "@/components/Shell";
 import { LangToggle, useT } from "@/lib/i18n";
 import { parseContact } from "@/lib/phone";
-import { supabase } from "@/lib/supabase/client";
+import { scratchClient, supabase } from "@/lib/supabase/client";
+import type { Role } from "@/lib/types";
 
 export default function LoginPage() {
   return (
     <Suspense fallback={<Loading />}>
-      <Login />
+      <ForApp />
     </Suspense>
   );
+}
+
+// A fresh form per app (the wrong-account message links from one app's sign-in to another's).
+function ForApp() {
+  const app = useSearchParams().get("app");
+  return <Login key={app ?? ""} />;
 }
 
 // Sign-up link under each app's sign-in form (staff accounts are created by NWS).
@@ -31,8 +39,12 @@ const SIGNUP: Record<AppKey, [string, string] | null> = {
 
 // One field takes a mobile number or an email: mobile accounts (sign-up since 0019) sign in
 // by phone, older and staff accounts by email. Both use a password.
+// Each app accepts only its own kind of account: the sign-in runs on a scratch client and
+// admit() moves the session into this app's cookie, or signs a wrong account out at once.
+// Without ?app= (bookmarks, older links) any account signs in to its own app, as before.
 function Login() {
-  const app = asApp(useSearchParams().get("app"));
+  const params = useSearchParams();
+  const app = asApp(params.get("app"));
   const router = useRouter();
   const t = useT(AUTH);
   const [id, setId] = useState("");
@@ -42,34 +54,46 @@ function Login() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Set when an account of another kind tried this app (also ?wrong=<role> from the email-link callback or an app).
+  const [wrong, setWrong] = useState<Role | null | undefined>(() => (params.has("wrong") ? asRole(params.get("wrong")) : undefined));
   const idRef = useRef<HTMLInputElement>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setNote(null);
+    setWrong(undefined);
     const who = parseContact(id);
     if (!who) {
       idRef.current?.focus();
       return setError(t("badId"));
     }
     setBusy(true);
-    const { error } = await supabase().auth.signInWithPassword({ ...who, password });
+    const scratch = scratchClient();
+    const { data, error } = await scratch.auth.signInWithPassword({ ...who, password });
+    if (error || !data.session) {
+      setBusy(false);
+      return setError(authError(t, error));
+    }
+    const res = await admit(app, scratch, data.session);
     setBusy(false);
-    if (error) return setError(authError(t, error));
-    rememberSession(keep);
-    router.replace("/");
+    if (!res.ok) {
+      setPassword("");
+      return setWrong(res.wrong);
+    }
+    rememberSession(keep, res.app);
+    router.replace(res.home);
   }
 
   // Email accounts get a reset link; everyone else resets by SMS code on /login/reset.
   async function forgot() {
     setError(null);
     setNote(null);
+    setWrong(undefined);
     const who = parseContact(id);
     if (who && "email" in who) {
-      const { error } = await supabase().auth.resetPasswordForEmail(who.email, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/login/reset`,
-      });
+      // This app's client keeps the PKCE verifier, in the cookie the callback reads (?app=).
+      const { error } = await supabase(app).auth.resetPasswordForEmail(who.email, { redirectTo: resetRedirect(app) });
       if (error) return setError(authError(t, error));
       return setNote(t("resetEmailSent", { email: who.email }));
     }
@@ -99,6 +123,7 @@ function Login() {
         </div>
         <form onSubmit={submit}>
           {error && <div className="si-msg">{error}</div>}
+          {wrong !== undefined && <WrongAccount role={wrong} desktop />}
           {note && <div className="si-msg info">{note}</div>}
           <div className="si-f">
             <label htmlFor="siE">{t("idLabel")}</label>
@@ -161,6 +186,7 @@ function Login() {
         <p>{info ? info.sub : "Order drinking water, wastewater pickup or treated water from permitted tankers — or sign in as a driver to pick up jobs."}</p>
         <form onSubmit={submit}>
           {error && <div className="banner badb">{error}</div>}
+          {wrong !== undefined && <WrongAccount role={wrong} desktop={false} />}
           {note && <div className="banner info">{note}</div>}
           <div className="fld">
             <label htmlFor="email">{t("idLabel")}</label>

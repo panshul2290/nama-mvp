@@ -6,11 +6,14 @@ import { Suspense, useEffect, useState } from "react";
 import { NamaLogo } from "@/components/icons";
 import { AUTH, authError } from "@/components/portal/authI18n";
 import { OtpStep } from "@/components/portal/OtpStep";
-import { asApp } from "@/components/portal/session";
+import { admit, appHome, asApp, rememberSession, resetRedirect, type AppKey } from "@/components/portal/session";
+import { WrongAccount } from "@/components/portal/WrongAccount";
 import { Loading } from "@/components/Shell";
 import { LangToggle, useT } from "@/lib/i18n";
 import { formatPhone, parseContact } from "@/lib/phone";
 import { supabase } from "@/lib/supabase/client";
+import type { Role } from "@/lib/types";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
 
 export default function ResetPasswordPage() {
   return (
@@ -25,6 +28,8 @@ export default function ResetPasswordPage() {
 //   → the code signs them in → choose a new password.
 //   Email accounts: the "Forgot password?" email link signs them in (via /auth/callback)
 //   and lands here, straight on "choose a new password".
+// With ?app=, only that app's accounts can reset here (as on the sign-in page); the code is
+// checked on a scratch client and admit() keeps the session in this app's cookie.
 function Reset() {
   const params = useSearchParams();
   const app = asApp(params.get("app"));
@@ -38,12 +43,16 @@ function Reset() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [wrong, setWrong] = useState<Role | null | undefined>(undefined);
+  // The app whose session the new password is saved with (without ?app=: the account's own app).
+  const [target, setTarget] = useState<AppKey | null>(app);
 
+  // Signed in already (the email link, via /auth/callback?app=…): straight to the new password.
   useEffect(() => {
-    supabase()
+    supabase(app)
       .auth.getSession()
       .then(({ data }) => setStep(data.session ? "password" : "request"));
-  }, []);
+  }, [app]);
 
   // Unknown numbers get the same answer as known ones (no account lookup by number).
   const sendCode = async (to: string) => {
@@ -56,13 +65,12 @@ function Reset() {
     e.preventDefault();
     setError(null);
     setNote(null);
+    setWrong(undefined);
     const who = parseContact(id);
     if (!who) return setError(t("badId"));
     setBusy(true);
     if ("email" in who) {
-      const { error } = await supabase().auth.resetPasswordForEmail(who.email, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/login/reset`,
-      });
+      const { error } = await supabase(app).auth.resetPasswordForEmail(who.email, { redirectTo: resetRedirect(app) });
       setBusy(false);
       if (error) return setError(authError(t, error));
       return setNote(t("resetEmailSent", { email: who.email }));
@@ -79,10 +87,22 @@ function Reset() {
     if (password !== confirm) return setError(t("pwMismatch"));
     setBusy(true);
     setError(null);
-    const { error } = await supabase().auth.updateUser({ password });
+    const { error } = await supabase(target).auth.updateUser({ password });
     setBusy(false);
     if (error) return setError(error.message.includes("session") ? t("linkExpired") : authError(t, error));
-    router.replace("/");
+    router.replace(target ? appHome(target) : "/");
+  }
+
+  // The SMS code signed in on a scratch client: keep it only if the account belongs here.
+  async function verified(scratch: SupabaseClient, session: Session) {
+    const res = await admit(app, scratch, session);
+    if (!res.ok) {
+      setWrong(res.wrong);
+      return setStep("request");
+    }
+    rememberSession(true, res.app);
+    setTarget(res.app);
+    setStep("password");
   }
 
   const loginHref = `/login${app ? `?app=${app}` : ""}`;
@@ -96,13 +116,14 @@ function Reset() {
           <LangToggle />
         </div>
         {step === "code" && phone ? (
-          <OtpStep phone={phone} desktop={false} resend={() => sendCode(phone)} onVerified={() => setStep("password")} onChangeNumber={() => setStep("request")} />
+          <OtpStep phone={phone} desktop={false} resend={() => sendCode(phone)} onVerified={verified} onChangeNumber={() => setStep("request")} />
         ) : step === "request" ? (
           <>
             <h2>{t("resetTitle")}</h2>
             <p>{t("resetSub")}</p>
             <form onSubmit={request}>
               {error && <div className="banner badb">{error}</div>}
+              {wrong !== undefined && <WrongAccount role={wrong} desktop={false} />}
               {note && <div className="banner info">{note}</div>}
               <div className="fld">
                 <label htmlFor="rid">{t("idLabel")}</label>

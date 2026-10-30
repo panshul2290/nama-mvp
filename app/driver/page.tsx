@@ -6,7 +6,7 @@ import { useDriver } from "@/components/DriverContext";
 import { DICT, useFmt } from "@/components/driver/i18n";
 import { InvitationCards } from "@/components/driver/Invitations";
 import { pickOffer } from "@/components/driver/offer";
-import { permitState, usePermits } from "@/components/driver/permit";
+import { BLOCKERS_ID, OnlineBlockers, useBlockerTitle, useOnlineBlockers } from "@/components/driver/OnlineBlockers";
 import { useNow } from "@/components/driver/useNow";
 import { Icon } from "@/components/icons";
 import { LangToggle, useT } from "@/lib/i18n";
@@ -18,12 +18,12 @@ const PRE_CHECK = ["tyres_brakes_lights", "valves_sealed", "hatch_locked", "ppe"
 type Emergency = { on: boolean; zone: string | null; reason: string | null };
 
 export default function DriverHome() {
-  const { profile, tanker, refreshTanker, online, toggleOnline, companySuspended, shiftChecked, submitShiftCheck, job, legs, leg, today, openJobs, seenAt, unread, toast } = useDriver();
+  const { profile, tanker, refreshTanker, online, toggleOnline, shiftChecked, submitShiftCheck, job, legs, leg, today, openJobs, seenAt, unread, toast } = useDriver();
   const t = useT(DICT);
   const f = useFmt();
   const now = useNow(1_000);
-  const { rows: permits } = usePermits(tanker.id);
-  const permit = permits && now ? permitState(permits, tanker.service_type, now) : null;
+  const { permit, blockers, reloadPermits } = useOnlineBlockers();
+  const blockerTitle = useBlockerTitle();
   const [checks, setChecks] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [emergency, setEmergency] = useState<Emergency | null>(null);
@@ -44,8 +44,8 @@ export default function DriverHome() {
       });
   }, []);
 
-  const noPermit = permit != null && (permit.key === "expired" || permit.key === "rejected" || permit.key === "wrong" || permit.key === "none");
-  const cantGoOnline = !online && (Boolean(tanker.blocked) || companySuspended || noPermit || !shiftChecked);
+  // Offline with something missing: the toggle is disabled and the panel under it says what to do.
+  const cantGoOnline = !online && blockers.length > 0;
   const done = PRE_CHECK.filter((k) => checks[k]).length;
   const offer = online && !job ? pickOffer(openJobs, seenAt, now) : null;
 
@@ -79,26 +79,6 @@ export default function DriverHome() {
           {t("emergencyS")}
         </div>
       )}
-      {tanker.blocked && (
-        <div className="banner badb" role="alert">
-          <b>{t("blockedT")}</b> {tanker.blocked_reason ? t("reasonX", { reason: tanker.blocked_reason }) : ""} {t("blockedS")}
-        </div>
-      )}
-      {!tanker.blocked && companySuspended && (
-        <div className="banner badb" role="alert">
-          <b>{t("companySuspendedT")}</b> {t("companySuspendedS")}
-        </div>
-      )}
-      {!tanker.blocked && !companySuspended && noPermit && permit && (
-        <div className="banner badb" role="alert">
-          <b>{t(`permit_${permit.key}`)}.</b> {permit.pending ? t("renewalReview") : t("noPermitS", { svc: t(`svc_${tanker.service_type}`) })}{" "}
-          {!permit.pending && (
-            <Link className="lk" href="/driver/profile#permit">
-              {t("renewNow")}
-            </Link>
-          )}
-        </div>
-      )}
       {permit?.key === "expiring" && permit.current && (
         <div className="banner">
           <b>{t("permitExpires", { n: f.d(permit.daysLeft ?? 0), date: f.date(permit.current.expires_at) })}</b>{" "}
@@ -123,23 +103,26 @@ export default function DriverHome() {
                 ? t("finishTrip")
                 : online
                   ? t("onlineS")
-                  : !shiftChecked
-                    ? t("finishCheck")
-                    : cantGoOnline
-                      ? t("cantOnline")
-                      : t("readyS")}
+                  : cantGoOnline
+                    ? blockers.length === 1 && blockers[0].kind === "check"
+                      ? t("finishCheck")
+                      : t("cantOnline")
+                    : t("readyS")}
             </p>
           </div>
           <button
             className={`switch ${online ? "on" : ""}`}
             role="switch"
             aria-checked={online}
-            aria-label={t("online")}
+            aria-label={cantGoOnline ? t("blkToggle", { reason: blockerTitle(blockers[0]) }) : t("online")}
+            aria-describedby={cantGoOnline ? BLOCKERS_ID : undefined}
+            title={cantGoOnline ? blockerTitle(blockers[0]) : undefined}
             onClick={toggleOnline}
             disabled={Boolean(job) || cantGoOnline}
           />
         </div>
       </div>
+      {!online && !job && <OnlineBlockers blockers={blockers} onApplied={reloadPermits} checkHref="#precheck" />}
 
       {offer && (
         <Link href="/driver/jobs" className="card hl">
@@ -198,7 +181,9 @@ export default function DriverHome() {
 
       {!shiftChecked && (
         <>
-          <h4 className="d-h4">{t("preCheck")}</h4>
+          <h4 className="d-h4" id="precheck">
+            {t("preCheck")}
+          </h4>
           <p className="mut small" style={{ margin: "0 0 4px" }}>
             {t("preCheckS")}
           </p>

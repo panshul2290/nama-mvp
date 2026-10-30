@@ -102,7 +102,7 @@ export function Launcher() {
             <h3>How to run it</h3>
             <ol>
               <li>
-                Open the <b>Customer app</b> and the <b>Driver app</b> side by side in two browser windows. Each window needs its own sign-in, so use a private (incognito) window or a second browser for one of them.
+                Open the <b>Customer app</b> and the <b>Driver app</b> side by side in two browser windows. Each app keeps its own sign-in, so both (and the web portals) can be signed in at once in the same browser.
               </li>
               <li>In the driver app, go online. In the customer app, request a tanker and pay.</li>
               <li>The driver accepts, fills at an NWS station, drives and captures proof of delivery — both apps update live.</li>

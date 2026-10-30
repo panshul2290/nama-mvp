@@ -15,6 +15,7 @@ import { useToast } from "@/components/useToast";
 import { friendlyError } from "@/lib/errors";
 import { initials } from "@/lib/format";
 import { LangToggle } from "@/lib/i18n";
+import { signOutApp } from "@/components/portal/session";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Complaint, type DataRequest, type Profile, type Property } from "@/lib/types";
 
@@ -107,8 +108,8 @@ function Account() {
   }
 
   async function signOut() {
-    await supabase().auth.signOut();
-    router.replace("/login");
+    await signOutApp("customer");
+    router.replace("/login?app=customer");
   }
 
   const name = me?.full_name ?? profile.full_name;

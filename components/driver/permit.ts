@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import type { ServiceType } from "@/lib/pricing";
 
-export type PermitRow = { id: string; permit_no: string; type: ServiceType; status: string; issued_at: string; expires_at: string; stage?: string; info_requested?: string | null };
+export type PermitRow = { id: string; permit_no: string; type: ServiceType; status: string; issued_at: string; expires_at: string; stage?: string; info_requested?: string | null; reason?: string | null };
 export type PermitState = {
   /** valid | expiring (≤ 30 days) | expired | rejected | wrong (other service) | none */
   key: "valid" | "expiring" | "expired" | "rejected" | "wrong" | "none";
@@ -37,7 +37,7 @@ export function usePermits(tankerId: string) {
   const reload = useCallback(() => {
     supabase()
       .from("permits")
-      .select("id, permit_no, type, status, issued_at, expires_at, stage, info_requested")
+      .select("id, permit_no, type, status, issued_at, expires_at, stage, info_requested, reason")
       .eq("tanker_id", tankerId)
       .then(({ data }) => setRows((data ?? []) as PermitRow[]));
   }, [tankerId]);

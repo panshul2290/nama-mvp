@@ -11,6 +11,7 @@ import { useNow } from "@/components/driver/useNow";
 import { LangToggle, useT } from "@/lib/i18n";
 import { initials } from "@/lib/format";
 import { SHIFT_KEYS, shiftHours, type Shift } from "@/lib/shifts";
+import { signOutApp } from "@/components/portal/session";
 import { supabase } from "@/lib/supabase/client";
 import type { Device, TankerDocument } from "@/lib/types";
 
@@ -90,8 +91,8 @@ export default function DriverProfile() {
   }
 
   async function signOut() {
-    await supabase().auth.signOut();
-    router.replace("/login");
+    await signOutApp("driver");
+    router.replace("/login?app=driver");
   }
 
   const docState = (d: TankerDocument | undefined): [string, string] => {

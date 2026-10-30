@@ -201,16 +201,18 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
   }, []);
 
   // A suspended company's tankers can't work (the database refuses with company_suspended).
+  // tanker_company_active() is the online guard's own check (0015); RLS may hide a suspended
+  // company's row from its drivers, so the table alone can't tell.
+  const tankerId = tanker?.id ?? null;
   const companyId = tanker?.company_id ?? null;
   useEffect(() => {
-    if (!companyId) return;
+    if (!tankerId || !companyId) return;
     supabase()
-      .from("companies")
-      .select("status")
-      .eq("id", companyId)
-      .maybeSingle()
-      .then(({ data }) => setCompanySuspended(data?.status === "suspended"));
-  }, [companyId]);
+      .rpc("tanker_company_active", { p_tanker: tankerId })
+      .then(({ data, error }) => {
+        if (!error) setCompanySuspended(data === false);
+      });
+  }, [tankerId, companyId]);
 
   const savePrefs = useCallback(
     async (patch: Prefs) => {
@@ -302,10 +304,11 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
       setTanker({ ...tanker, is_online: !next });
       if (errorCode(error) === "company_suspended") setCompanySuspended(true);
       showToast(errText(error));
+      refreshTanker(); // picks up a block NWS set meanwhile (shown in the blockers panel)
       return;
     }
     setTanker(data);
-  }, [tanker, job, shiftChecked, showToast, t, errText]);
+  }, [tanker, job, shiftChecked, showToast, t, errText, refreshTanker]);
 
   const submitShiftCheck = useCallback(
     async (items: Record<string, boolean>) => {

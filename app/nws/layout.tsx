@@ -7,7 +7,7 @@ import { Icon, NamaLogo, type IconName } from "@/components/icons";
 import { STAFF_ROLE_LABEL, StaffProvider, type Staff } from "@/components/nws/StaffContext";
 import { Loading } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
-import { supabase } from "@/lib/supabase/client";
+import { signOutApp } from "@/components/portal/session";
 
 // Sidebar exactly as labelled in the prototype's staff portal.
 const NAV: { href: string; label: string; icon: IconName }[] = [
@@ -28,7 +28,7 @@ export default function NwsLayout({ children }: { children: React.ReactNode }) {
   if (!profile || !profile.staff_role) return <Loading />;
 
   async function signOut() {
-    await supabase().auth.signOut();
+    await signOutApp("nws");
     router.replace("/login?app=nws");
   }
 

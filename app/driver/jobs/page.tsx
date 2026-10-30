@@ -6,7 +6,7 @@ import { useDriver } from "@/components/DriverContext";
 import { DICT, useErrText, useFmt } from "@/components/driver/i18n";
 import { nearestSite } from "@/components/driver/legs";
 import { pickOffer } from "@/components/driver/offer";
-import { permitState, usePermits } from "@/components/driver/permit";
+import { BLOCKERS_ID, OnlineBlockers, useBlockerTitle, useOnlineBlockers } from "@/components/driver/OnlineBlockers";
 import { useNow } from "@/components/driver/useNow";
 import { Icon } from "@/components/icons";
 import { RuleTag } from "@/components/OrderBits";
@@ -27,8 +27,10 @@ export default function JobsPage() {
   const [tab, setTab] = useState<Tab>("open");
   const [accepting, setAccepting] = useState<string | null>(null);
   const [scheduled, setScheduled] = useState<Scheduled[] | null>(null);
-  const { rows: permits } = usePermits(tanker.id);
-  const permit = permits && now ? permitState(permits, tanker.service_type, now) : null;
+  const { permit, blockers, reloadPermits } = useOnlineBlockers();
+  const blockerTitle = useBlockerTitle();
+  // Offline with something missing: the toggle is disabled and the panel says what to do.
+  const cantGoOnline = !online && !job && blockers.length > 0;
 
   useEffect(() => {
     if (tab !== "scheduled") return;
@@ -76,13 +78,21 @@ export default function JobsPage() {
             <bdi>{tanker.plate}</bdi> · {t(`svc_${tanker.service_type}`)} · {f.n(tanker.capacity_gal)} {t("gal")}
           </small>
         </div>
-        <button className={`d-onl ${online ? "on" : ""}`} onClick={toggleOnline} disabled={Boolean(job)} aria-pressed={online}>
+        <button
+          className={`d-onl ${online ? "on" : ""}`}
+          onClick={toggleOnline}
+          disabled={Boolean(job) || cantGoOnline}
+          aria-pressed={online}
+          aria-describedby={cantGoOnline ? BLOCKERS_ID : undefined}
+          title={cantGoOnline ? t("blkToggle", { reason: blockerTitle(blockers[0]) }) : undefined}
+        >
           <i />
           {online ? t("online") : t("offline")}
         </button>
       </div>
 
-      {!online && (
+      {cantGoOnline && <OnlineBlockers blockers={blockers} onApplied={reloadPermits} checkHref="/driver#precheck" />}
+      {!online && !cantGoOnline && (
         <div className="dj-ban">
           <Icon name="alert" />
           <span>{t("offlineBan")}</span>

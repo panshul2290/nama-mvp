@@ -21,7 +21,7 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    It applies `supabase/migrations/NNNN_*.sql` in order, each in its own transaction, and records them in `supabase_migrations.schema_migrations` (the table the Supabase CLI uses), so it's safe to re-run. Already-applied migrations are skipped. It then checks the tables, RLS, RPCs and the realtime publication.
    Alternatives: paste each file into the dashboard's **SQL Editor** in order, or use `supabase link` + `supabase db push`.
 
-3. **Configure auth.** Under **Authentication → URL Configuration**, set **Site URL** to `http://localhost:3000` and add `http://localhost:3000/auth/callback` to **Redirect URLs**.
+3. **Configure auth.** Under **Authentication → URL Configuration**, set **Site URL** to `http://localhost:3000` and add `http://localhost:3000/auth/callback**` to **Redirect URLs** (the links carry `?app=…&next=…`: the app that asked for the email gets the session).
    For quick local testing you can turn off **Authentication → Providers → Email → Confirm email**, so new sign-ups land in the app straight away. Seeded accounts are pre-confirmed either way.
    **Mobile sign-in:** new accounts sign up with a mobile number, a password and an SMS code. Enable the Phone provider and the Send SMS hook (`public.send_sms_hook`) as described in [`docs/mobile-auth.md`](docs/mobile-auth.md); there is no SMS gateway yet, so for a demo also switch on `DEMO_SMS_CODES` to show the code on screen.
 
@@ -62,7 +62,7 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    ```bash
    npm run dev
    ```
-   Open <http://localhost:3000>. To use both roles at once, sign in as the customer in one browser and the driver in another (or a private window), because they share a session cookie otherwise.
+   Open <http://localhost:3000>. Each app (NWS, Company, Business, Customer, Driver) keeps its own session (`lib/apps.ts`: one auth cookie per app), so one browser can be signed in to all of them at once, each with a different account. Each sign-in page accepts only its own kind of account.
 
 ## Try the flow
 
@@ -117,7 +117,7 @@ A desktop portal for NWS staff, styled after the prototype's staff screens.
   - Staff can read everything.
   - Every staff write is a `SECURITY DEFINER` RPC that checks the sub-role and writes exactly one `audit_log` row.
   - `audit_log` has no INSERT, UPDATE or DELETE grants, and a trigger rejects UPDATE, DELETE and TRUNCATE even for the database owner.
-- **Accounts:** staff can't be created by sign-up; only `npm run seed` or an admin assigns the role. Seeded staff accounts (password: `SEED_PASSWORD`): `nws-admin@nama.test`, `nws-operator@nama.test`, `nws-permits@nama.test`. Staff sign in at `/login` and land on `/nws`.
+- **Accounts:** staff can't be created by sign-up; only `npm run seed` or an admin assigns the role. Seeded staff accounts (password: `SEED_PASSWORD`): `nws-admin@nama.test`, `nws-operator@nama.test`, `nws-permits@nama.test`. Staff sign in at `/login?app=nws` (the NWS sign-in accepts only staff accounts) and land on `/nws`.
 
 ### Pricing (`0004_pricing_rules.sql`)
 Every tariff figure is a row in `public.pricing_rules` (`rule_key`, `value`, `status`, `source`, `notes`). Nothing is hard-coded in SQL or in `lib/pricing.ts`.
@@ -238,7 +238,7 @@ The Supabase run fingerprints every non-test row before and after, and fails if 
 ## Project layout
 ```
 app/
-  login, signup, auth/callback      email + password auth; role chosen at sign-up
+  login, signup, auth/callback      sign-in (mobile or email + password), sign-up, reset; ?app= picks the app, which admits only its own accounts
   onboarding/                       driver: plate, type, capacity
   customer/                         map picker + quote + place request
   customer/orders/[id]/             live status, driver card, moving tanker

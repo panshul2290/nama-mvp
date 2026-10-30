@@ -40,22 +40,30 @@ symlinkSync(join(root, "node_modules"), join(stage, "node_modules"), "junction")
 // Desktop portals, the email-link callback (a route handler) and the session proxy can't be exported.
 for (const p of ["app/nws", "app/company", "app/business", "app/auth", ...APPS[app].drop]) rmSync(join(stage, p), { recursive: true, force: true });
 
-// The app opens on its own home: signed-in users go to their role's screens, others to sign-in.
+// The app opens on its own home: signed-in users go to their screens, others to sign-in.
+// The APK is one app (NEXT_PUBLIC_APP_TARGET): lib/supabase/client.ts keeps its session
+// under that app's own cookie name, and its sign-in admits only that app's accounts.
 writeFileSync(
   join(stage, "app", "page.tsx"),
   `"use client";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AUTH } from "@/components/portal/authI18n";
+import { signOutApp } from "@/components/portal/session";
+import { WrongAccount } from "@/components/portal/WrongAccount";
 import { Loading } from "@/components/Shell";
+import { useT } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase/client";
+import type { Role } from "@/lib/types";
 
-const APP: string = ${JSON.stringify(app)};
+const APP = ${JSON.stringify(app)};
 
-// Mobile build: route by role; a user of the other app is told which app to use.
+// Mobile build: open the app; an account of another kind (signed in before this build) is signed out.
 export default function MobileHome() {
   const router = useRouter();
-  const [wrong, setWrong] = useState<string | null>(null);
+  const t = useT(AUTH);
+  const [wrong, setWrong] = useState<Role | null | undefined>(undefined);
   useEffect(() => {
     (async () => {
       const db = supabase();
@@ -67,16 +75,15 @@ export default function MobileHome() {
         const { data: tanker } = await db.from("tankers").select("id").maybeSingle();
         return router.replace(tanker ? "/driver" : "/onboarding");
       }
-      await db.auth.signOut();
-      setWrong(profile?.role === "driver" ? "the Nama Driver app" : profile?.role === "customer" ? "the Nama Tanker app" : "the web portal");
+      await signOutApp();
+      setWrong((profile?.role ?? null) as Role | null);
     })();
   }, [router]);
-  if (wrong)
+  if (wrong !== undefined)
     return (
       <div className="screen" style={{ padding: 24 }}>
-        <h2>Wrong app for this account</h2>
-        <p className="mut">This account belongs in {wrong}. You've been signed out.</p>
-        <button className="cta" onClick={() => router.replace("/login?app=" + APP)}>Sign in with another account</button>
+        <WrongAccount role={wrong} desktop={false} />
+        <button className="cta" onClick={() => router.replace("/login?app=" + APP)}>{t("signIn")}</button>
       </div>
     );
   return <Loading />;

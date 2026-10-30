@@ -1,62 +1,75 @@
 "use client";
 
-import { supabase } from "@/lib/supabase/client";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import { appFor, homeFor, type AppKey } from "@/lib/apps";
+import { currentApp, supabase } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
 
-// "Keep me signed in": when unticked at sign-in, the session ends with the
-// browser session. Supabase keeps the session in cookies either way, so we
-// remember the choice and sign out on the first load of a new browser session.
+export { APP_KEYS, appFor, appHome, areaApp, asApp, homeFor, isDesktopApp, type AppKey } from "@/lib/apps";
+
+// "Keep me signed in", per app: when unticked at sign-in, that app's session ends with
+// the browser session. Supabase keeps the session in cookies either way, so we remember
+// the choice and sign out on the first load of a new browser session.
 const EPHEMERAL = "nama.ephemeral";
 const ALIVE = "nama.alive";
+const key = (base: string, app: AppKey | null) => (app ? `${base}.${app}` : base);
 
-export function rememberSession(keep: boolean) {
+export function rememberSession(keep: boolean, app: AppKey | null = currentApp()) {
   try {
-    if (keep) localStorage.removeItem(EPHEMERAL);
-    else localStorage.setItem(EPHEMERAL, "1");
-    sessionStorage.setItem(ALIVE, "1");
+    if (keep) localStorage.removeItem(key(EPHEMERAL, app));
+    else localStorage.setItem(key(EPHEMERAL, app), "1");
+    sessionStorage.setItem(key(ALIVE, app), "1");
   } catch {
     /* storage blocked: keep the default (stay signed in) */
   }
 }
 
-/** Signs out if the user asked not to stay signed in and this is a new browser session. */
-export async function enforceSessionChoice(): Promise<boolean> {
+/** Signs this app out if the user asked not to stay signed in and this is a new browser session. */
+export async function enforceSessionChoice(app: AppKey | null = currentApp()): Promise<boolean> {
   try {
-    if (localStorage.getItem(EPHEMERAL) === "1" && sessionStorage.getItem(ALIVE) !== "1") {
-      localStorage.removeItem(EPHEMERAL);
-      await supabase().auth.signOut();
+    if (localStorage.getItem(key(EPHEMERAL, app)) === "1" && sessionStorage.getItem(key(ALIVE, app)) !== "1") {
+      await signOutApp(app);
       return true;
     }
-    sessionStorage.setItem(ALIVE, "1");
+    sessionStorage.setItem(key(ALIVE, app), "1");
   } catch {
     /* ignore */
   }
   return false;
 }
 
-/** Where each role lands after signing in. */
-export function homeFor(role: Role | null | undefined, hasTanker = false): string {
-  switch (role) {
-    case "nws_staff":
-      return "/nws";
-    case "owner":
-      return "/company";
-    case "business":
-      return "/business";
-    case "driver":
-      return hasTanker ? "/driver" : "/onboarding";
-    case "customer":
-      return "/customer";
-    default:
-      return "/login";
+/** Signs out of one app only: the other apps' sessions in this browser (and on other devices) stay. */
+export async function signOutApp(app: AppKey | null = currentApp()) {
+  try {
+    localStorage.removeItem(key(EPHEMERAL, app));
+  } catch {
+    /* ignore */
   }
+  await supabase(app).auth.signOut({ scope: "local" });
 }
 
-export type AppKey = "nws" | "customer" | "business" | "driver" | "company";
-export const APP_KEYS: AppKey[] = ["nws", "customer", "business", "driver", "company"];
-export const asApp = (v: string | null | undefined): AppKey | null => (APP_KEYS.includes(v as AppKey) ? (v as AppKey) : null);
-/** Desktop (web) apps get the full-screen sign-in; the phone apps keep the in-frame one. */
-export const isDesktopApp = (a: AppKey | null) => a === "nws" || a === "business" || a === "company";
-/** The app each role signs in to. */
-export const appFor = (role: Role): AppKey =>
-  role === "nws_staff" ? "nws" : role === "owner" ? "company" : role === "business" ? "business" : role === "driver" ? "driver" : "customer";
+export type Admitted = { ok: true; app: AppKey; role: Role; home: string } | { ok: false; wrong: Role | null };
+
+/**
+ * After a sign-in on a scratch client (lib/supabase/client.ts): an account that belongs
+ * to `app` (or, with no app, to any app) gets its session moved into its app's own
+ * cookie; an account of another kind is signed out at once and never touches the app.
+ */
+export async function admit(app: AppKey | null, scratch: SupabaseClient, session: Session): Promise<Admitted> {
+  const { data } = await scratch.from("profiles").select("role").eq("id", session.user.id).maybeSingle();
+  const role = (data?.role ?? null) as Role | null;
+  if (!role || (app && appFor(role) !== app)) {
+    await scratch.auth.signOut({ scope: "local" });
+    return { ok: false, wrong: role };
+  }
+  const target = app ?? appFor(role);
+  const db = supabase(target);
+  const { error } = await db.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token });
+  if (error) return { ok: false, wrong: null };
+  // RLS returns only the tanker currently assigned to this driver.
+  const hasTanker = role === "driver" ? Boolean((await db.from("tankers").select("id").maybeSingle()).data) : false;
+  return { ok: true, app: target, role, home: homeFor(role, hasTanker) };
+}
+
+/** Where the "reset your password" email link lands: the callback signs in to this app, then opens /login/reset. */
+export const resetRedirect = (app: AppKey | null) => `${window.location.origin}/auth/callback?${app ? `app=${app}&` : ""}next=/login/reset`;

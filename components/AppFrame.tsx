@@ -4,7 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { NamaLogo } from "@/components/icons";
 import { LangProvider, useLang } from "@/lib/i18n";
-import { supabase } from "@/lib/supabase/client";
+import { signOutApp } from "@/components/portal/session";
+import { currentApp, supabase } from "@/lib/supabase/client";
 
 function appTitle(path: string): [string, string] {
   if (path.startsWith("/customer")) return ["Customer app", "For households · iOS and Android"];
@@ -44,16 +45,18 @@ function Frame({ children }: { children: React.ReactNode }) {
   const [signedIn, setSignedIn] = useState(false);
   const [title, sub] = appTitle(path);
 
+  // Each app has its own session: follow the one of the app on screen.
   useEffect(() => {
     const db = supabase();
     db.auth.getSession().then(({ data }) => setSignedIn(Boolean(data.session)));
     const { data } = db.auth.onAuthStateChange((_e, session) => setSignedIn(Boolean(session)));
     return () => data.subscription.unsubscribe();
-  }, []);
+  }, [path]);
 
   async function signOut() {
-    await supabase().auth.signOut();
-    router.replace("/login");
+    const app = currentApp();
+    await signOutApp(app);
+    router.replace(app ? `/login?app=${app}` : "/login");
   }
 
   // The NWS staff portal is a desktop layout of its own (no phone frame).

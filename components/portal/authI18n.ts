@@ -101,16 +101,20 @@ export const AUTH: Dict = {
   e_sms_failed: { en: "We couldn’t send the SMS. Check the number and try again.", ar: "تعذّر إرسال الرسالة. تحقق من الرقم وحاول مجدداً." },
   e_phone_disabled: { en: "Sign-in by mobile number isn’t switched on for this project yet.", ar: "الدخول برقم الهاتف غير مفعّل في هذا المشروع بعد." },
 
-  // Signed in with another kind of account (/switch)
-  switchTitle: { en: "You’re signed in with another account", ar: "أنت مسجّل الدخول بحساب آخر" },
-  switchBody: { en: "{name} is signed in as {role}. {app} needs its own account.", ar: "{name} مسجّل الدخول بصفة {role}. يحتاج {app} إلى حسابه الخاص." },
-  switchSignOut: { en: "Sign out and sign in to {app}", ar: "تسجيل الخروج والدخول إلى {app}" },
-  switchStay: { en: "Go to my app", ar: "الذهاب إلى تطبيقي" },
-  role_customer: { en: "a customer", ar: "عميل" },
-  role_driver: { en: "a driver", ar: "سائق" },
-  role_owner: { en: "a tanker company owner", ar: "مالك شركة صهاريج" },
-  role_business: { en: "a business user", ar: "مستخدم أعمال" },
-  role_nws_staff: { en: "NWS staff", ar: "موظف في نماء" },
+  // An account of another kind on this app's sign-in (each app accepts only its own accounts)
+  wrong_customer: { en: "This is a customer account.", ar: "هذا حساب عميل." },
+  wrong_driver: { en: "This is a driver account.", ar: "هذا حساب سائق." },
+  wrong_owner: { en: "This is a tanker company account.", ar: "هذا حساب شركة صهاريج." },
+  wrong_business: { en: "This is a business account.", ar: "هذا حساب أعمال." },
+  wrong_nws_staff: { en: "This is an NWS staff account.", ar: "هذا حساب موظف في نماء." },
+  useApp: { en: "Use the {app} to sign in.", ar: "استخدم {app} لتسجيل الدخول." },
+  openApp: { en: "Go to the {app} sign-in", ar: "الانتقال إلى تسجيل الدخول في {app}" },
+  e_no_profile: { en: "This account isn’t set up yet. Contact NWS support.", ar: "هذا الحساب غير مُعَدّ بعد. تواصل مع دعم نماء." },
+  app_nws: { en: "NWS staff portal", ar: "بوابة موظفي نماء" },
+  app_customer: { en: "Customer app", ar: "تطبيق العملاء" },
+  app_business: { en: "Business portal", ar: "بوابة الأعمال" },
+  app_driver: { en: "Driver app", ar: "تطبيق السائقين" },
+  app_company: { en: "Company portal", ar: "بوابة الشركات" },
 };
 
 const CODES: Record<string, string> = {
