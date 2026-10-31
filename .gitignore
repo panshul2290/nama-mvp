@@ -73,3 +73,4 @@ next-env.d.ts
 /mobile/*/android/app/google-services.json
 /mobile/*/ios/App/App/GoogleService-Info.plist
 /docs/research/
+/docs/review/
