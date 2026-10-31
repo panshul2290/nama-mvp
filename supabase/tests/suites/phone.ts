@@ -96,6 +96,21 @@ export async function phoneSuite(t: Target, r: Reporter) {
   r.check("the person can change their own profile email", (await t.as<{ priv: { email: string } }>(DP, "select my_private_profile() as priv"))[0].priv.email === "new@example.com");
   await r.denies("another user can't read the private email column", () => t.as(C.id, "select email from profiles"), "permission denied");
 
+  // ---- 0046: demo codes only for new numbers, demo accounts and named testers ------------
+  await t.admin("update app_settings set value = 'on' where key = 'DEMO_SMS_CODES'");
+  try {
+    await t.admin("select public.send_sms_hook($1::jsonb)", [JSON.stringify({ user: { phone: "96890001111" }, sms: { otp: "909090" } })]);
+    r.check("demo mode never shows the code of a real (non-demo) account to anyone", (await demo(null, "90001111")) === null && (await demo(C.id, "+96890001111")) === null);
+    await t.admin("update app_settings set value = ' +968 9000 1111 ,99999999' where key = 'DEMO_SMS_ALLOWLIST'");
+    r.check("a number on DEMO_SMS_ALLOWLIST shows its code", (await demo(null, "90001111")) === "909090");
+    await t.admin("update app_settings set value = '' where key = 'DEMO_SMS_ALLOWLIST'");
+    await t.admin("select public.send_sms_hook($1::jsonb)", [JSON.stringify({ user: { phone: "96890004321" }, sms: { otp: "434343" } })]);
+    r.check("a number with no account (sign-up) still shows its code", (await demo(null, "90004321")) === "434343");
+  } finally {
+    await t.admin("update app_settings set value = 'off' where key = 'DEMO_SMS_CODES'");
+    await t.admin("update app_settings set value = '' where key = 'DEMO_SMS_ALLOWLIST'");
+  }
+
   // Two companies, each with an owner.
   const company = async (label: string) => {
     const [co] = await t.admin<{ id: string }>("insert into companies (name, cr_no) values ($1, $2) returning id", [`TST ${label}`, `TSTPH${label}`]);
