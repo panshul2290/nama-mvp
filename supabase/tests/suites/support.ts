@@ -35,8 +35,10 @@ export async function supportSuite(t: Target, r: Reporter) {
     r.check("an admin sets it (duplicates dropped, audited)", JSON.parse(now.value).length === 1 && JSON.parse(now.value)[0] === "household", now);
     await r.denies("with 'household' required, an unverified customer can't place an app order", () => placeOrder(t, w.C1.id, "DW", 1000), "identity_required");
     await r.denies("a passport number that is too short is refused", () => t.as(w.C1.id, "select verify_identity('passport', 'X1')"), "id_not_verified");
-    const p = await one<{ id_type: string; id_verified: boolean }>(w.C1.id, "select id_type, id_verified from verify_identity('passport', 'ab 12-345')");
-    r.check("a passport is accepted as identity", p?.id_type === "passport" && p.id_verified === true, p);
+    const p = await one<{ id_type: string; id_verified: boolean; id_status: string }>(w.C1.id, "select id_type, id_verified, id_status from verify_identity('passport', 'ab 12-345')");
+    r.check("a passport is accepted as identity, declared until NWS checks it (0050)", p?.id_type === "passport" && p.id_verified === false && p.id_status === "declared", p);
+    await r.denies("a declared (unchecked) number doesn't pass the identity rule", () => placeOrder(t, w.C1.id, "DW", 1000), "identity_required");
+    await t.as(AD.id, "select staff_customer_action($1, 'verify_id', 'TEST passport checked against the photo')", [w.C1.id]);
     const [pid] = await t.admin<{ id_no: string | null }>("select public.pii_decrypt(id_no_enc) as id_no from profiles where id = $1", [w.C1.id]);
     r.check("the passport number is stored upper-case without spaces or dashes", pid?.id_no === "AB12345", pid);
     await r.allows("once verified, the customer can order", () => placeOrder(t, w.C1.id, "DW", 1000));

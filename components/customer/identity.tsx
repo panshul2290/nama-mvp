@@ -1,6 +1,7 @@
 "use client";
 
-// E1 identity: the ID / resident card number (through verify_identity, a simulated check) and
+// E1 identity: the ID / resident card number (through verify_identity: stored as declared, NWS
+// staff verify it against the photos, 0050) and
 // photos of the card (front, optional back) and an optional selfie. The photos go to the
 // private "identity" bucket under <uid>/ (owner-only, NWS staff can read: 0030) and are
 // recorded by add_identity_document() so NWS can review them. Used at sign-up and in Account.
@@ -23,7 +24,7 @@ export const BUCKET = "identity";
 
 export const ID_DICT: Dict = {
   idSec: { en: "Your identity", ar: "هويتك" },
-  idSecS: { en: "Your Civil ID, resident card or passport. The check in this demo is simulated; your photos are kept privately for NWS to review.", ar: "بطاقتك المدنية أو بطاقة الإقامة أو جواز سفرك. التحقق في هذا العرض محاكاة؛ وتُحفظ صورك بشكل خاص لتراجعها نماء." },
+  idSecS: { en: "Your Civil ID, resident card or passport. NWS checks the number against your photos, which are kept privately for that review.", ar: "بطاقتك المدنية أو بطاقة الإقامة أو جواز سفرك. تتحقق نماء من الرقم مقابل صورك، وتُحفظ الصور بشكل خاص لهذه المراجعة." },
   idSecOpt: { en: "Your identity (optional)", ar: "هويتك (اختياري)" },
   idSecOptS: {
     en: "Add your Civil ID, resident card or passport now, or later in Account. NWS may ask for it for some orders, such as the subsidised household tariff or business accounts.",
@@ -57,7 +58,9 @@ export const ID_DICT: Dict = {
   removePhoto: { en: "Remove", ar: "إزالة" },
   photoDenied: { en: "The app isn’t allowed to use the camera. Allow it in Settings, or choose a photo.", ar: "لا يُسمح للتطبيق باستخدام الكاميرا. اسمح بذلك من الإعدادات أو اختر صورة." },
   photoFailed: { en: "The photo couldn’t be read. Try again.", ar: "تعذّرت قراءة الصورة. حاول مجدداً." },
-  simulated: { en: "Verified · simulated check", ar: "موثق · تحقق تجريبي" },
+  simulated: { en: "Verified by NWS", ar: "موثّقة من نماء" },
+  idDeclared: { en: "Waiting for NWS to check it", ar: "بانتظار تحقق نماء" },
+  idRejected: { en: "NWS couldn’t verify it: check the number and photos", ar: "تعذّر على نماء التحقق منها: راجع الرقم والصور" },
   notVerified: { en: "Not verified yet", ar: "لم يتم التحقق بعد" },
   docsReceived: { en: "Documents received — NWS reviews them", ar: "تم استلام الوثائق — تراجعها نماء" },
   docsAccepted: { en: "Documents accepted by NWS", ar: "قبلت نماء الوثائق" },
@@ -123,7 +126,7 @@ export async function saveIdentityPhotos(db: SupabaseClient, userId: string, pho
   return { saved, problem: null };
 }
 
-/** The number goes through verify_identity (simulated national check) exactly as before. */
+/** The number goes through verify_identity: stored as declared until NWS staff verify it (0050). */
 export async function verifyIdNumber(db: SupabaseClient, type: IdType, no: string) {
   const { error } = await db.rpc("verify_identity", { p_id_type: type, p_id_no: no.trim() });
   return error ? (errorCode(error) ?? "failed") : null;

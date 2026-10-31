@@ -35,6 +35,8 @@ export type Profile = {
   id_type?: "civil_id" | "resident_card" | "passport" | null;
   id_no?: string | null;
   id_verified?: boolean;
+  /** 0050: "declared" by the person, "verified" / "rejected" by NWS staff. */
+  id_status?: "none" | "declared" | "verified" | "rejected";
   segment?: "household" | "commercial" | "government" | "farm";
   lang?: "en" | "ar";
   prefs?: Record<string, unknown>;

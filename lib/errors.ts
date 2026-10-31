@@ -1,6 +1,7 @@
 // Maps the stable error codes raised by the database RPCs to UI copy.
 const MESSAGES: Record<string, string> = {
-  identity_required: "NWS needs your ID, resident card or passport for this order. Add it in Account → Your identity, then try again.",
+  identity_required: "NWS needs your verified ID, resident card or passport for this order. Add it in Account → Your identity; once NWS has checked it, try again.",
+  id_not_declared: "This account has no ID number to verify yet.",
   invalid_channel: "Choose SMS or WhatsApp for the code.",
   already_escalated: "This complaint is already escalated to Nama 1442.",
   invalid_sender_id: "Sender IDs are 3–11 letters or digits, and transactional and marketing need different ones.",
@@ -192,7 +193,8 @@ const MESSAGES_AR: Record<string, string> = {
   too_many_plans: "يمكنك إنشاء 10 طلبات دورية كحد أقصى.",
   already_created: "هذا التوصيل أصبح طلباً بالفعل: ألغِ الطلب بدلاً من ذلك.",
   invalid_path: "هذه الصورة ليست في مجلدك.",
-  identity_required: "تحتاج نماء إلى بطاقتك المدنية أو بطاقة الإقامة أو جواز سفرك لهذا الطلب. أضفها من الحساب ← هويتك ثم حاول مجدداً.",
+  identity_required: "تحتاج نماء إلى بطاقتك المدنية أو بطاقة الإقامة أو جواز سفرك موثّقة لهذا الطلب. أضفها من الحساب ← هويتك، وبعد أن تتحقق منها نماء حاول مجدداً.",
+  id_not_declared: "لا يوجد رقم هوية لهذا الحساب للتحقق منه بعد.",
   invalid_channel: "اختر الرسائل النصية أو واتساب لاستلام الرمز.",
   already_escalated: "تم تصعيد هذه الشكوى إلى نماء 1442 بالفعل.",
   invalid_sender_id: "معرّف المرسل من ٣ إلى ١١ حرفاً أو رقماً، ويجب أن يختلف معرّف الرسائل الخدمية عن التسويقية.",

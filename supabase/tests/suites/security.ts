@@ -199,4 +199,23 @@ export async function securitySuite(t: Target, r: Reporter) {
   r.check("live-route share tokens are no longer readable by staff", shp.n === 0, shp);
   await one(PC.id, "select * from cancel_order($1)", [jo.id]).catch(() => undefined);
   await t.as(D1.id, "select driver_set_online(false)").catch(() => undefined);
+
+  // ===========================================================================================
+  r.start("SECID identity declared by the person, verified by NWS (0050)");
+  const IDC = await t.createUser("sec-idc", { role: "customer", full_name: "Test Identity Customer" });
+  await r.denies("NWS can't verify an account with no ID number declared", () => one(PO.id, "select * from staff_customer_action($1, 'verify_id', 'TEST')", [IDC.id]), "id_not_declared");
+  const dec = await one<{ id_verified: boolean; id_status: string }>(IDC.id, "select id_verified, id_status from verify_identity('civil_id', '12345678')");
+  r.check("a well-formed number the person types is stored as declared, not verified", dec?.id_verified === false && dec.id_status === "declared", dec);
+  await r.denies("the person can't mark themselves verified", () => t.as(IDC.id, "update profiles set id_verified = true where id = $1", [IDC.id]), "permission denied");
+  await t.admin("insert into identity_documents (user_id, kind, file_path) values ($1, 'id_front', $2)", [IDC.id, `${IDC.id}/front.jpg`]);
+  await r.denies("an operator can't verify identities (the roles that see the ID scans do)", () => one(OPS.id, "select * from staff_customer_action($1, 'verify_id', 'TEST')", [IDC.id]), "forbidden_for_role");
+  await r.denies("nor a viewer", () => one(VW.id, "select * from staff_customer_action($1, 'verify_id', 'TEST')", [IDC.id]), "forbidden_for_role");
+  const ver = await one<{ id_verified: boolean; id_status: string; id_verified_by: string }>(PO.id, "select id_verified, id_status, id_verified_by from staff_customer_action($1, 'verify_id', 'TEST civil ID photo matches')", [IDC.id]);
+  const [doc] = await t.admin<{ review_status: string }>("select review_status from identity_documents where user_id = $1", [IDC.id]);
+  r.check("a permit officer verifies it (recorded, audited, the ID photo accepted)", ver?.id_verified === true && ver.id_status === "verified" && ver.id_verified_by === PO.id && doc.review_status === "accepted"
+    && (await t.admin("select 1 from audit_log where action = 'customer.verify_id' and target_id = $1", [IDC.id])).length === 1, { ver, doc });
+  const same = await one<{ id_verified: boolean }>(IDC.id, "select id_verified from verify_identity('civil_id', '1234-5678')");
+  r.check("re-entering the same number keeps the verification", same?.id_verified === true, same);
+  const chg = await one<{ id_verified: boolean; id_status: string }>(IDC.id, "select id_verified, id_status from verify_identity('civil_id', '87654321')");
+  r.check("a different number drops it back to declared", chg?.id_verified === false && chg.id_status === "declared", chg);
 }

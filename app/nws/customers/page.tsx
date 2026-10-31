@@ -22,13 +22,13 @@ import type { OrderStatus } from "@/lib/types";
 
 type Segment = "household" | "commercial" | "government" | "farm";
 type Customer = {
-  id: string; full_name: string; phone: string | null; segment: Segment; id_type: string | null; id_no: string | null; id_verified: boolean;
+  id: string; full_name: string; phone: string | null; segment: Segment; id_type: string | null; id_no: string | null; id_verified: boolean; id_status?: string;
   account_blocked: boolean; lang: string; loyalty_points: number; created_at: string; role: "customer" | "business"; org_id: string | null; share_usage: boolean | null;
 };
 // id_type, id_no and loyalty_points are private columns: staff read them through staff_private_profiles().
 type Private = { id: string; id_type: string | null; id_no: string | null; loyalty_points: number; share_usage: boolean | null };
 type PublicCustomer = Omit<Customer, "id_type" | "id_no" | "loyalty_points" | "share_usage">;
-const PUBLIC_COLS = "id, full_name, phone:phone_masked, segment, id_verified, account_blocked, lang, created_at, role, org_id";
+const PUBLIC_COLS = "id, full_name, phone:phone_masked, segment, id_verified, id_status, account_blocked, lang, created_at, role, org_id";
 function withPrivate(rows: PublicCustomer[], priv: Private[] | null): Customer[] {
   const m = new Map((priv ?? []).map((p) => [p.id, p]));
   return rows.map((r) => ({ ...r, id_type: m.get(r.id)?.id_type ?? null, id_no: m.get(r.id)?.id_no ?? null, loyalty_points: m.get(r.id)?.loyalty_points ?? 0, share_usage: m.get(r.id)?.share_usage ?? null }));
@@ -268,7 +268,7 @@ function CustomersTab({
                   <td>{names.seg(c.segment)}</td>
                   <td>
                     {c.id_type ? <>{names.idType(c.id_type)} <bdi dir="ltr">{c.id_no ?? ""}</bdi></> : <span className="mut">{t("notProvided")}</span>}{" "}
-                    <St tone={c.id_verified ? "ok" : "warn"}>{c.id_verified ? t("verified") : t("unverified")}</St>
+                    <IdState c={c} />
                   </td>
                   <td><Phone value={c.phone} maskPhones={privacy.maskPhones} /></td>
                   <td className="num">{f.n3(wallet.get(c.id))}</td>
@@ -304,7 +304,7 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
   const run = useRpc();
   const [c, setC] = useState<Customer | null>(null);
   const [d, setD] = useState<Detail | null>(null);
-  const [dlg, setDlg] = useState<"goodwill" | "block" | "verify" | null>(null);
+  const [dlg, setDlg] = useState<"goodwill" | "block" | "verify" | "rejectId" | null>(null);
 
   const load = useCallback(async () => {
     const db = supabase();
@@ -352,7 +352,8 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
 
   const canGood = can("complaints_agent", "finance", "admin");
   const canBlock = can("operator", "admin");
-  const canVerify = can("operator", "admin", "complaints_agent");
+  // 0050: identities are verified by the roles that see the ID scans (0049).
+  const canVerify = can("permit_officer", "inspector", "admin");
   const caseState = (s: string) => (CUSTOMERS[`cstate_${s}`] ? t(`cstate_${s}`) : s);
 
   return (
@@ -378,7 +379,7 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                 <dd><Phone value={c.phone} maskPhones={privacy.maskPhones} /> {c.phone && <St tone="ok">{t("otpVerified")}</St>} {c.phone && <RevealButton profileId={c.id} kind="contact" privileged={privacy.privileged} />}</dd>
                 <dt>{t("colId")}</dt>
                 <dd>
-                  {c.id_type ? <>{names.idType(c.id_type)} <bdi dir="ltr">{c.id_no ?? ""}</bdi></> : t("notProvided")} <St tone={c.id_verified ? "ok" : "warn"}>{c.id_verified ? t("verified") : t("unverified")}</St>
+                  {c.id_type ? <>{names.idType(c.id_type)} <bdi dir="ltr">{c.id_no ?? ""}</bdi></> : t("notProvided")} <IdState c={c} />
                   {c.id_no && <RevealButton profileId={c.id} kind="identity" privileged={privacy.privileged} />}
                 </dd>
                 <dt>{t("segment")}</dt>
@@ -399,9 +400,14 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
                 <button className={`btn ${c.account_blocked ? "" : "bad"}`} disabled={!canBlock} title={canBlock ? undefined : t("onlyBlock")} onClick={() => setDlg("block")}>
                   {c.account_blocked ? t("unblock") : t("blockAcct")}
                 </button>
-                {!c.id_verified && (
+                {!c.id_verified && c.id_type && (
                   <button className="btn" disabled={!canVerify} title={canVerify ? undefined : t("onlyVerify")} onClick={() => setDlg("verify")}>
                     {t("verifyId")}
+                  </button>
+                )}
+                {!c.id_verified && c.id_type && c.id_status !== "rejected" && (
+                  <button className="btn" disabled={!canVerify} title={canVerify ? undefined : t("onlyVerify")} onClick={() => setDlg("rejectId")}>
+                    {t("rejectId")}
                   </button>
                 )}
               </div>
@@ -546,6 +552,16 @@ function CustomerDrawer({ id, wallet, onClose, reload }: { id: string; wallet: n
           confirm={t("verifyConfirm")}
           onCancel={() => setDlg(null)}
           onConfirm={(r) => act("verify_id", r, t("verifyOk"))}
+        />
+      )}
+      {dlg === "rejectId" && c && (
+        <ReasonDialog
+          title={t("rejectIdTitle", { name: c.full_name })}
+          body={t("rejectIdBody")}
+          confirm={t("rejectId")}
+          danger
+          onCancel={() => setDlg(null)}
+          onConfirm={(r) => act("reject_id", r, t("rejectIdOk"))}
         />
       )}
     </>
@@ -749,4 +765,13 @@ function NotifTab({ notifs }: { notifs: Notif[] | null }) {
       <p className="note">{t("notifNote")}</p>
     </div>
   );
+}
+
+/** The identity state: declared by the person, verified or rejected by NWS (0050). */
+function IdState({ c }: { c: { id_verified: boolean; id_status?: string; id_type: string | null } }) {
+  const t = useT(CUSTOMERS);
+  if (c.id_verified) return <St tone="ok">{t("verified")}</St>;
+  if (c.id_status === "rejected") return <St tone="bad">{t("idRejectedSt")}</St>;
+  if (c.id_type) return <St tone="warn">{t("idDeclaredSt")}</St>;
+  return <St tone="warn">{t("unverified")}</St>;
 }

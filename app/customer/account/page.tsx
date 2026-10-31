@@ -23,7 +23,7 @@ import { contactPhones } from "@/lib/phones";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Complaint, type DataRequest, type Profile, type Property } from "@/lib/types";
 
-type Me = Pick<Profile, "full_name" | "phone" | "id_type" | "id_no" | "id_verified">;
+type Me = Pick<Profile, "full_name" | "phone" | "id_type" | "id_no" | "id_verified" | "id_status">;
 const CHANNELS: [keyof Prefs, string][] = [
   ["push", "push"],
   ["sms", "sms"],
@@ -69,10 +69,10 @@ function Account() {
         .then(async (r) => ({ ...r, data: r.data ? { ...r.data, phone: (await contactPhones(db, [profile.id])).get(profile.id) ?? null } : null })),
       db.rpc("my_private_profile"),
     ]).then(([{ data: pub }, { data: priv }]) => {
-      const p = (priv ?? {}) as Pick<Me, "id_type" | "id_no"> & { email?: string | null };
+      const p = (priv ?? {}) as Pick<Me, "id_type" | "id_no" | "id_status"> & { email?: string | null };
       // Optional contact email (phone sign-ups may have none).
       setEmail(p.email ?? null);
-      setMe(pub ? { ...pub, id_type: p.id_type ?? null, id_no: p.id_no ?? null } : null);
+      setMe(pub ? { ...pub, id_type: p.id_type ?? null, id_no: p.id_no ?? null, id_status: p.id_status } : null);
     });
   }, [profile.id]);
   const loadDsr = useCallback(
@@ -186,6 +186,21 @@ function Account() {
                 </>
               ) : null}{" "}
               · {ti("simulated")}
+            </div>
+          ) : me?.id_status === "declared" || me?.id_status === "rejected" ? (
+            <div className="vf" role="status">
+              <Icon name="shield" />
+              {ti(me.id_type ?? "civil_id")}
+              {me.id_no ? (
+                <>
+                  {" "}
+                  <bdi dir="ltr">{me.id_no}</bdi>
+                </>
+              ) : null}{" "}
+              · {ti(me.id_status === "rejected" ? "idRejected" : "idDeclared")}{" "}
+              <button className="lk" type="button" onClick={() => setSheet("id")} style={{ background: "none", border: 0, padding: 0, font: "inherit", color: "var(--link)", fontWeight: 700, cursor: "pointer" }}>
+                {t("edit")}
+              </button>
             </div>
           ) : (
             <>
