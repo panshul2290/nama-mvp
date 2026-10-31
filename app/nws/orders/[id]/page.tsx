@@ -10,6 +10,7 @@ import type { LatLng, MapSite } from "@/components/nws/FleetMapView";
 import { MONEY } from "@/components/nws/i18n/money";
 import { ORD } from "@/components/nws/i18n/orders";
 import { CHANNEL_LABEL, maskPhone, n3, one, orderSla, St, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
+import { useCreditRpc } from "@/components/nws/credits";
 import { PodLocation } from "@/components/PodLocation";
 import { SignatureSvg } from "@/components/SignatureSvg";
 import { DispatchSuggestions } from "@/components/nws/DispatchSuggestions";
@@ -80,6 +81,7 @@ export default function OrderDetail() {
   const tk = (prefix: string, v: string) => (ORD[`${prefix}${v}`] ? t(`${prefix}${v}`) : v);
   const readOnly = staff.staff_role === "viewer";
   const rpc = useRpc();
+  const creditRpc = useCreditRpc();
   const now = useNow(30_000);
   const [o, setO] = useState<Detail | null>(null);
   const [loc, setLoc] = useState<OrderLocation | null>(null);
@@ -719,10 +721,16 @@ export default function OrderDetail() {
             </div>
           }
           onCancel={() => setDlg(null)}
-          onConfirm={(r) => {
+          onConfirm={async (r) => {
             const amt = Number(amount);
             if (!(amt > 0)) return toast(t("badAmount"), true);
-            return act("refund", r, { p_amount: Math.min(amt, refundable) }, t("refundedX", { amt: f.omr3(Math.min(amt, refundable)) }));
+            // Above STAFF_CREDIT_LIMITS the database asks for a second approver: filed for finance (0051).
+            const a = Math.min(amt, refundable);
+            if (await creditRpc("staff_order_action", { p_order_id: id, p_action: "refund", p_reason: r, p_amount: a }, t("refundedX", { amt: f.omr3(a) }),
+                                { kind: "order_refund", customer: o.customer_id, amount: a, reason: r, order: id })) {
+              setDlg(null);
+              load();
+            }
           }}
         />
       )}

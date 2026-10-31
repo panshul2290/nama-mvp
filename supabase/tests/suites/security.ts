@@ -218,4 +218,41 @@ export async function securitySuite(t: Target, r: Reporter) {
   r.check("re-entering the same number keeps the verification", same?.id_verified === true, same);
   const chg = await one<{ id_verified: boolean; id_status: string }>(IDC.id, "select id_verified, id_status from verify_identity('civil_id', '87654321')");
   r.check("a different number drops it back to declared", chg?.id_verified === false && chg.id_status === "declared", chg);
+
+  // ===========================================================================================
+  r.start("SECCREDIT staff wallet credits: second approver and daily cap (0051)");
+  const GC = await t.createUser("sec-gc", { role: "customer", full_name: "Test Goodwill Customer" });
+  const FN2 = await mkStaff("sec-fn2", "finance");
+  const gbal = async () => Math.round(Number((await one<{ b: string }>(GC.id, "select my_wallet() ->> 'balance' as b")).b) * 1000);
+  await one(CA.id, "select * from staff_customer_action($1, 'goodwill', 'TEST small goodwill', 2)", [GC.id]);
+  r.check("a small goodwill credit goes through at once", (await gbal()) === 2000, await gbal());
+  await r.denies("a credit above the threshold needs a second staff member", () => one(CA.id, "select * from staff_customer_action($1, 'goodwill', 'TEST big goodwill', 30)", [GC.id]), "second_approval_required");
+  const rq = await one<{ id: string; status: string; request_no: string }>(CA.id, "select * from staff_request_credit('goodwill', $1, 30, 'TEST water outage for a week')", [GC.id]);
+  r.check("…so it is filed for approval (nothing credited yet)", rq?.status === "pending" && (await gbal()) === 2000, rq);
+  const [fnN] = await t.admin<{ n: number }>(
+    "select count(*)::int n from notifications x join profiles p on p.id = x.user_id where x.event = 'credit_approval' and x.title like $1 and p.staff_role in ('finance', 'admin') and p.id <> $2",
+    [`%CR-${rq.request_no}%`, CA.id]);
+  r.check("finance (or an admin) is asked to approve it", fnN.n >= 1, fnN);
+  await r.denies("the requester's role can't approve credits (finance or admin)", () => one(CA.id, "select * from staff_decide_credit($1, true, 'TEST')", [rq.id]), "forbidden_for_role");
+  const own2 = await one<{ id: string }>(FN.id, "select * from staff_request_credit('goodwill', $1, 25, 'TEST finance asks for itself')", [GC.id]);
+  await r.denies("nobody approves their own request", () => one(FN.id, "select * from staff_decide_credit($1, true, 'TEST')", [own2.id]), "same_approver");
+  const ok = await one<{ status: string; credited: string }>(FN.id, "select * from staff_decide_credit($1, true, 'TEST checked the outage log')", [rq.id]);
+  const [mark] = await t.admin<{ n: number }>("select count(*)::int n from wallet_tx where customer_id = $1 and credit_request_id = $2", [GC.id, rq.id]);
+  r.check("a second staff member approves it: credited once, marked with the request, audited", ok?.status === "approved" && Number(ok.credited) === 30 && (await gbal()) === 32000 && mark.n === 1
+    && (await t.admin("select 1 from audit_log where action = 'credit.approve' and target_id = $1", [rq.id])).length === 1, { ok, mark });
+  await r.denies("a decided request can't be decided again", () => one(FN2.id, "select * from staff_decide_credit($1, true, 'TEST again')", [rq.id]), "invalid_state");
+  const rj2 = await one<{ status: string }>(FN2.id, "select * from staff_decide_credit($1, false, 'TEST not justified')", [own2.id]);
+  r.check("…or rejects it (nothing credited)", rj2?.status === "rejected" && (await gbal()) === 32000, rj2);
+  await r.denies("customers can't file staff credits", () => one(GC.id, "select * from staff_request_credit('goodwill', $1, 5, 'TEST')", [GC.id]), "not_staff");
+  if (!t.fresh) r.skip("one staff member's credits are capped per day", FRESH_ONLY);
+  else {
+    const [lim] = await t.admin<{ value: string }>("select value from app_settings where key = 'STAFF_CREDIT_LIMITS'");
+    try {
+      await t.admin("update app_settings set value = $1 where key = 'STAFF_CREDIT_LIMITS'", [JSON.stringify({ ...JSON.parse(lim.value), per_staff_daily_omr: 5 })]);
+      await one(CA.id, "select * from staff_customer_action($1, 'goodwill', 'TEST second small goodwill', 2)", [GC.id]);
+      await r.denies("one staff member's credits are capped per day (approved ones aside)", () => one(CA.id, "select * from staff_customer_action($1, 'goodwill', 'TEST third', 2)", [GC.id]), "staff_daily_credit_cap");
+    } finally {
+      await t.admin("update app_settings set value = $1 where key = 'STAFF_CREDIT_LIMITS'", [lim.value]);
+    }
+  }
 }

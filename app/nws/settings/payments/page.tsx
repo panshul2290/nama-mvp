@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chips, ConfirmDialog, downloadCsv, Empty, fetchPaged, Kpi, PageHead, ReadOnlyNote, useRun } from "@/components/nws/admin/ui";
 import { FillCreditPanel } from "@/components/nws/admin/FillCreditPanel";
+import { CreditApprovals } from "@/components/nws/credits";
 import { InvoicesUblPanel, PlatformFeeReport, SellerPanel } from "@/components/nws/admin/MoneyPanels";
 import { SETTINGS_OPS } from "@/components/nws/i18n/settingsOps";
 import { useStaff } from "@/components/nws/StaffContext";
@@ -120,6 +121,7 @@ export default function PaymentsPage() {
     <>
       <PageHead title={t("payTitle")} sub={t("paySub")} />
       {!finance && <ReadOnlyNote who={t("whoAdminFinance")} />}
+      <CreditApprovals />
       <div className="okpis">
         <Kpi label={t("payCollected")} value={kpi ? f.n3(kpi.collected) : "…"} sub={t("payCollectedSub")} />
         <Kpi label={t("payPaidOut")} value={kpi ? f.n3(kpi.paidMonth) : "…"} sub={kpi ? t("payPaidOutSub", { all: f.n3(kpi.paidAll) }) : undefined} />

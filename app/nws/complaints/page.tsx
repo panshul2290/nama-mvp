@@ -5,7 +5,9 @@ import "../ops.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useCreditRpc } from "@/components/nws/credits";
 import { COMPLAINTS } from "@/components/nws/i18n/complaints";
+import { CREDITS } from "@/components/nws/i18n/credits";
 import { SUPPORT } from "@/components/nws/i18n/support";
 import { Bars, CHANNEL_LABEL, HOUR, Kpi, Modal, one, St, Tabs, useNow, useRealtime, useRpc, useSignedUrl } from "@/components/nws/ops";
 import { useStaff } from "@/components/nws/StaffContext";
@@ -288,6 +290,8 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
   const w = useWords();
   const { t, f } = w;
   const run = useRpc();
+  const creditRpc = useCreditRpc();
+  const tc = useT(CREDITS);
   const photo = useSignedUrl(c.photo_path);
   const [notes, setNotes] = useState<Note[]>([]);
   const [mode, setMode] = useState<Mode | null>(null);
@@ -326,7 +330,23 @@ function CaseDetail({ c, label, teams, now, reload }: { c: Case; label: string; 
     if (mode === "note") return act("note", { p_body: body }, t("okNote"));
     if (mode === "assign") return act("assign", { p_team: team, p_body: body }, t("okAssigned", { team: w.team(team) }));
     if (mode === "escalate") return act("escalate", { p_team: team || null, p_body: body }, t("okEscalated"));
-    if (mode === "refund") return act("refund", { p_amount: Number(amount) }, t("okRefund", { amt: f.omr3(amount) }));
+    if (mode === "refund") return refund();
+  }
+
+  // Above STAFF_CREDIT_LIMITS the database asks for a second approver: the refund is filed for finance (0051).
+  async function refund() {
+    setBusy(true);
+    const done = await creditRpc(
+      "staff_case_action",
+      { p_complaint_id: c.id, p_action: "refund", p_body: null, p_team: null, p_amount: Number(amount) },
+      t("okRefund", { amt: f.omr3(amount) }),
+      { kind: "complaint_refund", customer: c.customer_id, amount: Number(amount), reason: tc("crRefundReason", { no: String(c.case_no) }), complaint: c.id },
+    );
+    setBusy(false);
+    if (done) {
+      setMode(null);
+      await Promise.all([reload(), loadNotes()]);
+    }
   }
 
   async function act(action: string, extra: Record<string, unknown>, ok: string) {
