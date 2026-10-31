@@ -8,6 +8,7 @@ import { CO } from "@/components/company/i18n";
 import { fmtFor, useFmt } from "@/components/portal/i18n";
 import { useT, type Lang } from "@/lib/i18n";
 import { PERMIT_STAGE } from "@/lib/labels";
+import { withPhones } from "@/lib/phones";
 import { supabase } from "@/lib/supabase/client";
 import type { ServiceType } from "@/lib/pricing";
 import type { Alert, Contract, Device, TankerDocument } from "@/lib/types";
@@ -129,7 +130,8 @@ export function useFleet(key: string, extraTables: string[] = []) {
     const db = supabase();
     const [t, d, a, p, dv, doc, al, c] = await Promise.all([
       db.from("tankers").select("id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_seen_at, location_age_s, created_at, op_card_expiry, insurance_expiry, vehicle_status, adoption_state").eq("company_id", company.id).order("plate"),
-      db.from("profiles").select("id, full_name, phone, role, created_at").eq("company_id", company.id).eq("role", "driver").order("full_name"),
+      db.from("profiles").select("id, full_name, role, created_at").eq("company_id", company.id).eq("role", "driver").order("full_name")
+        .then(async (r) => (r.error ? r : { ...r, data: await withPhones(db, (r.data ?? []) as Record<string, unknown>[]) })),
       db.from("tanker_assignments").select("id, tanker_id, driver_id, assigned_at, unassigned_at").is("unassigned_at", null),
       db.from("permits").select("id, tanker_id, permit_no, type, status, issued_at, expires_at, stage, info_requested, info_response, info_responded_at, reason, created_at").order("created_at", { ascending: false }),
       db.from("devices").select("id, tanker_id, firmware, sensors, installed_at"),

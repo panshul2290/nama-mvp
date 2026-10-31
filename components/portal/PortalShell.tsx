@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Icon, NamaLogo, type IconName } from "@/components/icons";
 import { localDigits, useLang, useT } from "@/lib/i18n";
+import { contactPhones } from "@/lib/phones";
 import { supabase } from "@/lib/supabase/client";
 import type { OrgRole, Profile, Role } from "@/lib/types";
 import { PORTAL } from "./dict";
@@ -36,9 +37,11 @@ export function usePortalProfile(expected: Role) {
       const db = supabase();
       const { data: auth } = await db.auth.getUser();
       if (!auth.user) return router.replace(signIn);
-      const { data } = await db.from("profiles").select("id, role, full_name, phone, company_id, org_id, org_role").eq("id", auth.user.id).single();
+      const { data: row } = await db.from("profiles").select("id, role, full_name, company_id, org_id, org_role").eq("id", auth.user.id).single();
       if (cancelled) return;
-      if (!data) return router.replace(signIn);
+      if (!row) return router.replace(signIn);
+      const data = { ...row, phone: (await contactPhones(db, [row.id])).get(row.id) ?? null };
+      if (cancelled) return;
       if (data.role !== expected) {
         await signOutApp();
         return router.replace(`${signIn}&wrong=${data.role}`);

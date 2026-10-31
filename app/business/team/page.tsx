@@ -9,6 +9,7 @@ import { useSentInvitations } from "@/components/useInvitations";
 import { useT } from "@/lib/i18n";
 import { orgRoleLabel } from "@/lib/labels";
 import { formatPhone } from "@/lib/phone";
+import { withPhones } from "@/lib/phones";
 import { supabase } from "@/lib/supabase/client";
 import type { OrgRole } from "@/lib/types";
 
@@ -33,9 +34,9 @@ export default function BusinessTeam() {
   const f = useFmt();
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase().from("profiles").select("id, full_name, phone, org_role, created_at").eq("org_id", org.id).order("created_at");
+    const { data, error } = await supabase().from("profiles").select("id, full_name, org_role, created_at").eq("org_id", org.id).order("created_at");
     setLoadError(error?.message ?? null);
-    if (!error) setMembers((data ?? []) as Member[]);
+    if (!error) setMembers((await withPhones(supabase(), (data ?? []) as Record<string, unknown>[])) as unknown as Member[]);
     const db = supabase();
     const [p, l] = await Promise.all([
       db.from("properties").select("id, label, area").eq("org_id", org.id).order("label"),

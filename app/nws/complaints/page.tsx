@@ -91,7 +91,7 @@ function Complaints() {
       db
         .from("complaints")
         .select(
-          "*, customer:profiles(full_name, phone), order:orders(id, order_no, tanker_plate, driver_name)",
+          "*, customer:profiles(full_name, phone:phone_masked), order:orders(id, order_no, tanker_plate, driver_name)",
         )
         .order("created_at", { ascending: false })
         .limit(500),
@@ -545,8 +545,9 @@ function LogCallModal({ slas, onClose, onDone }: { slas: Sla[]; onClose: () => v
     const s = q.trim().replace(/[%,()]/g, "");
     const t = setTimeout(async () => {
       if (s.length < 2) return setFound([]);
-      const { data } = await supabase().from("profiles").select("id, full_name, phone").in("role", ["customer", "business"]).or(`full_name.ilike.%${s}%,phone.ilike.%${s}%`).order("full_name").limit(8);
-      setFound((data ?? []) as Caller[]);
+      // Matched on the full number in the database, returned masked (0049).
+      const { data } = await supabase().rpc("staff_find_people", { p_q: s, p_roles: ["customer", "business"], p_limit: 8 });
+      setFound(((data ?? []) as { id: string; full_name: string; phone_masked: string | null }[]).map((x) => ({ id: x.id, full_name: x.full_name, phone: x.phone_masked })) as Caller[]);
     }, 250);
     return () => clearTimeout(t);
   }, [q]);

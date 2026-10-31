@@ -20,6 +20,7 @@ import { FEED_CHANNEL, GONE_EVENT } from "@/lib/feed";
 import { getCurrentPosition, keepScreenOn, wakeLockSupported, type GeoError } from "@/lib/geo-source";
 import { useT } from "@/lib/i18n";
 import { buildDemoRoute, DEMO_MODE, positionAt, travelled, type SimRoute } from "@/lib/simulator";
+import { contactPhones } from "@/lib/phones";
 import { supabase } from "@/lib/supabase/client";
 import { muscatDayStart } from "@/lib/sla";
 import { MAX_ACCURACY_M, MOVING_INTERVAL_MS, shouldSend, usable, type Fix, type Sent } from "@/lib/tracking";
@@ -180,10 +181,12 @@ export function DriverProvider({ children, fallback }: { children: React.ReactNo
     const db = supabase();
     const { data: order } = await db.from("orders").select("*").eq("driver_id", driverId).in("status", WORKING).maybeSingle<Order>();
     if (!order) return null;
-    const [{ data: loc }, { data: customer }] = await Promise.all([
+    const [{ data: loc }, { data: cust }, phones] = await Promise.all([
       db.from("order_locations").select("*").eq("order_id", order.id).maybeSingle<OrderLocation>(),
-      db.from("profiles").select("full_name, phone").eq("id", order.customer_id).maybeSingle(),
+      db.from("profiles").select("full_name").eq("id", order.customer_id).maybeSingle<{ full_name: string }>(),
+      contactPhones(db, [order.customer_id]),
     ]);
+    const customer = cust ? { full_name: cust.full_name, phone: phones.get(order.customer_id) ?? null } : null;
     return { order, loc, customer } as Job;
   }, []);
 

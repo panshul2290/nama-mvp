@@ -119,7 +119,7 @@ function Fleet() {
       db
         .from("tankers")
         .select(
-          "id, plate, service_type, capacity_gal, capacity_known, governorate_code, in_register, company_id, is_online, blocked, blocked_reason, blocked_at, location_age_s, last_lat, last_lng, last_fix_at, last_accuracy_m, last_fix_source, company:companies(name), water_tests(cert_no, tested_at, passed), device:devices(id, firmware, sensors, installed_at), assignments:tanker_assignments(id, driver_id, assigned_at, unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
+          "id, plate, service_type, capacity_gal, capacity_known, governorate_code, in_register, company_id, is_online, blocked, blocked_reason, blocked_at, location_age_s, last_lat, last_lng, last_fix_at, last_accuracy_m, last_fix_source, company:companies(name), water_tests(cert_no, tested_at, passed), device:devices(id, firmware, sensors, installed_at), assignments:tanker_assignments(id, driver_id, assigned_at, unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone:phone_masked)), permits(id, permit_no, type, status, issued_at, expires_at)",
         )
         .eq("on_platform", true)
         .order("plate"),

@@ -26,8 +26,12 @@ export async function mobile2Suite(t: Target, r: Reporter) {
   await r.denies("an unknown document kind is refused", () => one(w.C1.id, "select * from add_identity_document('passport_scan', $1)", [`${w.C1.id}/p.jpg`]), "invalid_kind");
   const other = await t.as<Row>(w.C2.id, "select * from identity_documents");
   r.check("another customer can't see them", other.length === 0, other);
-  const staffSees = await t.as<Row>(ST.id, "select * from identity_documents where user_id = $1", [w.C1.id]);
-  r.check("NWS staff can see them for review", staffSees.length === 2, staffSees.length);
+  // 0049 (SEC-04): ID scans only for the KYC roles (admin, permit officer, inspector), not a viewer.
+  const viewerSees = await t.as<Row>(ST.id, "select * from identity_documents where user_id = $1", [w.C1.id]);
+  const KYC = await t.createUser("mob2-kyc", { role: "customer", full_name: "Test Mob2 Permit Officer" });
+  await t.admin("update profiles set role = 'nws_staff', staff_role = 'permit_officer' where id = $1", [KYC.id]);
+  const staffSees = await t.as<Row>(KYC.id, "select * from identity_documents where user_id = $1", [w.C1.id]);
+  r.check("NWS permit officers can see them for review (a viewer can't)", staffSees.length === 2 && viewerSees.length === 0, { kyc: staffSees.length, viewer: viewerSees.length });
   await r.denies("customers can't write the table directly", () => t.as(w.C1.id, "insert into identity_documents (user_id, kind, file_path) values ($1, 'id_back', 'x')", [w.C1.id]), "permission denied");
   await r.denies("signed-out visitors can't record documents", () => t.as(null, "select * from add_identity_document('id_front', 'x/y.jpg')"), "permission denied");
   const cols = await t.admin<{ column_name: string }>("select column_name from information_schema.columns where table_schema = 'public' and table_name = 'identity_documents'");

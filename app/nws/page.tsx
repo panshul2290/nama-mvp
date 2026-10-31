@@ -112,7 +112,7 @@ export default function LiveOperations() {
       db
         .from("tankers")
         .select(
-          "id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_fix_at, last_accuracy_m, last_fix_source, location_age_s, company:companies(name), assignments:tanker_assignments(unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone)), permits(id, permit_no, type, status, issued_at, expires_at)",
+          "id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_fix_at, last_accuracy_m, last_fix_source, location_age_s, company:companies(name), assignments:tanker_assignments(unassigned_at, driver:profiles!tanker_assignments_driver_id_fkey(full_name, phone:phone_masked)), permits(id, permit_no, type, status, issued_at, expires_at)",
         )
         .eq("on_platform", true)
         .order("plate"),
@@ -307,11 +307,12 @@ export default function LiveOperations() {
       const db = supabase();
       const [o, c] = await Promise.all([
         /^\d+$/.test(n) ? db.from("orders").select("id, order_no, status, area").eq("order_no", Number(n)).limit(3) : Promise.resolve({ data: [] }),
-        db.from("profiles").select("id, full_name, phone").eq("role", "customer").or(`full_name.ilike.%${like}%,phone.ilike.%${like}%`).limit(5),
+        // Matched on the full number in the database, returned masked (0049).
+        db.rpc("staff_find_people", { p_q: like, p_roles: ["customer"], p_limit: 5 }),
       ]);
       for (const x of (o.data ?? []) as { id: string; order_no: number; status: OrderStatus; area: string }[])
         out.push({ kind: "order", id: x.id, title: orderNo(x.order_no), sub: `${statusText(x.status, undefined, lang)[0]} · ${x.area}` });
-      for (const x of (c.data ?? []) as { id: string; full_name: string; phone: string | null }[]) out.push({ kind: "customer", id: x.id, title: x.full_name || tr("customer"), sub: maskPhone(x.phone) });
+      for (const x of (c.data ?? []) as { id: string; full_name: string; phone_masked: string | null }[]) out.push({ kind: "customer", id: x.id, title: x.full_name || tr("customer"), sub: maskPhone(x.phone_masked) });
       setHits(out);
     }, 250);
     return () => clearTimeout(t);

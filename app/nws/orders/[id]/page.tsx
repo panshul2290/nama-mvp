@@ -108,7 +108,7 @@ export default function OrderDetail() {
       db
         .from("orders")
         .select(
-          "*, customer:profiles!orders_customer_id_fkey(id, full_name, phone), driver:profiles!orders_driver_id_fkey(full_name, phone), tanker:tankers!orders_tanker_id_fkey(id, plate, service_type, capacity_gal, blocked, last_lat, last_lng), zone:zones!orders_zone_id_fkey(name), contract:contracts!orders_contract_id_fkey(contract_no, frequency), org:organizations!orders_org_id_fkey(name), fill_site:sites!orders_fill_site_id_fkey(code, name), discharge_site:sites!orders_discharge_site_id_fkey(code, name)",
+          "*, customer:profiles!orders_customer_id_fkey(id, full_name, phone:phone_masked), driver:profiles!orders_driver_id_fkey(full_name, phone:phone_masked), tanker:tankers!orders_tanker_id_fkey(id, plate, service_type, capacity_gal, blocked, last_lat, last_lng), zone:zones!orders_zone_id_fkey(name), contract:contracts!orders_contract_id_fkey(contract_no, frequency), org:organizations!orders_org_id_fkey(name), fill_site:sites!orders_fill_site_id_fkey(code, name), discharge_site:sites!orders_discharge_site_id_fkey(code, name)",
         )
         .eq("id", id)
         .maybeSingle(),

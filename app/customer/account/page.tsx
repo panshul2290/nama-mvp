@@ -19,6 +19,7 @@ import { initials } from "@/lib/format";
 import { LangToggle, useT } from "@/lib/i18n";
 import { signOutApp } from "@/components/portal/session";
 import { askPush, unregisterPush } from "@/lib/push";
+import { contactPhones } from "@/lib/phones";
 import { supabase } from "@/lib/supabase/client";
 import { ref, type Complaint, type DataRequest, type Profile, type Property } from "@/lib/types";
 
@@ -64,7 +65,8 @@ function Account() {
   const loadMe = useCallback(() => {
     const db = supabase();
     return Promise.all([
-      db.from("profiles").select("full_name, phone, id_verified").eq("id", profile.id).maybeSingle<Pick<Me, "full_name" | "phone" | "id_verified">>(),
+      db.from("profiles").select("full_name, id_verified").eq("id", profile.id).maybeSingle<Pick<Me, "full_name" | "id_verified">>()
+        .then(async (r) => ({ ...r, data: r.data ? { ...r.data, phone: (await contactPhones(db, [profile.id])).get(profile.id) ?? null } : null })),
       db.rpc("my_private_profile"),
     ]).then(([{ data: pub }, { data: priv }]) => {
       const p = (priv ?? {}) as Pick<Me, "id_type" | "id_no"> & { email?: string | null };

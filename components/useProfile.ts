@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { appFor, enforceSessionChoice, signOutApp, useSessionEnd } from "@/components/portal/session";
+import { contactPhones } from "@/lib/phones";
 import { supabase } from "@/lib/supabase/client";
 import type { Profile, Role } from "@/lib/types";
 
@@ -26,9 +27,12 @@ export function useProfile(expected?: Role, stay = false) {
       const db = supabase();
       const { data: auth } = await db.auth.getUser();
       if (!auth.user) return router.replace(signIn);
-      const { data } = await db.from("profiles").select("id, role, staff_role, full_name, phone").eq("id", auth.user.id).single();
+      const { data: row } = await db.from("profiles").select("id, role, staff_role, full_name").eq("id", auth.user.id).single();
       if (cancelled) return;
-      if (!data) return router.replace(signIn);
+      if (!row) return router.replace(signIn);
+      // The raw number isn't a column anyone selects (0049): the person's own comes from contact_phones.
+      const data = { ...row, phone: (await contactPhones(db, [row.id])).get(row.id) ?? null };
+      if (cancelled) return;
       if (expected && data.role !== expected) {
         await signOutApp();
         return router.replace(`${signIn}&wrong=${data.role}`);

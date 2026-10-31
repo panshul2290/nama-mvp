@@ -28,7 +28,7 @@ type Customer = {
 // id_type, id_no and loyalty_points are private columns: staff read them through staff_private_profiles().
 type Private = { id: string; id_type: string | null; id_no: string | null; loyalty_points: number; share_usage: boolean | null };
 type PublicCustomer = Omit<Customer, "id_type" | "id_no" | "loyalty_points" | "share_usage">;
-const PUBLIC_COLS = "id, full_name, phone, segment, id_verified, account_blocked, lang, created_at, role, org_id";
+const PUBLIC_COLS = "id, full_name, phone:phone_masked, segment, id_verified, account_blocked, lang, created_at, role, org_id";
 function withPrivate(rows: PublicCustomer[], priv: Private[] | null): Customer[] {
   const m = new Map((priv ?? []).map((p) => [p.id, p]));
   return rows.map((r) => ({ ...r, id_type: m.get(r.id)?.id_type ?? null, id_no: m.get(r.id)?.id_no ?? null, loyalty_points: m.get(r.id)?.loyalty_points ?? 0, share_usage: m.get(r.id)?.share_usage ?? null }));

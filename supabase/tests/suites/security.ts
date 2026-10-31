@@ -167,4 +167,36 @@ export async function securitySuite(t: Target, r: Reporter) {
   r.check("the register owner with the matching verified mobile number adopts without review", adC?.adoption_state === "approved", adC);
   const [okc] = await t.admin<{ ok: boolean }>("select tanker_has_valid_permit($1) ok", [C.id]);
   r.check("…and the permit counts at once", okc.ok === true, okc);
+
+  // ===========================================================================================
+  r.start("SECPII staff least privilege for personal data (0049)");
+  const VW = await mkStaff("sec-vw", "viewer");
+  const FN = await mkStaff("sec-fn", "finance");
+  const CA = await mkStaff("sec-ca", "complaints_agent");
+  const PC = await t.createUser("sec-pc", { role: "customer", full_name: "Test Phone Customer", phone: "+968 9333 4455" });
+  const [raw] = await t.admin<{ phone: string; phone_masked: string }>("select phone, phone_masked from profiles where id = $1", [PC.id]);
+  await r.denies("nobody selects raw phone numbers from profiles directly (not even their own)", () => t.as(PC.id, "select phone from profiles where id = $1", [PC.id]), "permission denied");
+  const own = await t.as<{ phone_masked: string }>(PC.id, "select phone_masked from profiles where id = $1", [PC.id]);
+  r.check("the masked number is a readable column", own[0]?.phone_masked === raw.phone_masked && raw.phone_masked !== raw.phone && raw.phone_masked.endsWith(raw.phone.slice(-2)), { own, raw: raw.phone_masked });
+  const phoneOf = async (uid: string, who: string) => (await t.as<{ phone: string }>(uid, "select phone from contact_phones($1::uuid[])", [[who]]))[0]?.phone ?? null;
+  r.check("contact_phones gives the person their own number", (await phoneOf(PC.id, PC.id)) === raw.phone);
+  r.check("…another customer gets nothing", (await phoneOf(C1.id, PC.id)) === null);
+  r.check("…a viewer and finance get the masked number", (await phoneOf(VW.id, PC.id)) === raw.phone_masked && (await phoneOf(FN.id, PC.id)) === raw.phone_masked);
+  r.check("…a complaints agent (who calls customers back) gets the number", (await phoneOf(CA.id, PC.id)) === raw.phone);
+  await t.as(D1.id, "select driver_set_online(true)");
+  const jo = await one<{ id: string }>(PC.id, `select id from create_order(p_service_type => 'DW', p_gallons => 1000, p_lat => ${LAT}, p_lng => ${LNG}, p_area => 'TEST area', p_address => 'TEST address', p_pay_method => 'card')`);
+  await one(D1.id, "select * from accept_order($1)", [jo.id]);
+  r.check("…the driver on the customer's active job gets the number (the call button)", (await phoneOf(D1.id, PC.id)) === raw.phone);
+  r.check("…another driver doesn't", (await phoneOf(w.D2.id, PC.id)) === null);
+  const found = await t.as<{ id: string; phone_masked: string }>(VW.id, "select id, phone_masked from staff_find_people('93334455', array['customer']::user_role[])");
+  r.check("staff find a customer by mobile number; it comes back masked", found.some((x) => x.id === PC.id && x.phone_masked === raw.phone_masked), found);
+  await r.denies("customers can't search people", () => t.as(C1.id, "select * from staff_find_people('9333')"), "not_staff");
+  const locVw = await t.as(VW.id, "select 1 from order_locations where order_id = $1", [jo.id]);
+  const locFn = await t.as(FN.id, "select 1 from order_locations where order_id = $1", [jo.id]);
+  const locCa = await t.as(CA.id, "select address from order_locations where order_id = $1", [jo.id]);
+  r.check("exact delivery points and addresses: not for viewer or finance, yes for delivery-facing roles", locVw.length === 0 && locFn.length === 0 && locCa.length === 1, { locVw, locFn, locCa });
+  const [shp] = await t.admin<{ n: number }>("select count(*)::int n from pg_policies where tablename = 'route_shares' and policyname = 'route_shares_staff'");
+  r.check("live-route share tokens are no longer readable by staff", shp.n === 0, shp);
+  await one(PC.id, "select * from cancel_order($1)", [jo.id]).catch(() => undefined);
+  await t.as(D1.id, "select driver_set_online(false)").catch(() => undefined);
 }

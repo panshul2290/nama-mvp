@@ -88,9 +88,12 @@ export function CallerOrderModal({ genesysId, onClose, onPlaced }: { genesysId: 
   useEffect(() => {
     const s = q.trim().replace(/[,()%]/g, "");
     const t = setTimeout(async () => {
-      let query = supabase().from("profiles").select("id, full_name, phone, account_blocked").eq("role", "customer").order("full_name").limit(8);
-      if (s) query = query.or(`full_name.ilike.%${s}%,phone.ilike.%${s}%`);
-      const { data } = await query;
+      // Phone numbers come masked; a search matches the full number in the database (0049).
+      if (s.length >= 2) {
+        const { data } = await supabase().rpc("staff_find_people", { p_q: s, p_roles: ["customer"], p_limit: 8 });
+        return setCallers(((data ?? []) as { id: string; full_name: string; phone_masked: string | null; account_blocked: boolean }[]).map((x) => ({ ...x, phone: x.phone_masked })) as Caller[]);
+      }
+      const { data } = await supabase().from("profiles").select("id, full_name, phone:phone_masked, account_blocked").eq("role", "customer").order("full_name").limit(8);
       setCallers((data ?? []) as Caller[]);
     }, 250);
     return () => clearTimeout(t);
