@@ -54,7 +54,7 @@ Apply the migration first (`npm run db:apply`), because the hook function must e
    ```sql
    update app_settings set value = 'on' where key = 'DEMO_SMS_CODES';
    ```
-   and make sure the app is built with `NEXT_PUBLIC_DEMO_MODE=true`. Turn it off again with `... set value = 'off' ...`. **Never leave it on in production:** anyone could read the code for any number.
+   and make sure the app is built with `NEXT_PUBLIC_DEMO_MODE=true` (web) or with `npm run build:apk:<app>:demo` (Android). Turn it off again with `... set value = 'off' ...`. **Never leave it on in production:** anyone could read the code for any number.
 6. Re-run `npm run seed` so the demo accounts get their verified mobile numbers (each seeded customer, driver and owner can then sign in with the number in `scripts/seed.ts` and `SEED_PASSWORD`, e.g. driver `+968 9555 0142`).
 
 Until steps 1–2 are done, phone sign-up and reset fail with "Sign-in by mobile number isn't switched on". Email sign-in keeps working.

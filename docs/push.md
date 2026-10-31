@@ -20,7 +20,7 @@ There is no `google-services.json` in the repo, so:
 2. Download each app's `google-services.json` and put it here (these paths are gitignored; the repo is public):
    - `mobile/customer/google-services.json`
    - `mobile/driver/google-services.json`
-3. Build as usual: `npm run build:apk:customer` / `npm run build:apk:driver`. The script copies the file into `mobile/<app>/android/app/` and builds with `NEXT_PUBLIC_PUSH_ANDROID=true`.
+3. Build as usual: `npm run build:apk:customer` / `npm run build:apk:driver` (non-demo; add `:demo` for the build with the driver's trip simulator). The script copies the file into `mobile/<app>/android/app/` and builds with `NEXT_PUBLIC_PUSH_ANDROID=true`.
 4. Install, sign in, and place an order (customer) or go online (driver): the app asks for permission, registers, and calls `register_push_token(token, platform)`. If that RPC isn't in the database yet, the token isn't stored and the app logs it once.
 
 ## Enable push on iOS (APNs)

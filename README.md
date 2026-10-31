@@ -36,7 +36,7 @@ Requires Node 20+ (tested on Node 24) and a Supabase project (the free tier is f
    | `NEXT_PUBLIC_SUPABASE_URL` | browser + server |
    | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | browser + server (publishable key; the legacy anon key works too, also accepted as `NEXT_PUBLIC_SUPABASE_ANON_KEY`). RLS protects the data |
    | `DATABASE_URL` | `npm run db:apply` only (applies migrations with `pg`) |
-   | `NEXT_PUBLIC_DEMO_MODE` | `true` shows the driver's **Simulate trip** button (demo only; leave unset in production) |
+   | `NEXT_PUBLIC_DEMO_MODE` | `true` shows the driver's **Simulate trip** button in the web dev server (demo only; leave unset in production). Android builds ignore it: `npm run build:apk:<app>` is non-demo, `npm run build:apk:<app>:demo` builds the demo APK with the simulator |
    | `NEXT_PUBLIC_OSRM_URL` | optional road-routing server for ETAs; defaults to the public OSRM demo server |
    | `SUPABASE_SERVICE_ROLE_KEY` | **`npm run seed` only.** Never referenced by app code; never prefix it with `NEXT_PUBLIC_` |
 
@@ -134,7 +134,7 @@ NWS sets every customer-facing price; drivers and owners have no RPC that takes 
 - **Editing:** NWS → Settings → Pricing (admin and finance; every change is audited). With `BILLING_MODE = production` an order is refused if any rule, tariff class or delivery charge it uses isn't confirmed. To switch, as the database owner: `update app_settings set value = 'production' where key = 'BILLING_MODE';`
 - **Platform fees** accrue in `platform_fee_ledger`: per trip on delivery, per cancellation when a fee is kept, per tanker when it joins the platform, per owner account on the 1st of the month (pg_cron). NWS → Settings → Payments shows them by month and fee; the company portal's Finance tab shows what the company owes.
 - **Receipts and invoices:** every delivered household order gets a bilingual e-receipt (`/customer/receipt?order=…`, numbered `RCT-<year>-<seq>`). Business invoices carry the UBL / Fawtara fields (type 380, OMR, seller and buyer VAT numbers, lines with VAT category and rate) and export as UBL 2.1 XML (`lib/ubl.ts`). The platform's VAT number is `SELLER.vat_number` (empty until confirmed); VAT treatment is still to be confirmed with the Tax Authority.
-- **Payments** confirm at once with a reference (simulated gateway; card ending 0003 simulates a gateway that answers later: "We're confirming your payment", confirmed within a minute by pg_cron, the order dispatched meanwhile).
+- **Payments** confirm at once with a reference (simulated gateway; card ending 0003 simulates a gateway that answers later: "We're confirming your payment", confirmed within a minute by pg_cron, the order dispatched meanwhile). The simulator is `PAYMENT_SIMULATOR` (0047): on for the demo, with simulated top-ups capped per customer (50 OMR a day, 150 OMR in the wallet); **switch it off for production**, where every card amount waits for a verified gateway confirmation (`gateway_confirm`, service role only). Refunds go back the way the customer paid: the wallet part to the wallet, the card part to the card (`card_refunds`).
 - **Rounding:** each line is rounded to 3 decimals (1 OMR = 1000 baisa).
 
 ### All writes go through RPCs
@@ -218,7 +218,7 @@ New orders in India are then refused (`zone_disabled`), and within 5 minutes the
 - **Clusters:** `clusters` and `governorates` (with the spellings in use, e.g. "Al Dakhiliyah" / "Ad Dakhiliyah"). In the NWS register every governorate sits in one cluster, so a tanker's cluster is its governorate's (`governorates.cluster_code`); admins can move a governorate under NWS → Settings → Clusters. Zones carry a governorate code, so orders report per governorate and cluster (Reports → Clusters). Fleet, Permits → Register / Campaign and Reports filter by cluster and governorate.
 - **Two tanker counts:** `tankers.on_platform` (registered on this platform by a driver or company) and `tankers.in_register` (listed in the NWS register). Register-only tankers are offline with no driver and a 5,000 gal placeholder capacity (`capacity_known = false`); they can't go online, dispatch never ranks them, and Live operations and Fleet list on-platform tankers only. Screens label the counts "registered on platform" and "in NWS register".
 - **Import:** NWS → Permits → Register → **Import register** (permit officers and admins). CSV only (no spreadsheet parser is installed: save Excel files as CSV UTF-8). Columns are matched to the NWS export, with a mapping step if the headers differ; the preview shows rows OK / with warnings / with errors and duplicates in the file and against the database. Rows go to `staff_import_register` in chunks of 500 and are checked again there; the import is idempotent by plate. Valid → an approved permit, In Progress → an application at the submitted stage, No Permit → none. Owners become `registry_owners` (not sign-in accounts); each import is an `import_batches` row with counts and a downloadable error report, and is audit-logged.
-- **Claiming:** when a registry owner signs up and verifies the same mobile number, the entry links to the account; an owner account with a company takes over its register tankers. A driver or owner registering a register plate adopts that tanker (if the verified number matches, or the register has none), else `plate_in_register`.
+- **Claiming:** when a registry owner signs up and verifies the same mobile number, the entry links to the account; an owner account with a company takes over its register tankers. A driver or owner registering a register plate adopts that tanker (if the verified number matches, or the register has none), else `plate_in_register`. Without a matching verified number the adoption waits for NWS (0048): the tanker can't work under its permit until a permit officer approves the claim in Permits → Register (or rejects it, which gives the plate back to the register).
 - **Campaign:** NWS → Permits → Campaign: the funnel in register → invited → registered → applied → under review → permitted, by cluster and governorate, plus expiring and expired; each step drills down to its tankers (CSV export) and owners not yet on the platform can be invited by SMS (template `registry_invite`, EN/AR) through the notification outbox: throttled (`REGISTRY_INVITES`: daily cap, rate, cooldown, max invitations) and consent-aware (opt-outs, an account's SMS switch).
 - **Script:** `npm run import:register` validates `data-private/tankers-demo-anonymised.csv` (or a path) with the same rules and prints counts only; `-- --confirm-live` imports it into the configured project as a permit officer (`IMPORT_EMAIL` / `IMPORT_PASSWORD`, default the seeded permit officer and `SEED_PASSWORD`) through the same RPCs. The real register (`Tankers Data*.csv`) is confidential and gitignored; the script refuses it unless `--real-register` is given.
 
@@ -238,6 +238,21 @@ New orders in India are then refused (`zone_disabled`), and within 5 minutes the
 `npm run demo` drives the seeded accounts through one full job so the Live operations board has something on it: 4521 TK goes online and waits (about 40 s), the customer requests DW 3,000 gal in Al Khuwair, the driver accepts after 20 s, drives a simulated road route (about 3.6 km, reporting every 10 s), arrives, delivers and goes offline. It takes about 8 minutes. `npm run demo -- --idle` just keeps the tanker online and reporting from one spot until Ctrl+C.
 
 It signs in with the publishable key and `SEED_PASSWORD` and calls the same RPCs as the app, so RLS and the permit and block rules apply; it never uses the service-role key. Ctrl+C sets the tanker offline and cancels or finishes the order it created. Orders it creates are real rows for the seeded customer. Don't run it while you're using `driver@nama.test` on a phone.
+
+## Security hardening (0047–0052)
+From the pre-production security review. Settings in `app_settings` (database owner or the named NWS role):
+
+| Setting | Demo | Production | What |
+|---|---|---|---|
+| `PAYMENT_SIMULATOR` | `{"mode": "on", ...}` | `{"mode": "off"}` | simulated card payments and top-ups (0047). Off: no magic card numbers; card amounts wait for `gateway_confirm` from a server-side PSP webhook |
+| `STAFF_MFA` | `off` | `on` | two-step sign-in for NWS staff (0052). Staff add an authenticator app under NWS → Two-step sign-in; with `on`, staff rights need the second step (JWT `aal2`). Admins switch it (audited) |
+| `STAFF_CREDIT_LIMITS` | 20 OMR / 100 OMR a day | as agreed with NWS finance | staff wallet credits above the threshold need a second approver (finance/admin, Settings → Payments); daily cap per staff member (0051) |
+
+- **Register tankers (0048):** a claim without the register owner's verified mobile waits for NWS approval before the tanker can work.
+- **Staff least privilege (0049):** raw phone numbers aren't a selectable column (`profiles.phone_masked` for screens, `contact_phones()` for people allowed to call); viewer and finance get masked numbers and no exact delivery addresses; ID scans only for admin, permit officer and inspector; evidence files not for viewer/finance; route-share tokens only for the driver.
+- **Identity (0050):** an ID number the person types is *declared*; NWS (admin, permit officer, inspector) verifies or rejects it in Customers.
+- **Web headers:** CSP, anti-framing, HSTS, referrer and permissions policies in `next.config.ts`.
+- **Android:** builds are non-demo by default, `allowBackup=false`, navigation limited to the app, R8 for release.
 
 ## Tests
 ```bash
