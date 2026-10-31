@@ -227,7 +227,7 @@ export type Contract = {
 };
 export type WalletTx = { id: number; customer_id: string; kind: string; amount: string; order_id: string | null; memo: string; created_at: string };
 export type CompanyTx = { id: number; company_id: string; driver_id: string | null; tanker_id: string | null; bucket: "earnings" | "fill_credit"; kind: string; amount: string; order_id: string | null; memo: string; created_at: string };
-export type Payment = { id: string; order_id: string; customer_id: string | null; org_id: string | null; method: PayMethod; amount: string; wallet_amount: string; card_amount: string; card_last4: string | null; status: PaymentStatus; gateway_ref: string | null; failure_reason: string | null; refunded_amount: string; created_at: string; captured_at: string | null; confirmed_at?: string | null };
+export type Payment = { id: string; order_id: string; customer_id: string | null; org_id: string | null; method: PayMethod; amount: string; wallet_amount: string; card_amount: string; card_last4: string | null; status: PaymentStatus; gateway_ref: string | null; failure_reason: string | null; refunded_amount: string; created_at: string; captured_at: string | null; confirmed_at?: string | null; kind?: "order" | "tip"; refunded_to_card?: string };
 export type Pod = {
   order_id: string; kind: "delivery" | "collection"; photo_path: string | null; photo_hash: string | null; meter_gal: number; signature_svg: string | null;
   no_signature: boolean; left_at_tank: boolean; lat: number | null; lng: number | null; created_at: string; status: "accepted" | "rejected";

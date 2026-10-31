@@ -2,19 +2,20 @@
 // these lines (components/customer/RefundPolicy.tsx in the apps; the Business portal reads the
 // same keys), so the wording can't drift apart. The refund_issued message (0039) says the same.
 //
-// Card refund time (5–10 working days) and the 30-day window are placeholders until NWS and the
-// payment gateway confirm them.
+// Refunds go back the way the customer paid (0047, security review SEC-02): the wallet part to
+// the wallet, the card part to the same card (card_refunds). The card refund time (5–10 working
+// days) is a placeholder until NWS and the payment gateway confirm it.
 import type { Dict } from "@/lib/i18n";
 
 export const REFUND_POLICY: Dict = {
   rpTitle: { en: "Refunds", ar: "الاسترداد" },
   rpWhere: {
-    en: "Refunds go to your Nama wallet straight away and you can use them on your next order.",
-    ar: "يُعاد المبلغ إلى محفظتك في نماء فوراً ويمكنك استخدامه في طلبك القادم.",
+    en: "Refunds go back the way you paid: what you paid from your Nama wallet returns to the wallet straight away; what you paid by card goes back to the same card.",
+    ar: "يُعاد المبلغ بالطريقة التي دفعت بها: ما دفعته من محفظتك في نماء يعود إلى المحفظة فوراً، وما دفعته بالبطاقة يعود إلى البطاقة نفسها.",
   },
   rpCard: {
-    en: "Prefer your original card? Ask NWS within 30 days (call 1442 or file a complaint in the app). Where the card gateway supports it, card refunds take 5–10 working days.",
-    ar: "تفضّل الاسترداد إلى بطاقتك الأصلية؟ اطلب ذلك من نماء خلال ٣٠ يوماً (اتصل على 1442 أو قدّم شكوى في التطبيق). حين تدعم بوابة الدفع ذلك، يستغرق الاسترداد إلى البطاقة من ٥ إلى ١٠ أيام عمل.",
+    en: "Card refunds usually show on your card within 5–10 working days, depending on your bank. Questions? Call NWS on 1442 or file a complaint in the app.",
+    ar: "يظهر الاسترداد إلى البطاقة عادةً خلال ٥ إلى ١٠ أيام عمل حسب البنك. لديك سؤال؟ اتصل بنماء على 1442 أو قدّم شكوى في التطبيق.",
   },
   rpFree: { en: "Cancel before a tanker is assigned: free, the full amount comes back.", ar: "الإلغاء قبل تعيين صهريج: مجاني، ويُعاد المبلغ كاملاً." },
   rpFee: {
@@ -27,11 +28,11 @@ export const REFUND_POLICY: Dict = {
   },
   rpArrived: { en: "Once the tanker has arrived the order can’t be cancelled in the app: call NWS on 1442.", ar: "بعد وصول الصهريج لا يمكن إلغاء الطلب من التطبيق: اتصل بنماء على 1442." },
   rpShort: {
-    en: "Short delivery: if the meter shows less water than you paid for, the difference is credited to your wallet automatically.",
-    ar: "التوصيل الناقص: إذا أظهر العداد كمية أقل مما دفعت ثمنه، يُضاف الفرق إلى محفظتك تلقائياً.",
+    en: "Short delivery: if the meter shows less water than you paid for, the difference is refunded automatically, the way you paid.",
+    ar: "التوصيل الناقص: إذا أظهر العداد كمية أقل مما دفعت ثمنه، يُسترد الفرق تلقائياً بالطريقة التي دفعت بها.",
   },
-  rpComplaint: { en: "A complaint NWS upholds is refunded to your wallet too.", ar: "الشكوى التي تقبلها نماء يُسترد مبلغها إلى محفظتك أيضاً." },
-  rpWalletDone: { en: "Refunded to your Nama wallet: {amount}. It’s ready to use now.", ar: "تم الاسترداد إلى محفظتك في نماء: {amount}. المبلغ متاح للاستخدام الآن." },
+  rpComplaint: { en: "A complaint NWS upholds is refunded the same way.", ar: "الشكوى التي تقبلها نماء يُسترد مبلغها بالطريقة نفسها." },
+  rpWalletDone: { en: "Refunded: {amount}, back the way you paid (wallet at once, card within a few working days).", ar: "تم الاسترداد: {amount}، بالطريقة التي دفعت بها (المحفظة فوراً، والبطاقة خلال أيام عمل قليلة)." },
   rpBusiness: {
     en: "Business accounts: orders on account are charged only on delivery, so a cancelled order costs nothing; credits for short delivery or upheld complaints appear on your next invoice.",
     ar: "حسابات الأعمال: لا تُحتسب الطلبات على الحساب إلا عند التوصيل، لذا لا يكلف الطلب الملغى شيئاً؛ وتظهر أرصدة التوصيل الناقص أو الشكاوى المقبولة في فاتورتك القادمة.",

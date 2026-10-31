@@ -126,7 +126,9 @@ export async function moneySuite(t: Target, r: Reporter) {
   r.check("finance lowers the delivery fee: VAT recomputed at the locked rate, the regulated water charge and driver earnings unchanged",
     Number(adj.delivery_fee) === 2.5 && Number(adj.total) === want && adj.water_charge === "1.700" && adj.driver_earnings === o1.driver_earnings && ((adj.price_basis as Row).adjustments as Row[]).length === 1, adj);
   const after = await one<{ b: string }>(C1.id, "select my_wallet() ->> 'balance' as b");
-  r.check("the prepaid customer gets the difference back in the wallet", Math.abs(Number(after.b) - Number(before.b) - (Number(o1.total) - want)) < 0.0005, { before, after });
+  const [adjRf] = await t.admin<{ s: string }>("select coalesce(sum(amount), 0)::text s from card_refunds where order_id = $1", [o1.id]);
+  r.check("the prepaid customer gets the difference back the way they paid (card: a card refund, 0047)",
+    Math.abs(Number(adjRf.s) - (Number(o1.total) - want)) < 0.0005 && Number(after.b) === Number(before.b), { before, after, card: adjRf });
   r.check("the adjustment is audited", (await t.admin("select 1 from audit_log where action = 'order.price_adjust' and target_id = $1", [o1.id])).length === 1);
 
   await setOnline(t, D2.id, true);

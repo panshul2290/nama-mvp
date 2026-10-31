@@ -41,6 +41,8 @@ const MESSAGES: Record<string, string> = {
   // Platform (0010+)
   insufficient_wallet: "Your wallet balance is too low for this order. Top up, or pay the difference by card.",
   payment_failed: "The payment was declined. Try another card, OmanNet or your wallet.",
+  topup_daily_cap: "Demo top-ups are limited per day. Try a smaller amount or again tomorrow.",
+  wallet_cap_reached: "This demo wallet is at its limit. Use the balance first, then top up again.",
   invalid_payment_method: "Choose a payment method.",
   outside_service_area: "That location is outside NWS tanker service areas.",
   zone_disabled: "Tanker service is paused in this area right now.",
@@ -229,6 +231,8 @@ const MESSAGES_AR: Record<string, string> = {
   price_immutable: "لا يمكن تغيير الأسعار بعد تقديم الطلب.",
   insufficient_wallet: "رصيد محفظتك لا يكفي لهذا الطلب. اشحن المحفظة أو ادفع الفرق بالبطاقة.",
   payment_failed: "تم رفض الدفع. جرّب بطاقة أخرى أو OmanNet أو محفظتك.",
+  topup_daily_cap: "شحن المحفظة في النسخة التجريبية محدود يومياً. جرّب مبلغاً أصغر أو أعد المحاولة غداً.",
+  wallet_cap_reached: "وصلت هذه المحفظة التجريبية إلى حدها الأقصى. استخدم الرصيد أولاً ثم اشحن مجدداً.",
   invalid_payment_method: "اختر طريقة الدفع.",
   outside_service_area: "هذا الموقع خارج مناطق خدمة صهاريج نماء.",
   zone_disabled: "خدمة الصهاريج متوقفة في هذه المنطقة حالياً.",

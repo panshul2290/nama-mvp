@@ -549,6 +549,7 @@ export const CX: Dict = {
   payPendT: { en: "We’re confirming your payment", ar: "نتحقق من دفعتك" },
   payPendS: { en: "Started {t}. Your order goes ahead in the meantime — don’t pay again.", ar: "بدأت {t}. يستمر طلبك في الأثناء — لا تدفع مرة أخرى." },
   payRefundedS: { en: "{a} refunded", ar: "تم استرداد {a}" },
+  payRefundedCard: { en: "{a} of it going back to your card ••{l} (5–10 working days)", ar: "يُعاد {a} منها إلى بطاقتك ••{l} (من ٥ إلى ١٠ أيام عمل)" },
   payCod: { en: "Pay the driver {a} in cash on delivery", ar: "ادفع للسائق {a} نقداً عند التسليم" },
   payFailedT: { en: "Payment failed", ar: "فشل الدفع" },
   topupOkT: { en: "Payment received — {a}", ar: "تم استلام الدفعة — {a}" },

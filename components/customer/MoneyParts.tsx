@@ -22,6 +22,7 @@ export function useOrderPayment(orderId: string): Payment | null | undefined {
         .from("payments")
         .select("*")
         .eq("order_id", orderId)
+        .eq("kind", "order")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle<Payment>()
@@ -30,7 +31,7 @@ export function useOrderPayment(orderId: string): Payment | null | undefined {
     const ch = db
       .channel(`payment-${orderId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "payments", filter: `order_id=eq.${orderId}` }, (p) => {
-        if (p.new && (p.new as Payment).id) setPay(p.new as Payment);
+        if (p.new && (p.new as Payment).id && (p.new as Payment).kind !== "tip") setPay(p.new as Payment);
       })
       .subscribe((s) => {
         if (s === "SUBSCRIBED") load();
@@ -86,6 +87,7 @@ export function PaymentCard({ order }: { order: Order }) {
       <small>{how}</small>
       {refLine}
       {Number(pay.refunded_amount) > 0 && <small>{t("payRefundedS", { a: omr3(pay.refunded_amount, lang) })}</small>}
+      {Number(pay.refunded_to_card ?? 0) > 0 && <small>{t("payRefundedCard", { a: omr3(pay.refunded_to_card ?? 0, lang), l: pay.card_last4 ?? "" })}</small>}
     </div>
   );
 }

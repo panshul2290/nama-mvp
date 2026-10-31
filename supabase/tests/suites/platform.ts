@@ -97,7 +97,10 @@ export async function platformSuite(t: Target, r: Reporter) {
   const walletBeforeShort = await wallet(C1.id);
   await one(D1.id, "select * from submit_pod($1, 800, $2, 'hash-2', null, true)", [p2.id, await t.evidencePhoto(D1.id)]);
   const pen = await t.admin<{ rule_code: string; amount: string; id: string }>("select rule_code, amount::text, id from penalties where order_id = $1", [p2.id]);
-  r.check("delivering 20% short refunds 20% of the order to the customer", Math.abs((await wallet(C1.id)) - walletBeforeShort - Number(p2.total) * 0.2) < 0.002, { before: walletBeforeShort, after: await wallet(C1.id), total: p2.total });
+  // Paid by card, so the 20% goes back to the card (0047), not into the wallet.
+  const [shortRf] = await t.admin<{ s: string }>("select sum(amount)::text s from card_refunds where order_id = $1", [p2.id]);
+  r.check("delivering 20% short refunds 20% of the order to the customer (back to the card it was paid with)",
+    Math.abs(Number(shortRf.s) - Number(p2.total) * 0.2) < 0.002 && (await wallet(C1.id)) === walletBeforeShort, { before: walletBeforeShort, after: await wallet(C1.id), total: p2.total, card: shortRf });
   r.check("delivering 20% short issues the short-volume penalty", pen[0]?.rule_code === "short_volume" && pen[0]?.amount === "10.000", pen);
   await one(D1.id, "select * from dispute_penalty($1, 'TEST meter was faulty')", [pen[0].id]);
   const cancelled = await one<Row>(OP.id, "select * from staff_decide_penalty($1, 'cancel', 'TEST meter fault confirmed')", [pen[0].id]);
