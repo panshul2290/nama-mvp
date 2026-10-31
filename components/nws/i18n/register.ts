@@ -279,4 +279,30 @@ export const REG: Dict = withCommon({
   optedBackIn: { en: "Opted back in", ar: "تمت إعادة الاشتراك" },
   optOutDone: { en: "Opt-out recorded", ar: "تم تسجيل إلغاء الاشتراك" },
   loadErr: { en: "Couldn’t load the campaign:", ar: "تعذّر تحميل الحملة:" },
+
+  // Register claims waiting for NWS (AdoptionClaims.tsx, 0048)
+  adoptT: { en: "Register tankers claimed: ownership to confirm", ar: "صهاريج السجل المطالب بها: تأكيد الملكية" },
+  adoptS: {
+    en: "Registered by an account whose mobile isn't the register owner's. They can't work under the permit until you approve.",
+    ar: "سجّلها حساب رقم هاتفه ليس رقم مالك السجل. لا يمكنها العمل بالتصريح حتى توافق.",
+  },
+  adoptBy: { en: "Claimed by", ar: "طالب بها" },
+  adoptAt: { en: "Claimed on", ar: "تاريخ المطالبة" },
+  adoptNoPhone: { en: "No mobile on file", ar: "لا يوجد رقم مسجل" },
+  adoptPending: { en: "Waiting for NWS", ar: "بانتظار نماء" },
+  adoptApprove: { en: "Approve", ar: "موافقة" },
+  adoptReject: { en: "Reject", ar: "رفض" },
+  adoptRoles: { en: "Permit officers and admins review claims", ar: "يراجع موظفو التصاريح والمشرفون المطالبات" },
+  adoptApproveT: { en: "Approve the claim on {plate}?", ar: "الموافقة على المطالبة بـ {plate}؟" },
+  adoptRejectT: { en: "Reject the claim on {plate}?", ar: "رفض المطالبة بـ {plate}؟" },
+  adoptApproveB: {
+    en: "Only after checking the vehicle registration card (Mulkiya) or the owner's CR. The tanker can then work under its NWS permit.",
+    ar: "فقط بعد التحقق من بطاقة تسجيل المركبة (الملكية) أو السجل التجاري للمالك. بعدها يمكن للصهريج العمل بتصريح نماء.",
+  },
+  adoptRejectB: {
+    en: "The plate goes back to the register: off the platform, no company, the driver unassigned. The account is told why.",
+    ar: "تعود اللوحة إلى السجل: خارج المنصة، دون شركة، ويُلغى تعيين السائق. ويُبلَّغ الحساب بالسبب.",
+  },
+  adoptApproved: { en: "Claim approved", ar: "تمت الموافقة على المطالبة" },
+  adoptRejected: { en: "Claim rejected", ar: "تم رفض المطالبة" },
 });

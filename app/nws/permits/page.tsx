@@ -12,6 +12,7 @@ import { PERMITS } from "@/components/nws/i18n/permits";
 import { Campaign } from "@/components/nws/register/Campaign";
 import { useGeo } from "@/components/nws/register/geo";
 import { RegisterPanel } from "@/components/nws/register/RegisterPanel";
+import { AdoptionClaims } from "@/components/nws/register/AdoptionClaims";
 import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { useFmt } from "@/components/portal/i18n";
 import { Loading } from "@/components/Shell";
@@ -677,6 +678,7 @@ function Permits() {
         </>
       )}
 
+      {tab === "reg" && <AdoptionClaims />}
       {tab === "reg" && (
         <RegisterPanel
           geo={geo}

@@ -85,6 +85,7 @@ export default function CompanyTankers() {
                   <td>
                     <St tone={tone}>{s}</St>
                     {tk.blocked && tk.blocked_reason && <small className="docmeta">{tk.blocked_reason}</small>}
+                    {tk.adoption_state === "pending" && <small className="docmeta">{t("adoptionPendingNote")}</small>}
                     {open.length > 0 && (
                       <small className="docmeta">{open.length > 1 ? t("openAlertsN", { n: f.n(open.length), msg: open[0].message }) : t("openAlerts1", { msg: open[0].message })}</small>
                     )}

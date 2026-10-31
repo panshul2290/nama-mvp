@@ -109,6 +109,11 @@ export const CO: Dict = withCommon({
   stSuspended: { en: "Company suspended", ar: "الشركة موقوفة" },
   stBlocked: { en: "Blocked", ar: "موقوف" },
   stPendingPermit: { en: "Pending permit", ar: "التصريح قيد المراجعة" },
+  stAdoptionPending: { en: "NWS ownership check", ar: "تحقق نماء من الملكية" },
+  adoptionPendingNote: {
+    en: "This plate is in the NWS register under another or no owner mobile number. NWS confirms it is yours before it can go online with its permit.",
+    ar: "هذه اللوحة مسجلة في سجل نماء دون رقم هاتف مالك مطابق. تتأكد نماء من أنها تخصك قبل أن تعمل بتصريحها.",
+  },
   stNoValidPermit: { en: "No valid permit", ar: "لا يوجد تصريح ساري" },
   pmExpiresIn: { en: "Expires in {n} days", ar: "ينتهي خلال {n} يوماً" },
   pmExpiresIn1: { en: "Expires in 1 day", ar: "ينتهي خلال يوم واحد" },

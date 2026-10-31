@@ -82,6 +82,8 @@ export type FTanker = {
   id: string; plate: string; service_type: ServiceType; capacity_gal: number; is_online: boolean; blocked: boolean; blocked_reason: string | null;
   last_lat: number | null; last_lng: number | null; last_seen_at: string | null; location_age_s: number | null; created_at: string;
   op_card_expiry?: string | null; insurance_expiry?: string | null; vehicle_status?: string;
+  /** 0048: a register tanker claimed without a matching owner mobile waits for NWS ("pending"). */
+  adoption_state?: "pending" | "approved" | "rejected" | null;
 };
 export type FDriver = { id: string; full_name: string; phone: string | null; role: string; created_at: string };
 export type FAssignment = { id: string; tanker_id: string; driver_id: string; assigned_at: string; unassigned_at: string | null };
@@ -126,7 +128,7 @@ export function useFleet(key: string, extraTables: string[] = []) {
   const load = useCallback(async () => {
     const db = supabase();
     const [t, d, a, p, dv, doc, al, c] = await Promise.all([
-      db.from("tankers").select("id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_seen_at, location_age_s, created_at, op_card_expiry, insurance_expiry, vehicle_status").eq("company_id", company.id).order("plate"),
+      db.from("tankers").select("id, plate, service_type, capacity_gal, is_online, blocked, blocked_reason, last_lat, last_lng, last_seen_at, location_age_s, created_at, op_card_expiry, insurance_expiry, vehicle_status, adoption_state").eq("company_id", company.id).order("plate"),
       db.from("profiles").select("id, full_name, phone, role, created_at").eq("company_id", company.id).eq("role", "driver").order("full_name"),
       db.from("tanker_assignments").select("id, tanker_id, driver_id, assigned_at, unassigned_at").is("unassigned_at", null),
       db.from("permits").select("id, tanker_id, permit_no, type, status, issued_at, expires_at, stage, info_requested, info_response, info_responded_at, reason, created_at").order("created_at", { ascending: false }),
@@ -194,6 +196,7 @@ export function tankerStatus(t: FTanker, permits: FPermit[], suspended = false, 
   const c = (k: string) => CO[k][lang];
   if (suspended) return [c("stSuspended"), "bad"];
   if (t.blocked) return [c("stBlocked"), "bad"];
+  if (t.adoption_state === "pending") return [c("stAdoptionPending"), "warn"];
   const p = tankerPermit(t, permits);
   if (!p.valid) return [p.text === "Pending review" ? c("stPendingPermit") : c("stNoValidPermit"), p.text === "Pending review" ? "warn" : "bad"];
   return t.is_online ? [c("online"), "ok"] : [c("offline"), ""];

@@ -96,6 +96,7 @@ eq("all clear → no blockers", kinds({}), []);
 eq("expiring permit still lets you go online", kinds({ permit: state("expiring", { daysLeft: 5 }) }), []);
 eq("permits still loading → no permit blocker", kinds({ permit: null }), []);
 eq("shift check not done", kinds({ shiftChecked: false }), ["check"]);
+eq("register claim waiting for NWS (0048), even with a valid permit", kinds({ adoptionPending: true }), ["adoption"]);
 eq("no permit", onlineBlockers({ ...base, permit: state("none") }), [{ kind: "permit_none", wrong: false }]);
 eq("permit for another service", onlineBlockers({ ...base, permit: state("wrong") }), [{ kind: "permit_none", wrong: true }]);
 eq(

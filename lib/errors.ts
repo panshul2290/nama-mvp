@@ -133,6 +133,7 @@ const MESSAGES: Record<string, string> = {
   api_rate_limited: "Too many requests for this API key — try again in a minute.",
   // 0031–0033 (batch D: clusters, register import, permit campaign)
   plate_in_register: "That plate is in the NWS tanker register under another owner's mobile number. Sign up with the number NWS has on file, or contact NWS permits.",
+  adoption_pending: "NWS is checking that this register tanker is yours. It can go online with its permit once NWS approves.",
   not_on_platform: "This tanker is in the NWS register but not registered on the platform, so it can't go online.",
   chunk_too_large: "Send at most 500 rows per import call.",
   invalid_import: "That import isn't valid (1 to 100,000 rows).",
@@ -321,6 +322,7 @@ const MESSAGES_AR: Record<string, string> = {
   api_forbidden: "مفتاح واجهة برمجة التطبيقات هذا لا يملك هذه الصلاحية.",
   api_rate_limited: "طلبات كثيرة جداً لهذا المفتاح — حاول مرة أخرى بعد دقيقة.",
   plate_in_register: "هذه اللوحة مسجلة في سجل صهاريج نماء برقم هاتف مالك آخر. سجّل بالرقم المسجل لدى نماء، أو تواصل مع قسم التصاريح في نماء.",
+  adoption_pending: "تتحقق نماء من أن صهريج السجل هذا يخصك. يمكنه العمل بتصريحه بعد موافقة نماء.",
   not_on_platform: "هذا الصهريج موجود في سجل نماء لكنه غير مسجل على المنصة، لذا لا يمكنه الاتصال.",
   chunk_too_large: "أرسل 500 صف كحد أقصى في كل عملية استيراد.",
   invalid_import: "عملية الاستيراد غير صالحة (من 1 إلى 100,000 صف).",

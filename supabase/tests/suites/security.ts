@@ -113,4 +113,58 @@ export async function securitySuite(t: Target, r: Reporter) {
       await setSim(SIM_DEFAULT);
     }
   }
+
+  // ===========================================================================================
+  r.start("SECADOPT register tankers: verified owner or NWS approval (0048)");
+  const PO = await mkStaff("sec-po", "permit_officer");
+  const OPS = await mkStaff("sec-ops", "operator");
+  const regTanker = async (label: string, ownerPhone: string | null) => {
+    const plate = w.plate(label);
+    const own = ownerPhone ? (await t.admin<{ id: string }>("insert into registry_owners (name, name_key, phone) values ('TEST register owner', 'test register owner ' || $1, $1) returning id", [ownerPhone]))[0].id : null;
+    const [tk] = await t.admin<{ id: string }>(
+      "insert into tankers (plate, service_type, capacity_gal, on_platform, in_register, capacity_known, registry_owner_id) values ($1, 'DW', 5000, false, true, false, $2) returning id", [plate, own]);
+    await t.admin("insert into permits (tanker_id, permit_no, type, issued_at, expires_at, status, reviewed_at) values ($1, $2, 'DW', now() - interval '1 day', now() + interval '300 days', 'approved', now())", [tk.id, `P-${plate}`]);
+    return { id: tk.id, plate };
+  };
+  const newDriver = async (label: string, phone?: string) => {
+    const d = await t.createUser(label, { role: "driver", full_name: `Test ${label}` });
+    if (phone) await t.admin("update auth.users set phone = $2, phone_confirmed_at = now() where id = $1", [d.id, phone]);
+    return d;
+  };
+  const A = await regTanker("RA", null);
+  const DA = await newDriver("sec-da");
+  const adA = await one<{ id: string; adoption_state: string; on_platform: boolean }>(DA.id, "select id, adoption_state, on_platform from driver_register_tanker($1, 'DW', 5000)", [A.plate]);
+  r.check("a driver adopting a register plate with no owner number gets it pending NWS review", adA?.id === A.id && adA.adoption_state === "pending" && adA.on_platform, adA);
+  await r.denies("…and can't go online under its approved permit", () => one(DA.id, "select driver_set_online(true)"), "adoption_pending");
+  const [okp] = await t.admin<{ ok: boolean }>("select tanker_has_valid_permit($1) ok", [A.id]);
+  r.check("…the permit doesn't count for dispatch or accepting while the claim is pending", okp.ok === false, okp);
+  const [nn] = await t.admin<{ n: number }>("select count(*)::int n from notifications where user_id = $1 and event = 'adoption_review'", [PO.id]);
+  r.check("permit officers are told to review the claim", nn.n >= 1, nn);
+  const claims = await t.as<{ tanker_id: string; adopter_phone: string | null }>(PO.id, "select tanker_id, adopter_phone from staff_adoption_claims()");
+  r.check("NWS lists the pending claim", claims.some((c) => c.tanker_id === A.id), claims);
+  await r.denies("drivers can't list claims", () => t.as(DA.id, "select * from staff_adoption_claims()"), "not_staff");
+  await r.denies("an operator can't approve a claim (permit officers and admins)", () => one(OPS.id, "select * from staff_review_adoption($1, true, 'TEST')", [A.id]), "forbidden_for_role");
+  await r.denies("the adopter can't approve their own claim", () => one(DA.id, "select * from staff_review_adoption($1, true, 'TEST')", [A.id]), "not_staff");
+  await r.denies("a review needs a reason", () => one(PO.id, "select * from staff_review_adoption($1, true, '')", [A.id]), "reason_required");
+  const ap = await one<{ adoption_state: string }>(PO.id, "select adoption_state from staff_review_adoption($1, true, 'TEST registration card checked')", [A.id]);
+  r.check("a permit officer approves it (audited)", ap?.adoption_state === "approved"
+    && (await t.admin("select 1 from audit_log where action = 'tanker.adoption_approve' and target_id = $1", [A.id])).length === 1, ap);
+  const [okp2] = await t.admin<{ ok: boolean }>("select tanker_has_valid_permit($1) ok", [A.id]);
+  r.check("…after which the permit counts again", okp2.ok === true, okp2);
+
+  const B = await regTanker("RB", null);
+  const DB = await newDriver("sec-db");
+  await one(DB.id, "select id from driver_register_tanker($1, 'DW', 5000)", [B.plate]);
+  const rj = await one<{ adoption_state: string; on_platform: boolean; company_id: string | null }>(PO.id, "select adoption_state, on_platform, company_id from staff_review_adoption($1, false, 'TEST not the owner')", [B.id]);
+  const [asg] = await t.admin<{ n: number }>("select count(*)::int n from tanker_assignments where tanker_id = $1 and unassigned_at is null", [B.id]);
+  r.check("a rejected claim gives the plate back to the register and unassigns the driver", rj?.adoption_state === "rejected" && !rj.on_platform && asg.n === 0, { rj, asg });
+  const [rn] = await t.admin<{ n: number }>("select count(*)::int n from notifications where user_id = $1 and event = 'adoption_rejected'", [DB.id]);
+  r.check("…and the driver is told why", rn.n === 1, rn);
+
+  const C = await regTanker("RC", "+96899004401");
+  const DC = await newDriver("sec-dc", "96899004401");
+  const adC = await one<{ adoption_state: string }>(DC.id, "select adoption_state from driver_register_tanker($1, 'DW', 5000)", [C.plate]);
+  r.check("the register owner with the matching verified mobile number adopts without review", adC?.adoption_state === "approved", adC);
+  const [okc] = await t.admin<{ ok: boolean }>("select tanker_has_valid_permit($1) ok", [C.id]);
+  r.check("…and the permit counts at once", okc.ok === true, okc);
 }

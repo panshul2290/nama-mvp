@@ -162,6 +162,11 @@ export const DICT: Dict = {
   vSend: { en: "Send to NWS", ar: "إرسال إلى نماء" },
   blkOpCardT: { en: "Vehicle operating card expired", ar: "انتهت بطاقة تشغيل المركبة" },
   blkInsuranceT: { en: "Insurance expired", ar: "انتهى التأمين" },
+  blkAdoptT: { en: "NWS is checking this tanker is yours", ar: "تتحقق نماء من أن هذا الصهريج يخصك" },
+  blkAdoptS: {
+    en: "This plate is in the NWS register without your mobile number as owner. A permit officer confirms it; you'll get a message. Call NWS on 1442 to speed it up.",
+    ar: "هذه اللوحة في سجل نماء دون رقم هاتفك كمالك. يؤكدها موظف التصاريح وستصلك رسالة. اتصل بنماء على 1442 للتسريع.",
+  },
   blkVehicleS: { en: "Renew it and update the vehicle details; NWS can't send you jobs meanwhile.", ar: "جدّدها وحدّث بيانات المركبة؛ لا يمكن لنماء إرسال مهام إليك في الأثناء." },
   addrDetails: { en: "Address details", ar: "تفاصيل العنوان" },
   deliveryContact: { en: "Delivery contact", ar: "جهة الاتصال للتوصيل" },

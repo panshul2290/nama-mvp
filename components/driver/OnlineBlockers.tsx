@@ -26,7 +26,7 @@ export function useOnlineBlockers() {
   const req = training.required && training.loaded ? { done: LESSONS.filter((l) => training.done.includes(l.key)).length, total: LESSONS.length } : null;
   const today = now ? omanToday(now) : null;
   const vehicle = today ? { opCardExpiry: tanker.op_card_expiry ?? null, insuranceExpiry: tanker.insurance_expiry ?? null, today } : null;
-  const blockers = onlineBlockers({ blocked: Boolean(tanker.blocked), blockedReason: tanker.blocked_reason ?? null, companySuspended, permit, shiftChecked, training: req, vehicle });
+  const blockers = onlineBlockers({ blocked: Boolean(tanker.blocked), blockedReason: tanker.blocked_reason ?? null, companySuspended, adoptionPending: tanker.adoption_state === "pending", permit, shiftChecked, training: req, vehicle });
   return { permit, blockers, reloadPermits: reload };
 }
 
@@ -43,6 +43,8 @@ export function useBlockerTitle() {
           return t("blockedT");
         case "company":
           return t("companySuspendedT");
+        case "adoption":
+          return t("blkAdoptT");
         case "permit_none":
           return t(b.wrong ? "blkWrongT" : "blkNoneT", { svc });
         case "permit_pending":
@@ -105,6 +107,7 @@ export function OnlineBlockers({ blockers, onApplied, checkHref }: { blockers: B
                 </>
               )}
               {b.kind === "company" && `${t("companySuspendedS")} ${t("blkCompanyDo")}`}
+              {b.kind === "adoption" && t("blkAdoptS")}
               {b.kind === "permit_none" && t("blkNoneS")}
               {b.kind === "permit_pending" && (
                 <>

@@ -9,6 +9,8 @@ export const PERMIT_STAGES = ["submitted", "documents", "inspection", "decision"
 export type Blocker =
   | { kind: "blocked"; reason: string | null }
   | { kind: "company" }
+  /** 0048: a register tanker claimed without the owner's mobile number waits for NWS. */
+  | { kind: "adoption" }
   /** No permit for the tanker's service (`wrong`: only one for another service). */
   | { kind: "permit_none"; wrong: boolean }
   /** An application or renewal is with NWS. */
@@ -25,6 +27,8 @@ export function onlineBlockers(s: {
   blocked: boolean;
   blockedReason: string | null;
   companySuspended: boolean;
+  /** 0048: the tanker's register claim is pending NWS review. */
+  adoptionPending?: boolean;
   /** null while the permits are loading (no permit blocker until known). */
   permit: PermitState | null;
   shiftChecked: boolean;
@@ -36,6 +40,7 @@ export function onlineBlockers(s: {
   const out: Blocker[] = [];
   if (s.blocked) out.push({ kind: "blocked", reason: s.blockedReason?.trim() || null });
   if (s.companySuspended) out.push({ kind: "company" });
+  if (s.adoptionPending) out.push({ kind: "adoption" });
   const p = s.permit;
   if (p && p.key !== "valid" && p.key !== "expiring") {
     if (p.pending) {

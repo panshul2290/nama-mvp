@@ -81,6 +81,8 @@ export type Tanker = {
   insurance_policy_no?: string | null; insurance_expiry?: string | null; tracking_device_id?: string | null;
   vehicle_status?: "unverified" | "submitted" | "verified" | "rejected"; vehicle_note?: string | null; vehicle_verified_at?: string | null;
   company_id?: string | null;
+  /** 0048: a register tanker claimed without a matching owner mobile waits for NWS ("pending"). */
+  adoption_state?: "pending" | "approved" | "rejected" | null;
 };
 
 export type PayMethod = "wallet" | "card" | "omannet" | "wallet_card" | "account" | "cash";
