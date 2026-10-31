@@ -57,16 +57,17 @@ let signingOut = false;
  * elsewhere, refresh token expired), go to its sign-in with "your session ended" rather than
  * leaving the page to query as a signed-out visitor.
  */
-export function useSessionEnd(signIn: string) {
+export function useSessionEnd(signIn: string, enabled = true) {
   const router = useRouter();
   useEffect(() => {
+    if (!enabled) return;
     const { data } = supabase().auth.onAuthStateChange((event) => {
       if (event !== "SIGNED_OUT") return;
       if (signingOut) return void (signingOut = false);
       router.replace(`${signIn}${signIn.includes("?") ? "&" : "?"}ended=1`);
     });
     return () => data.subscription.unsubscribe();
-  }, [router, signIn]);
+  }, [router, signIn, enabled]);
 }
 
 export type Admitted = { ok: true; app: AppKey; role: Role; home: string } | { ok: false; wrong: Role | null };

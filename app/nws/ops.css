@@ -127,3 +127,4 @@
 }
 .nws .pickrow:disabled { opacity: 0.5; cursor: not-allowed; }
 .nws[dir="rtl"] .drawer { box-shadow: 20px 0 40px rgba(0, 0, 0, 0.4); }
+.nws .ops-tools .wall-open { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }

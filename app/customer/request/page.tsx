@@ -19,7 +19,7 @@ import { Icon } from "@/components/icons";
 import { Map } from "@/components/Map";
 import { BackButton, Loading } from "@/components/Shell";
 import { usePricingRules } from "@/components/usePricingRules";
-import { contactPhoneOk, detailsFromRow, detailsPayload, EMPTY_DETAILS, hasDetails, type DetailsForm } from "@/lib/address";
+import { contactPhoneOk, detailParts, detailsFromRow, detailsPayload, EMPTY_DETAILS, hasDetails, useWilayats, type DetailsForm } from "@/lib/address";
 import { ADDR } from "@/lib/addressI18n";
 import { errorCode, friendlyError } from "@/lib/errors";
 import { useT } from "@/lib/i18n";
@@ -114,6 +114,14 @@ function RequestWizard() {
   const detailsKey = prop?.id ?? "pin";
   const details = detailsFor.key === detailsKey ? detailsFor.v : prop ? detailsFromRow(prop) : EMPTY_DETAILS;
   const setDetails = (v: DetailsForm) => setDetailsFor({ key: detailsKey, v });
+  const wil = useWilayats();
+  // The review step repeats the optional details and the delivery contact before payment.
+  const reviewParts = detailParts(
+    { wilayat_code: details.wilayat || null, village: details.village.trim() || null, way_no: details.way_no.trim() || null, house_no: details.house_no.trim() || null, national_address_id: details.national_address_id.trim() || null },
+    lang,
+    wil?.wilayats,
+    ta,
+  );
 
   function applyPosition(p: LngLat | null) {
     setGpsNote(!p);
@@ -551,6 +559,30 @@ function RequestWizard() {
                 <span>{t("property")}</span>
                 <b>{prop ? [prop.label, prop.area].filter(Boolean).join(" · ") : [area, address].filter(Boolean).join(" · ")}</b>
               </div>
+              {(reviewParts.length > 0 || details.landmark.trim()) && (
+                <div className="rq-r">
+                  <span>{ta("more")}</span>
+                  <b>
+                    {[...reviewParts, details.landmark.trim()].filter(Boolean).join(" · ")}
+                  </b>
+                </div>
+              )}
+              {(details.contact_name.trim() || details.contact_phone.trim()) && (
+                <div className="rq-r">
+                  <span>{ta("contact")}</span>
+                  <b>
+                    {details.contact_name.trim()}
+                    {details.contact_name.trim() && details.contact_phone.trim() ? " · " : ""}
+                    {details.contact_phone.trim() && <bdi dir="ltr">{details.contact_phone.trim()}</bdi>}
+                  </b>
+                </div>
+              )}
+              {details.call_ahead && (
+                <div className="rq-r">
+                  <span>{ta("callFirst")}</span>
+                  <b>✓</b>
+                </div>
+              )}
               <div className="rq-r">
                 <span>{t("volume")}</span>
                 <b>

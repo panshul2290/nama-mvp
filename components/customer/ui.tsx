@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase/client";
 import type { Order, OrderStatus } from "@/lib/types";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 import { useCx } from "./i18n";
-import { amt3, omr3, tshort } from "./fmt";
+import { amt3, omr3, tshort, windowText } from "./fmt";
 import { fillPending, statusKey, type TagOrder } from "./status";
 
 /** Bottom sheet over the whole phone frame (portalled, so it can be opened from anywhere). Only ever opened by a tap, never in the first render. */
@@ -103,15 +103,19 @@ export function TimelineH({ order }: { order: Order }) {
   const { t, lang } = useCx();
   const steps = orderSteps(order);
   const done = stepsDone(order);
+  // A booked window that hasn't opened yet: the step after "Requested" reads "Scheduled" with the
+  // window, not "Assigned · now" (no tanker is looked for until the order is released).
+  const waiting = order.status === "scheduled" && !order.tanker_id;
   return (
     <div className="tlh">
       {steps.map((s, i) => {
         const state = i < done ? "done" : i === done && order.status !== "cancelled" ? "cur" : "";
+        const sched = waiting && i === 1;
         return (
           <div key={s.key} className={state}>
             <i>{state === "done" && <Icon name="check" />}</i>
-            <b>{t(s.key)}</b>
-            <small>{s.at ? tshort(s.at, lang) : state === "cur" ? t("now") : ""}</small>
+            <b>{t(sched ? "tl_sched" : s.key)}</b>
+            <small>{sched ? windowText(order.slot_start, order.slot_end, lang) : s.at ? tshort(s.at, lang) : state === "cur" ? t(order.status === "requested" ? "tl_finding" : "now") : ""}</small>
           </div>
         );
       })}

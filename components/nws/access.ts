@@ -8,6 +8,8 @@ const ALL: StaffRole[] = ["admin", "operator", "permit_officer", "inspector", "c
 
 export const SECTION_ROLES: Record<string, StaffRole[]> = {
   "/nws": ["admin", "operator", "inspector", "viewer"],
+  // The control-room wall screen: whoever may watch Live operations.
+  "/nws/wall": ["admin", "operator", "inspector", "viewer"],
   "/nws/orders": ["admin", "operator", "complaints_agent", "finance", "viewer"],
   "/nws/fleet": ["admin", "operator", "permit_officer", "inspector", "viewer"],
   "/nws/permits": ["admin", "operator", "permit_officer", "inspector", "complaints_agent", "viewer"],

@@ -8,10 +8,18 @@ import { signOutApp } from "@/components/portal/session";
 import { currentApp, supabase } from "@/lib/supabase/client";
 import { fmtOman } from "@/lib/time";
 
-function appTitle(path: string): [string, string] {
-  if (path.startsWith("/customer")) return ["Customer app", "For households · iOS and Android"];
-  if (path.startsWith("/driver") || path.startsWith("/onboarding")) return ["Driver app", "For tanker drivers · iOS and Android"];
-  return ["Tanker Operations", "Integrated digital platform"];
+// The bar around the phone frame in a desktop browser, in the app's language.
+const CHROME = {
+  customer: { en: ["Customer app", "For households · iOS and Android"], ar: ["تطبيق العملاء", "للأسر · iOS وAndroid"] },
+  driver: { en: ["Driver app", "For tanker drivers · iOS and Android"], ar: ["تطبيق السائقين", "لسائقي الصهاريج · iOS وAndroid"] },
+  other: { en: ["Tanker Operations", "Integrated digital platform"], ar: ["عمليات الصهاريج", "منصة رقمية متكاملة"] },
+} as const;
+const SIGN_OUT = { en: "Sign out", ar: "تسجيل الخروج" } as const;
+
+function appTitle(path: string, lang: "en" | "ar"): readonly [string, string] {
+  if (path.startsWith("/customer")) return CHROME.customer[lang];
+  if (path.startsWith("/driver") || path.startsWith("/onboarding")) return CHROME.driver[lang];
+  return CHROME.other[lang];
 }
 
 function Clock() {
@@ -44,7 +52,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const { lang, dir } = useLang();
   const router = useRouter();
   const [signedIn, setSignedIn] = useState(false);
-  const [title, sub] = appTitle(path);
+  const [title, sub] = appTitle(path, lang);
 
   // Each app has its own session: follow the one of the app on screen.
   useEffect(() => {
@@ -66,7 +74,7 @@ function Frame({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="page">
-      <header className="ph-bar">
+      <header className="ph-bar" dir={dir} lang={lang}>
         <NamaLogo />
         <span className="dv" aria-hidden="true" />
         <span>
@@ -76,7 +84,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         <span className="sp" />
         {signedIn && (
           <button className="pill-btn" onClick={signOut}>
-            Sign out
+            {SIGN_OUT[lang]}
           </button>
         )}
       </header>

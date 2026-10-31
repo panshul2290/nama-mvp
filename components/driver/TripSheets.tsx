@@ -236,7 +236,7 @@ export function PodSheet({ onClose }: { onClose: () => void }) {
  * "Take photo" and "Choose from gallery". In the Android app the camera plugin opens the camera or
  * the photo picker; in a browser two file inputs do (capture opens the rear camera on phones).
  */
-function PhotoButtons({
+export function PhotoButtons({
   native, has, busy, onNative, onFile, labels,
 }: {
   native: boolean;

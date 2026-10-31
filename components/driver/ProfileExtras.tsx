@@ -3,21 +3,22 @@
 // Driver profile additions: the photo customers see (0040), the tier and what the next one needs
 // (0041), and the tanker's Naql vehicle and insurance papers (0041; the independent driver edits
 // them, a company's driver sees them).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDriver } from "@/components/DriverContext";
 import { initials } from "@/lib/format";
 import { useT } from "@/lib/i18n";
-import { shrinkPhoto } from "@/lib/photo";
+import { nativeCamera, nativePhoto, PhotoError, shrinkPhoto, type PhotoSource } from "@/lib/photo";
 import { supabase } from "@/lib/supabase/client";
 import type { Tanker } from "@/lib/types";
 import { DICT, useErrText, useFmt } from "./i18n";
 import { Sheet } from "./Sheet";
+import { PhotoButtons } from "./TripSheets";
 
 export function DriverPhoto() {
   const { profile, toast } = useDriver();
   const t = useT(DICT);
   const errText = useErrText();
-  const input = useRef<HTMLInputElement>(null);
+  const [picking, setPicking] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
@@ -32,8 +33,20 @@ export function DriverPhoto() {
     return () => clearTimeout(tm);
   }, [load]);
 
+  // Camera (the phone's camera can switch to the front lens for a selfie) or the gallery, as for the delivery photo.
+  async function openNative(from: PhotoSource) {
+    try {
+      await pick(await nativePhoto(from));
+    } catch (e) {
+      const why = e instanceof PhotoError ? e.reason : "failed";
+      if (why === "denied") toast(t("cameraDenied"));
+      else if (why === "failed") toast(t("photoFailed"));
+    }
+  }
+
   async function pick(file: File | undefined) {
     if (!file) return;
+    setPicking(false);
     setBusy(true);
     try {
       const img = await shrinkPhoto(file);
@@ -52,7 +65,7 @@ export function DriverPhoto() {
   }
 
   return (
-    <span className="d-photo">
+    <span className="d-avatar">
       {url ? (
         <span className="av photo">
           {/* eslint-disable-next-line @next/next/no-img-element -- a signed Storage link */}
@@ -61,10 +74,19 @@ export function DriverPhoto() {
       ) : (
         <span className="av">{initials(profile.full_name)}</span>
       )}
-      <button type="button" className="lk small" disabled={busy} onClick={() => input.current?.click()}>
+      <button type="button" className="lk small" disabled={busy} aria-expanded={picking} onClick={() => setPicking((v) => !v)}>
         {busy ? t("sending") : url ? t("photoChange") : t("photoAdd")}
       </button>
-      <input ref={input} type="file" accept="image/*" capture="user" hidden onChange={(e) => pick(e.target.files?.[0])} />
+      {picking && (
+        <Sheet label={url ? t("photoChange") : t("photoAdd")} onClose={() => setPicking(false)}>
+          <h3>{url ? t("photoChange") : t("photoAdd")}</h3>
+          <p className="mut small">{t("photoWhy")}</p>
+          <PhotoButtons native={nativeCamera()} has={false} busy={busy} onNative={openNative} onFile={(f) => pick(f)} labels={{ camera: t("photoCamera"), gallery: t("photoGallery") }} />
+          <button type="button" className="cta sec" onClick={() => setPicking(false)}>
+            {t("close")}
+          </button>
+        </Sheet>
+      )}
     </span>
   );
 }

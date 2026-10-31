@@ -11,13 +11,20 @@ import { inTestArea, useTestAreas } from "@/lib/testArea";
 
 maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
 
-export type MapTanker = { id: string; lat: number; lng: number; type: "DW" | "WW" | "TE"; stale: boolean; blocked: boolean; label: string };
+/** `status` colours the marker by trip state instead of service type (the control-room wall screen). */
+export type MapTanker = { id: string; lat: number; lng: number; type: "DW" | "WW" | "TE"; stale: boolean; blocked: boolean; label: string; status?: "trip" | "idle" };
 export type MapOrder = { id: string; lat: number; lng: number; type: "DW" | "WW" | "TE"; label: string };
 /** Filling station or discharge site, drawn with its geofence radius. */
 export type MapSite = { id: string; lat: number; lng: number; kind: "fill" | "discharge"; radius_m: number; label: string };
 export type LatLng = { lat: number; lng: number };
+/** A service-zone outline (circle or box), drawn as a dashed line; test zones in amber. */
+export type MapZone = { id: string; test: boolean; geometry: GeoJSON.Polygon };
+/** A view to fit: applied when `key` changes, unless the operator has moved the map (`force` overrides and resumes auto-framing). */
+export type MapFrame = { key: string; bounds: [number, number, number, number]; force?: boolean };
 
-const TANKER_KEYS = ["DW", "WW", "TE", "stale", "blocked"] as const;
+const TANKER_KEYS = ["DW", "WW", "TE", "stale", "blocked", "trip", "idle"] as const;
+// Trip-state colours for the wall screen: on a trip amber, online and free green.
+const ICON_COLORS: Record<(typeof TANKER_KEYS)[number], string> = { ...MAP_COLORS, trip: "#F5A524", idle: "#34D399" };
 type TankerKey = (typeof TANKER_KEYS)[number];
 const GLIDE_MS = 4000; // tankers glide to each new fix instead of jumping
 const HEADING_MIN_M = 8;
@@ -28,8 +35,8 @@ const pt = (lng: number, lat: number, properties: Record<string, unknown>): GeoJ
 /** Map icons, drawn from the shared SVG glyphs at 2× (tankers, heading arrows, delivery points, sites). */
 async function loadIcons(m: maplibregl.Map) {
   const jobs: [string, string][] = [
-    ...TANKER_KEYS.map((k): [string, string] => [`tkr-${k}`, TANKER_ICON_SVG(MAP_COLORS[k])]),
-    ...TANKER_KEYS.map((k): [string, string] => [`hdg-${k}`, HEADING_ICON_SVG(MAP_COLORS[k])]),
+    ...TANKER_KEYS.map((k): [string, string] => [`tkr-${k}`, TANKER_ICON_SVG(ICON_COLORS[k])]),
+    ...TANKER_KEYS.map((k): [string, string] => [`hdg-${k}`, HEADING_ICON_SVG(ICON_COLORS[k])]),
     ...(["DW", "WW", "TE"] as const).map((k): [string, string] => [`ord-${k}`, ORDER_ICON_SVG(MAP_COLORS[k])]),
     ["site-fill", SITE_ICON_SVG("fill")],
     ["site-discharge", SITE_ICON_SVG("discharge")],
@@ -54,12 +61,18 @@ type Props = {
   alerts?: LatLng[];
   onSelect?: (kind: "tanker" | "order", id: string) => void;
   theme?: MapTheme;
+  zones?: MapZone[];
+  /** When set, the caller frames the map (the built-in auto-framing is off). */
+  frame?: MapFrame | null;
+  /** Larger markers and plate labels from further out (a wall display). Read once, at mount. */
+  big?: boolean;
 };
 
 const NO_SITES: MapSite[] = [];
 const NO_RINGS: LatLng[] = [];
+const NO_ZONES: MapZone[] = [];
 
-export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail = null, selectedId = null, alerts = NO_RINGS, onSelect, theme = "dark" }: Props) {
+export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail = null, selectedId = null, alerts = NO_RINGS, onSelect, theme = "dark", zones = NO_ZONES, frame = null, big = false }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const ready = useRef(false);
@@ -67,7 +80,8 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
   const framedAreas = useRef(0); // number of test-zone outlines the current framing knew about
   const userMoved = useRef(false); // the operator panned or zoomed: stop auto-framing
   const onSel = useRef(onSelect);
-  const data = useRef({ tankers, orders, sites, trail, selectedId, alerts });
+  const data = useRef({ tankers, orders, sites, trail, selectedId, alerts, zones, frame });
+  const framedKey = useRef<string | null>(null);
   const applyRef = useRef<() => void>(() => undefined);
   const framedTrail = useRef<LatLng[] | null>(null);
   const panned = useRef<string | null>(null); // last selected tanker the view moved to
@@ -84,7 +98,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
   const langRef = useRef(lang);
   useEffect(() => {
     onSel.current = onSelect;
-    data.current = { tankers, orders, sites, trail, selectedId, alerts };
+    data.current = { tankers, orders, sites, trail, selectedId, alerts, zones, frame };
     areas.current = testAreas;
     langRef.current = lang;
   });
@@ -119,7 +133,14 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
       }
       if (!map.current) return; // unmounted while the icons loaded
       const casing = theme === "dark" ? "#04161c" : "#ffffff";
-      for (const id of ["geofences", "sites", "trail", "rings", "orders", "tankers"]) m.addSource(`nama-${id}`, { type: "geojson", data: fc([]) });
+      for (const id of ["zones", "geofences", "sites", "trail", "rings", "orders", "tankers"]) m.addSource(`nama-${id}`, { type: "geojson", data: fc([]) });
+      m.addLayer({ id: "nama-zones", type: "fill", source: "nama-zones", paint: { "fill-color": ["case", ["get", "test"], "#F5A524", MAP_COLORS.accent], "fill-opacity": 0.04 } });
+      m.addLayer({
+        id: "nama-zones-line",
+        type: "line",
+        source: "nama-zones",
+        paint: { "line-color": ["case", ["get", "test"], "#F5A524", MAP_COLORS.accent], "line-width": big ? 2 : 1.2, "line-opacity": 0.6, "line-dasharray": [4, 3] },
+      });
       m.addLayer({ id: "nama-geofences", type: "fill", source: "nama-geofences", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.1 } });
       m.addLayer({ id: "nama-geofences-line", type: "line", source: "nama-geofences", paint: { "line-color": ["get", "color"], "line-width": 1.4, "line-opacity": 0.75, "line-dasharray": [3, 2] } });
       m.addLayer({ id: "nama-trail-casing", type: "line", source: "nama-trail", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": casing, "line-width": 7, "line-opacity": 0.9 } });
@@ -159,6 +180,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
           "icon-rotate": ["get", "hdg"],
           "icon-rotation-alignment": "map",
           "icon-offset": [0, -22],
+          "icon-size": big ? 1.6 : 1,
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
         },
@@ -169,12 +191,13 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
         source: "nama-tankers",
         layout: {
           "icon-image": ["concat", "tkr-", ["get", "key"]],
+          "icon-size": big ? 1.6 : 1,
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
-          "text-field": ["step", ["zoom"], "", 11.5, ["get", "plate"]],
+          "text-field": ["step", ["zoom"], "", big ? 9 : 11.5, ["get", "plate"]],
           "text-font": ["Noto Sans Bold"],
-          "text-size": 11,
-          "text-offset": [0, 1.75],
+          "text-size": big ? 15 : 11,
+          "text-offset": [0, big ? 2.2 : 1.75],
           "text-anchor": "top",
           "text-optional": true,
         },
@@ -237,7 +260,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
         fc(
           tankers.map((t) => {
             const p = shown.current.get(t.id) ?? t;
-            const key: TankerKey = t.blocked ? "blocked" : t.stale ? "stale" : t.type;
+            const key: TankerKey = t.blocked ? "blocked" : t.stale ? "stale" : (t.status ?? t.type);
             const hdg = heading.current.get(t.id);
             return pt(p.lng, p.lat, { id: t.id, label: tagged(t, t.label), plate: t.label.split(" · ")[0], stale: t.stale, key, sel: t.id === selectedId, ...(hdg != null ? { hdg } : {}) });
           }),
@@ -248,7 +271,8 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
     const apply = () => {
       const m = map.current;
       if (!m || !ready.current) return;
-      const { tankers, orders, sites, trail, alerts } = data.current;
+      const { tankers, orders, sites, trail, alerts, zones, frame } = data.current;
+      (m.getSource("nama-zones") as maplibregl.GeoJSONSource).setData(fc(zones.map((z) => ({ type: "Feature", geometry: z.geometry, properties: { id: z.id, test: z.test } }))));
       (m.getSource("nama-geofences") as maplibregl.GeoJSONSource).setData(
         fc(sites.map((s) => ({ type: "Feature", geometry: circlePolygon(s.lat, s.lng, s.radius_m), properties: { color: s.kind === "fill" ? MAP_COLORS.DW : MAP_COLORS.WW } }))),
       );
@@ -315,6 +339,18 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
         }
       }
       if (!selectedId) panned.current = null;
+      // The caller frames the view (wall screen): fit when the frame changes, unless the operator moved the map.
+      if (frame) {
+        if (framedKey.current !== frame.key) {
+          framedKey.current = frame.key;
+          if (frame.force) userMoved.current = false;
+          if (!userMoved.current) {
+            const [w, s, e, n] = frame.bounds;
+            m.fitBounds([[w, s], [e, n]], { padding: big ? 120 : 80, maxZoom: 13, duration: 1200 });
+          }
+        }
+        return;
+      }
       // Frame everything whenever a new tanker or order appears (not on every GPS move),
       // until the operator takes over the view.
       const pts = [...tankers, ...orders];
@@ -338,7 +374,7 @@ export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail 
     };
     applyRef.current = apply;
     apply();
-  }, [tankers, orders, sites, trail, selectedId, alerts, testAreas]);
+  }, [tankers, orders, sites, trail, selectedId, alerts, testAreas, zones, frame, big]);
 
   return <div ref={box} className={`mapfill nm ${theme}`} />;
 }

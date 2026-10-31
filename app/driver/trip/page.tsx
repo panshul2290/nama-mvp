@@ -487,7 +487,7 @@ function Trip() {
       {calling && (
         <Sheet label={t("callSheetT")} onClose={() => setCalling(null)}>
           <h3>{calling === "contact" ? loc?.contact_name || t("deliveryContact") : job!.customer?.full_name || t("customer")}</h3>
-          <p className="mut small">{t("callMasked")}</p>
+          <p className="mut small">{calling === "contact" ? t("callMaskedContact", { name: loc?.contact_name || t("deliveryContact") }) : t("callMasked")}</p>
           <div className="banner" role="status">
             {t("callConnecting")}
           </div>

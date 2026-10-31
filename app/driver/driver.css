@@ -161,3 +161,7 @@
 .d-collect.paid { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
 .d-collect.compact { padding: 6px 10px; margin: 6px 0; border-width: 1px; }
 .d-collect.compact b { font-size: 14px; }
+/* Profile photo (0040): avatar with its Add / Change link under it; the picker opens in a sheet. */
+.d-avatar { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
+.d-avatar .av.photo { overflow: hidden; padding: 0; }
+.d-avatar .av.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }

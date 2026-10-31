@@ -1,0 +1,38 @@
+// English / Arabic for the control-room wall screen (/nws/wall) and its button on Live operations.
+import type { Dict } from "@/lib/i18n";
+import { withCommon } from "@/components/portal/dict";
+
+export const WALL: Dict = withCommon({
+  open: { en: "Open wall screen", ar: "فتح شاشة العرض" },
+  openTip: { en: "Opens the live GPS map in a new window for the control-room screen", ar: "يفتح خريطة التتبع المباشر في نافذة جديدة لشاشة غرفة التحكم" },
+  title: { en: "Live fleet — control room", ar: "الأسطول المباشر — غرفة التحكم" },
+  full: { en: "Full screen (F)", ar: "ملء الشاشة (F)" },
+  exitFull: { en: "Exit full screen (F)", ar: "الخروج من ملء الشاشة (F)" },
+  recentre: { en: "Re-centre", ar: "إعادة التوسيط" },
+  omanTime: { en: "Oman time", ar: "توقيت عُمان" },
+  kOnline: { en: "Online", ar: "متصل" },
+  kTrip: { en: "On a trip", ar: "في رحلة" },
+  kIdle: { en: "Idle", ar: "متاح" },
+  kOffline: { en: "Offline", ar: "غير متصل" },
+  kNoPermit: { en: "No valid permit", ar: "دون تصريح ساري" },
+  kOrders: { en: "Open orders", ar: "الطلبات المفتوحة" },
+  kAlerts: { en: "Open alerts", ar: "التنبيهات المفتوحة" },
+  kStale: { en: "No recent GPS", ar: "دون موقع حديث" },
+  sos: { en: "SOS — driver needs help", ar: "استغاثة — سائق يحتاج المساعدة" },
+  sosN: { en: "{n} open SOS", ar: "{n} استغاثة مفتوحة" },
+  noAlerts: { en: "No high-severity alerts open", ar: "لا توجد تنبيهات عالية الخطورة مفتوحة" },
+  live: { en: "Live", ar: "مباشر" },
+  lost: { en: "Connection lost — reconnecting…", ar: "انقطع الاتصال — جارٍ إعادة الاتصال…" },
+  updated: { en: "Updated {ago}", ar: "آخر تحديث {ago}" },
+  signedOut: { en: "Signed out", ar: "تم تسجيل الخروج" },
+  signedOutB: { en: "The session on this screen has ended. Sign in again to resume the live map.", ar: "انتهت الجلسة على هذه الشاشة. سجّل الدخول مجدداً لاستئناف الخريطة المباشرة." },
+  signIn: { en: "Sign in again", ar: "تسجيل الدخول مجدداً" },
+  allOman: { en: "All of Oman", ar: "كل عُمان" },
+  testOn: { en: "Includes the test zone", ar: "تشمل منطقة الاختبار" },
+  lTrip: { en: "On a trip", ar: "في رحلة" },
+  lIdle: { en: "Online, free", ar: "متصل ومتاح" },
+  lStale: { en: "No recent GPS", ar: "دون موقع حديث" },
+  lBlocked: { en: "Suspended / no permit", ar: "موقوف / دون تصريح" },
+  lOrder: { en: "Delivery point", ar: "نقطة التوصيل" },
+  tip: { en: "F full screen · R re-centre · ?zone= ?rotate=60 ?test=1", ar: "F ملء الشاشة · R إعادة التوسيط · ?zone= ?rotate=60 ?test=1" },
+});

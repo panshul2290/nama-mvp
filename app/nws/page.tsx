@@ -1,6 +1,7 @@
 "use client";
 
 import { FixQuality } from "@/components/nws/FixQuality";
+import { alertMessage } from "@/components/nws/alertText";
 import "./ops.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,6 +11,7 @@ import { FleetMap } from "@/components/nws/FleetMap";
 import type { LatLng, MapSite } from "@/components/nws/FleetMapView";
 import { permitSummary, type Permit } from "@/components/nws/fleetData";
 import { OPS } from "@/components/nws/i18n/ops";
+import { WALL } from "@/components/nws/i18n/wall";
 import { maskPhone, one, orderSla, SEV_LABEL, SEV_TONE, useNow, useRealtime, useRpc } from "@/components/nws/ops";
 import { PenaltyDialog } from "@/components/nws/PenaltyDialog";
 import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
@@ -66,6 +68,13 @@ export default function LiveOperations() {
   const { can, toast } = useStaff();
   const t = useT(OPS);
   const tr = t; // where `t` is a tanker or a timer below
+  const tw = useT(WALL);
+  // The control-room wall screen in its own window. Opened with an opener so the browser copies
+  // this tab's session flags (a "don't keep me signed in" session would otherwise end there), then cut loose.
+  const openWall = () => {
+    const w = window.open("/nws/wall", "nama-wall");
+    if (w) w.opener = null;
+  };
   const f = useFmt();
   const { lang } = useLang();
   const rpc = useRpc();
@@ -321,7 +330,7 @@ export default function LiveOperations() {
             return (
               <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
                 {tk && <bdi dir="ltr">{tk.plate}</bdi>}
-                <span>{a.message}</span>
+                <span>{alertMessage(a.message, lang)}</span>
                 <time className="mut">{f.ago(a.created_at, now)}</time>
                 {a.lat != null && a.lng != null && (
                   <bdi dir="ltr" className="mut">
@@ -383,6 +392,10 @@ export default function LiveOperations() {
               )}
             </div>
           )}
+          <button type="button" className="btn sm wall-open" title={tw("openTip")} onClick={openWall}>
+            <Icon name="map" />
+            {tw("open")}
+          </button>
           <Link href="/nws/settings/emergency" className={`em ${emergency?.on ? "on" : ""}`}>
             <i />
             {emergency?.on ? t("emActive") : t("emMode")}
@@ -499,7 +512,7 @@ export default function LiveOperations() {
                       <div className="d">
                         <span className={`st ${SEV_TONE[a.severity]} ptag`}>{label("sev", a.severity, lang, SEV_LABEL[a.severity])}</span> {tk ? <bdi dir="ltr">{tk.plate}</bdi> : null}
                         {tk ? " · " : ""}
-                        {a.message}
+                        {alertMessage(a.message, lang)}
                         {a.state !== "open" ? ` — ${alertState(a.state)}` : ""}
                       </div>
                     </div>
@@ -537,7 +550,7 @@ export default function LiveOperations() {
                     <b>
                       {alertType(alert.type)} · {alertState(alert.state)}
                     </b>
-                    <span>{alert.message}</span>
+                    <span>{alertMessage(alert.message, lang)}</span>
                     {alert.action_note && <span>{t("noteX", { note: alert.action_note })}</span>}
                   </div>
                 )}

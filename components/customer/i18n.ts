@@ -279,6 +279,8 @@ export const CX: Dict = {
   st_payfail: { en: "Payment failed", ar: "فشل الدفع" },
   tl_req: { en: "Requested", ar: "تم الطلب" },
   tl_asg2: { en: "Assigned", ar: "التعيين" },
+  tl_sched: { en: "Scheduled", ar: "مجدول" },
+  tl_finding: { en: "Finding a tanker", ar: "جارٍ البحث" },
   tl_fill2: { en: "Filled", ar: "التعبئة" },
   tl_arr2: { en: "Arrived", ar: "الوصول" },
   tl_del: { en: "Delivered", ar: "تم التوصيل" },

@@ -10,10 +10,12 @@ import type { Profile, Role } from "@/lib/types";
 // sign-in. Each sign-in admits only its own kind of account, so a mismatch here is an edge
 // case (the role changed later): that app is signed out and its sign-in says which app to
 // use. RLS still guards every query on its own.
-export function useProfile(expected?: Role) {
+// `stay` keeps the page on screen when the session ends (the NWS wall screen shows its own
+// "signed out" panel instead of leaving for the sign-in page).
+export function useProfile(expected?: Role, stay = false) {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
-  useSessionEnd(expected ? `/login?app=${appFor(expected)}` : "/login");
+  useSessionEnd(expected ? `/login?app=${appFor(expected)}` : "/login", !stay);
 
   useEffect(() => {
     let cancelled = false;

@@ -29,8 +29,9 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
 ];
 
 export default function NwsLayout({ children }: { children: React.ReactNode }) {
-  const profile = useProfile("nws_staff");
   const path = usePathname();
+  const wall = path === "/nws/wall";
+  const profile = useProfile("nws_staff", wall);
   const router = useRouter();
   const { lang, dir } = useLang();
   const t = useT(PORTAL);
@@ -40,6 +41,16 @@ export default function NwsLayout({ children }: { children: React.ReactNode }) {
     await signOutApp("nws");
     router.replace("/login?app=nws");
   }
+
+  // The control-room wall screen fills the window: no sidebar.
+  if (wall)
+    return (
+      <StaffProvider staff={profile as Staff}>
+        <div className="nws wall-host" dir={dir} lang={lang}>
+          <RoleGate>{children}</RoleGate>
+        </div>
+      </StaffProvider>
+    );
 
   return (
     <StaffProvider staff={profile as Staff}>

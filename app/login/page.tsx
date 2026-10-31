@@ -50,6 +50,11 @@ const SIGNUP: Record<AppKey, [string, string] | null> = {
 // applies.
 function Login() {
   const params = useSearchParams();
+  // ?next= returns to a page of the same app after signing in (e.g. the NWS wall screen).
+  const returnTo = (app: string, home: string) => {
+    const next = params.get("next");
+    return next && next.startsWith(`/${app}/`) && !next.includes("//") && !next.includes("..") ? next : home;
+  };
   const app = asApp(params.get("app"));
   const router = useRouter();
   const t = useT(AUTH);
@@ -103,7 +108,7 @@ function Login() {
       return setWrong(res.wrong);
     }
     rememberSession(keep, res.app);
-    router.replace(res.home);
+    router.replace(returnTo(res.app, res.home));
   }
 
   function switchMode() {
@@ -138,7 +143,7 @@ function Login() {
       return setWrong(res.wrong);
     }
     rememberSession(keep, res.app);
-    router.replace(res.home);
+    router.replace(returnTo(res.app, res.home));
   }
 
   // Email accounts get a reset link; everyone else resets by SMS code on /login/reset.
