@@ -9,7 +9,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useCustomer } from "@/components/CustomerContext";
 import { useDeliveryWindows, usePaymentMethods, useProperties } from "@/components/customer/hooks";
 import { useCx } from "@/components/customer/i18n";
-import { gal } from "@/components/customer/fmt";
+import { ddate, gal } from "@/components/customer/fmt";
 import { windowsFromRows } from "@/components/customer/slots";
 import { BackButton, Loading } from "@/components/Shell";
 import { useToast } from "@/components/useToast";
@@ -37,7 +37,7 @@ export default function RecurringPage() {
 
 function Recurring() {
   const profile = useCustomer();
-  const { t, n } = useCx();
+  const { t, n, lang } = useCx();
   const params = useSearchParams();
   const toast = useToast();
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -98,14 +98,14 @@ function Recurring() {
               <span className={`st ${p.status === "active" ? "ok" : p.status === "paused" ? "warn" : ""}`}>{t(`rcs_${p.status}`)}</span>
             </div>
             <p className="mut small" style={{ margin: "4px 0" }}>
-              {t(p.service_type)} · {gal(p.gallons, "en")} · {p.area}
+              {t(p.service_type)} · {gal(p.gallons, lang)} · {p.area}
             </p>
             <p className="small" style={{ margin: "4px 0" }}>
               {t(p.unit === "weeks" ? "recurEveryW" : "recurEveryD", { n: n(p.every_n) })} · <bdi dir="ltr">{p.window_from.slice(0, 5)}–{p.window_to.slice(0, 5)}</bdi>
             </p>
             {next_on && p.status !== "ended" && (
               <p className="small" style={{ margin: "4px 0" }}>
-                {t("recurNext", { d: next_on })}
+                {t("recurNext", { d: ddate(next_on, lang) })}
                 {next_state === "notified" ? ` · ${t("recurNotified")}` : ""}
                 {next_order && (
                   <>
@@ -293,7 +293,7 @@ function PlanForm({ userId, onDone, onCancel }: { userId: string; onDone: () => 
         {busy ? t("saving") : t("recurCreate")}
       </button>
       <button className="cta sec" onClick={onCancel}>
-        {t("cancel")}
+        {t("notNow")}
       </button>
     </div>
   );

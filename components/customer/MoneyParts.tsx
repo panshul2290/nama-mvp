@@ -50,7 +50,7 @@ export function PaymentCard({ order }: { order: Order }) {
   if (!pay || order.billing === "account" || pay.status === "on_account") return null;
   const at = pay.confirmed_at ?? pay.captured_at ?? pay.created_at;
   const how =
-    pay.method === "wallet"
+    pay.method === "wallet" || (pay.method === "wallet_card" && !(Number(pay.card_amount) > 0))
       ? t("payByWallet")
       : pay.method === "omannet"
         ? t("payByOmannet")

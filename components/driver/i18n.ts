@@ -125,7 +125,7 @@ export const DICT: Dict = {
   tier_bronze: { en: "Bronze", ar: "برونزي" },
   tier_silver: { en: "Silver", ar: "فضي" },
   tier_gold: { en: "Gold", ar: "ذهبي" },
-  tierStats: { en: "Last 30 days: {jobs} jobs · on time {ontime}% · rating {rating} · offers accepted {acc}%", ar: "آخر 30 يوماً: {jobs} مهمة · في الموعد {ontime}% · التقييم {rating} · العروض المقبولة {acc}%" },
+  tierStats: { en: "Last 30 days: {jobs} jobs · on time {ontime} · rating {rating} · offers accepted {acc}", ar: "آخر 30 يوماً: {jobs} مهمة · في الموعد {ontime} · التقييم {rating} · العروض المقبولة {acc}" },
   tierNext: { en: "For {tier}:", ar: "للوصول إلى {tier}:" },
   tierNeed_jobs_30d: { en: "Completed jobs: {have} of {need}", ar: "المهام المكتملة: {have} من {need}" },
   tierNeed_on_time_pct: { en: "On time: {have}% (need {need}%)", ar: "في الموعد: {have}% (المطلوب {need}%)" },

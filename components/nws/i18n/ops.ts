@@ -75,6 +75,14 @@ export const OPS: Dict = withCommon({
   "at_Overspeed": { en: "Overspeed", ar: "تجاوز السرعة" },
   "at_Fill mismatch": { en: "Fill mismatch", ar: "عدم تطابق التعبئة" },
   "at_Permit expiring": { en: "Permit expiring", ar: "تصريح على وشك الانتهاء" },
+  "at_IVMS signal lost": { en: "IVMS signal lost", ar: "فقدان إشارة جهاز التتبع (IVMS)" },
+  "at_Overcharge reported": { en: "Overcharge reported", ar: "بلاغ عن طلب مبلغ إضافي" },
+  "at_SOS": { en: "SOS", ar: "استغاثة" },
+  "at_Speeding": { en: "Speeding", ar: "تجاوز السرعة" },
+  "at_Off-premise / outside service area": { en: "Off-premise / outside service area", ar: "خارج الموقع / خارج منطقة الخدمة" },
+  "at_Collection outside designated area": { en: "Collection outside designated area", ar: "سحب من خارج المنطقة المحددة" },
+  "at_Filling outside designated station": { en: "Filling outside designated station", ar: "تعبئة خارج المحطة المحددة" },
+  "at_Idle with load": { en: "Idle with load", ar: "توقف والصهريج محمّل" },
 
   // Tanker card
   selectHint: { en: "Select a tanker on the map or an alert.", ar: "اختر صهريجاً على الخريطة أو تنبيهاً." },

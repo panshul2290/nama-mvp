@@ -179,10 +179,16 @@ function SiteDialog({ site, onClose, onSave }: { site: Site; onClose: () => void
         <div className="fld">
           <label htmlFor="cs-w">{t("chWilayat")}</label>
           <select id="cs-w" className="in" value={v.wilayat_code} onChange={(e) => set({ wilayat_code: e.target.value })}>
-            {(ref?.wilayats ?? []).map((w) => (
-              <option key={w.code} value={w.code}>
-                {f.ar ? w.name_ar : w.name}
-              </option>
+            {(ref?.governorates ?? []).map((g) => (
+              <optgroup key={g.code} label={f.ar ? g.name_ar : g.name}>
+                {(ref?.wilayats ?? [])
+                  .filter((w) => w.governorate_code === g.code)
+                  .map((w) => (
+                    <option key={w.code} value={w.code}>
+                      {f.ar ? w.name_ar : w.name}
+                    </option>
+                  ))}
+              </optgroup>
             ))}
           </select>
         </div>

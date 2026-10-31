@@ -34,7 +34,7 @@ export function FallbackCard({
   return (
     <div className={`fallback ${compact ? "compact" : ""}`} role="note">
       <b>{reason === "helpS" ? t("helpT") : t("fbT")}</b>
-      <small>{t(reason)}</small>
+      <small>{t(reason === "helpS" && !s.whatsapp ? "helpSCall" : reason)}</small>
       <div className="fb-btns">
         <a className="btn sm pri" href={telLink(s.call_centre)}>
           <Icon name="phone" />

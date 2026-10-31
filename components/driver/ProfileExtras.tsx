@@ -82,6 +82,7 @@ export function TierCard() {
   }, []);
   if (!tier) return null;
   const v = (x: number | null | undefined) => (x == null ? "—" : f.d(String(x)));
+  const pct = (x: number | null | undefined) => (x == null ? "—" : `${f.d(String(x))}%`);
   return (
     <div className="card" id="tier">
       <div className="row">
@@ -91,9 +92,9 @@ export function TierCard() {
       <p className="small">
         {t("tierStats", {
           jobs: v(tier.stats.jobs_30d),
-          ontime: v(tier.stats.on_time_pct),
+          ontime: pct(tier.stats.on_time_pct),
           rating: v(tier.stats.rating),
-          acc: v(tier.stats.acceptance_pct),
+          acc: pct(tier.stats.acceptance_pct),
         })}
       </p>
       {tier.next ? (

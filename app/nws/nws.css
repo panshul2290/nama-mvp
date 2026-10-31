@@ -131,6 +131,8 @@
 .nws .dlg > div { width: min(480px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
 .nws .dlg h3 { margin: 0 0 6px; font-size: 18px; }
 .nws .dlg p { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
+.nws .dlg > div.wide { display: block; width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow-y: auto; }
+.nws .d-block { display: block; }
 .nws .toastn { position: fixed; inset-inline-end: 24px; bottom: 24px; z-index: 60; background: var(--ink); color: var(--bg); border-radius: 12px; padding: 10px 16px; font-weight: 700; font-size: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); }
 .nws .toastn.bad { background: var(--bad); color: #fff; }
 .nws .mapfill { position: absolute; inset: 0; }

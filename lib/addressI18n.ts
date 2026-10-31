@@ -38,6 +38,7 @@ export const ADDR: Dict = {
   fbNum: { en: "Call centre: {n}", ar: "مركز الاتصال: {n}" },
   helpT: { en: "Need help?", ar: "تحتاج مساعدة؟" },
   helpS: { en: "Book or ask about an order with the Nama call centre or on WhatsApp.", ar: "احجز أو استفسر عن طلب عبر مركز اتصال نماء أو واتساب." },
+  helpSCall: { en: "Book or ask about an order with the Nama call centre.", ar: "احجز أو استفسر عن طلب عبر مركز اتصال نماء." },
   outageNote: { en: "Card payments are temporarily unavailable. Your order goes ahead and you'll pay later: nothing is charged now.", ar: "الدفع بالبطاقة غير متاح مؤقتاً. سيستمر طلبك وستدفع لاحقاً: لن يُخصم أي مبلغ الآن." },
   payLater: { en: "Pay later: card payments were down when you ordered. Nama will ask you to pay; your delivery goes ahead.", ar: "الدفع لاحقاً: كان الدفع بالبطاقة متوقفاً عند طلبك. ستطلب منك نماء الدفع، وسيتم التوصيل كالمعتاد." },
   payFollow: { en: "Your payment is being followed up by Nama. Your delivery goes ahead.", ar: "تتابع نماء عملية الدفع. سيتم التوصيل كالمعتاد." },
