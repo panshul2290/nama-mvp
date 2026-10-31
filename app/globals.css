@@ -34,7 +34,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .page { position: relative; min-height: 100dvh; padding: 16px 24px 24px; overflow: hidden; }
 .page > * { position: relative; }
 .ph-bar { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; flex-wrap: wrap; color: var(--pageInk); }
-.ph-bar .nl { color: #fff; --nama-mark: #fff; }
+.ph-bar .nl { color: #fff; --nama-mark: #E62A36; }
 .ph-bar .nl svg { width: 82px; height: auto; display: block; }
 .ph-bar .dv { width: 1px; height: 38px; background: currentColor; opacity: 0.22; }
 .ph-bar b { display: block; font-size: 16px; }

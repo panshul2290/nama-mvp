@@ -9,7 +9,7 @@
 .nws a { color: inherit; }
 .nws nav.side { background: var(--nav); color: var(--navInk); display: flex; flex-direction: column; padding: 20px 14px; gap: 2px; overflow-y: auto; border-inline-end: 1px solid var(--line); }
 .nws .brand { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 0 6px 18px; color: var(--navOn); }
-.nws .brand .nl { color: #fff; --nama-mark: #fff; }
+.nws .brand .nl { color: #fff; --nama-mark: #E62A36; }
 .nws .brand .nl svg { width: 86px; height: auto; display: block; }
 .nws .brand b { display: block; font-size: 15px; line-height: 1.25; }
 .nws .brand small { display: block; color: var(--navInk); font-size: 12px; }
@@ -20,7 +20,7 @@
 .nws .navbtn.on .ic { color: #17b3c6; opacity: 1; }
 .nws .navfoot { margin-top: auto; padding: 16px 6px 0; font-size: 12.5px; }
 .nws .navfoot b { display: block; color: var(--navOn); font-size: 13px; }
-.nws .navfoot button { display: block; width: 100%; background: none; border: 1px solid rgba(255, 255, 255, 0.2); color: var(--navInk); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; margin-top: 10px; text-align: start; }
+.nws .navfoot > button { display: block; width: 100%; background: none; border: 1px solid rgba(255, 255, 255, 0.2); color: var(--navInk); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; margin-top: 10px; text-align: start; }
 .nws main { overflow-y: auto; padding: 28px 36px 56px; min-width: 0; position: relative; }
 
 .nws .vhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 20px; }
@@ -165,7 +165,7 @@
   .nws .navbtn { flex: none; white-space: nowrap; }
   .nws .navfoot { display: flex; align-items: center; gap: 8px; margin: 0; margin-inline-start: auto; padding: 0 4px; white-space: nowrap; }
   .nws .navfoot b { display: none; }
-  .nws .navfoot button { margin: 0; width: auto; white-space: nowrap; }
+  .nws .navfoot > button { margin: 0; width: auto; white-space: nowrap; }
   .nws main { padding: 16px 14px 32px; }
   .nws .vhead h1 { font-size: 22px; }
   .nws .drawer { width: 100vw; padding: 16px; }

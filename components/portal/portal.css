@@ -3,7 +3,7 @@
 .nws.portal { display: block; overflow-y: auto; }
 .nws.portal .pwrap { max-width: 1320px; margin: 0 auto; padding: 24px 36px 64px; }
 .nws.portal .wtop { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-bottom: 18px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
-.nws.portal .wtop .nl { color: #fff; --nama-mark: #fff; }
+.nws.portal .wtop .nl { color: #fff; --nama-mark: #E62A36; }
 .nws.portal .wtop .nl svg { width: 82px; height: auto; display: block; }
 .nws.portal .wtop .dv { width: 1px; height: 38px; background: currentColor; opacity: 0.22; }
 .nws.portal .wtop b { display: block; font-size: 16px; }

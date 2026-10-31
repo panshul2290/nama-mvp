@@ -11,7 +11,7 @@
 .si-grid { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 56px; padding: 56px 96px 36px; min-height: 100%; }
 .si-left { display: flex; flex-direction: column; min-height: calc(100dvh - 92px); }
 .si-brand { display: flex; align-items: center; gap: 20px; }
-.si-brand .nl { color: #fff; --nama-mark: #fff; }
+.si-brand .nl { color: #fff; --nama-mark: #E62A36; }
 .si-brand .nl svg { width: 132px; height: auto; display: block; }
 .si-brand .dv { width: 1px; height: 52px; background: rgba(232, 241, 242, 0.22); }
 .si-brand b { display: block; font-size: 21px; }
