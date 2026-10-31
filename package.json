@@ -22,6 +22,8 @@
     "verify:seed": "tsx scripts/verify-demo-seed.mts",
     "build:apk:customer": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs customer",
     "build:apk:driver": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs driver",
+    "build:apk:customer:demo": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs customer --demo",
+    "build:apk:driver:demo": "node --env-file-if-exists=.env.local scripts/build-mobile.mjs driver --demo",
     "import:register": "tsx --env-file-if-exists=.env.local scripts/import-register.mjs"
   },
   "dependencies": {

@@ -9,6 +9,9 @@
   "ios": {
     "contentInset": "automatic"
   },
+  "server": {
+    "allowNavigation": []
+  },
   "plugins": {
     "PushNotifications": {
       "presentationOptions": [

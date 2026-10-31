@@ -19,3 +19,15 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Release builds run R8 (minifyEnabled, security review SEC-10). Capacitor's own consumer rules
+# keep its plugins; also keep the WebView JavaScript bridge and the Capacitor/plugin classes the
+# bridge reaches by reflection.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keep class com.getcapacitor.** { *; }
+-keep class com.capacitorjs.plugins.** { *; }
+-keep class com.equimaps.capacitor_background_geolocation.** { *; }
+-keep class io.ionic.libs.** { *; }
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod

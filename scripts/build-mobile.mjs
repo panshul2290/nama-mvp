@@ -5,7 +5,10 @@
 //      native files a regenerated project would lose (permissions, Info.plist, AppDelegate);
 //   3. Android: runs Gradle (assembleDebug) and copies the APK to dist/.
 //      iOS: stops after `cap sync ios`; build and sign on a Mac (docs/ios.md).
-// Usage: node --env-file-if-exists=.env.local scripts/build-mobile.mjs customer|driver [android|ios] [--no-gradle] [--no-export]
+// Usage: node --env-file-if-exists=.env.local scripts/build-mobile.mjs customer|driver [android|ios] [--demo] [--no-gradle] [--no-export]
+// --demo (or BUILD_DEMO=1) builds the demo app with the driver's trip simulator (npm run
+// build:apk:<app>:demo). Without it the build is non-demo: NEXT_PUBLIC_DEMO_MODE from
+// .env.local (meant for the web dev server) is ignored, so no simulated GPS ships by accident.
 // Android needs JAVA_HOME (JDK 21) and ANDROID_HOME, or the defaults under ~/android-build.
 // Push (docs/push.md): Firebase's google-services.json in mobile/<app>/ enables Android push;
 // NAMA_IOS_PUSH=1 once the iOS app has the Push Notifications capability.
@@ -21,10 +24,12 @@ const APPS = {
 const app = process.argv[2];
 const platform = process.argv.includes("ios") ? "ios" : "android";
 if (!APPS[app]) {
-  console.error("Usage: build-mobile.mjs customer|driver [android|ios] [--no-gradle] [--no-export]");
+  console.error("Usage: build-mobile.mjs customer|driver [android|ios] [--demo] [--no-gradle] [--no-export]");
   process.exit(1);
 }
 const gradle = !process.argv.includes("--no-gradle");
+const demo = process.argv.includes("--demo") || process.env.BUILD_DEMO === "1";
+console.log(demo ? "(demo) DEMO build: the driver's Simulate trip is on — not for release" : "(release) non-demo build: no trip simulator");
 // --no-export: reuse mobile/<app>/www from the last build (e.g. to generate the iOS project on Windows).
 const exportWeb = !process.argv.includes("--no-export");
 const root = resolve(".");
@@ -117,7 +122,7 @@ export default nextConfig;
 const env = {
   ...process.env,
   NEXT_PUBLIC_APP_TARGET: app,
-  NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE ?? "true",
+  NEXT_PUBLIC_DEMO_MODE: demo ? "true" : "false",
   // lib/push.ts registers for push only where it is configured; elsewhere it logs once and skips
   // (register() without Firebase would crash the Android app).
   NEXT_PUBLIC_PUSH_ANDROID: String(pushAndroid),
@@ -146,6 +151,8 @@ writeFileSync(
       // (@capacitor-community/background-geolocation README).
       android: { allowMixedContent: false, captureInput: true, ...(app === "driver" ? { useLegacyBridge: true } : {}) },
       ios: { contentInset: "automatic" },
+      // The WebView stays on the bundled app (its own origin); links elsewhere open outside it.
+      server: { allowNavigation: [] },
       plugins: { PushNotifications: { presentationOptions: ["badge", "sound", "alert"] } },
     },
     null,
@@ -170,6 +177,8 @@ if (platform === "ios") {
 if (!existsSync(join(project, "android"))) run("npx", ["cap", "add", "android"], { cwd: project });
 run("npx", ["cap", "sync", "android"], { cwd: project });
 patchManifest(join(project, "android", "app", "src", "main", "AndroidManifest.xml"));
+patchCordovaConfig(join(project, "android", "app", "src", "main", "res", "xml", "config.xml"));
+patchGradle(join(project, "android", "app", "build.gradle"));
 // app/build.gradle applies the google-services plugin only when this file is there.
 const gsTarget = join(project, "android", "app", "google-services.json");
 if (pushAndroid) cpSync(googleServices, gsTarget);
@@ -186,7 +195,7 @@ if (gradle) {
   });
   mkdirSync("dist", { recursive: true });
   const apk = join(project, "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk");
-  const outApk = join("dist", `nama-${app}-debug.apk`);
+  const outApk = join("dist", `nama-${app}${demo ? "-demo" : ""}-debug.apk`);
   cpSync(apk, outApk);
   console.log(`\nAPK: ${resolve(outApk)}`);
 }
@@ -295,6 +304,8 @@ function patchIos(dir) {
 // Re-applied on every build, so a regenerated android/ project keeps them.
 function patchManifest(path) {
   let xml = readFileSync(path, "utf8");
+  // No adb/cloud backup of the WebView storage (the Supabase refresh token) or app data.
+  xml = xml.replace('android:allowBackup="true"', 'android:allowBackup="false"');
   const perms = [
     "android.permission.INTERNET",
     "android.permission.ACCESS_COARSE_LOCATION",
@@ -321,4 +332,22 @@ function patchManifest(path) {
     );
   }
   writeFileSync(path, xml);
+}
+
+// cap sync writes the Cordova whitelist as <access origin="*" />. Capacitor itself doesn't use it
+// and the app has no Cordova plugins; narrow it to the app's own origin anyway.
+function patchCordovaConfig(path) {
+  if (!existsSync(path)) return;
+  const xml = readFileSync(path, "utf8").replace('<access origin="*" />', '<access origin="https://localhost" />');
+  writeFileSync(path, xml);
+}
+
+// Release builds are shrunk and obfuscated with R8 (Capacitor ships consumer keep rules for its
+// bridge and plugins; proguard-rules.pro adds the JavaScript interface). Debug APKs are unaffected.
+function patchGradle(path) {
+  const gradleText = readFileSync(path, "utf8").replace(
+    /minifyEnabled false(\r?\n\s*)proguardFiles getDefaultProguardFile\('proguard-android\.txt'\)/,
+    "minifyEnabled true$1proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')",
+  );
+  writeFileSync(path, gradleText);
 }
