@@ -5,7 +5,7 @@
 // counts with the Oman clock, a visual (silent) SOS banner and a rolling ticker of high alerts.
 // Built to run unattended: realtime reconnects, a periodic refetch backs it up, and an ended
 // session shows a sign-in panel instead of a blank map.
-// URL: /nws/wall[?zone=<zone id or name>][&rotate=<seconds>][&test=1]
+// URL: /nws/wall[?zone=<zone id or name>][&rotate=<seconds>][&test=1][&theme=dark]
 import "./wall.css";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -17,7 +17,7 @@ import type { MapFrame, MapOrder, MapSite, MapTanker, MapZone } from "@/componen
 import { permitSummary, type Permit } from "@/components/nws/fleetData";
 import { OPS } from "@/components/nws/i18n/ops";
 import { WALL } from "@/components/nws/i18n/wall";
-import { one, useNow } from "@/components/nws/ops";
+import { one, SOS_BANNER_MS, useNow } from "@/components/nws/ops";
 import { useFmt } from "@/components/portal/i18n";
 import { STALE_AFTER_S } from "@/lib/gps";
 import { orderNo } from "@/lib/format";
@@ -84,6 +84,8 @@ function Wall() {
   const params = useSearchParams();
   const zoneParam = params.get("zone");
   const withTest = params.get("test") === "1";
+  // Street map like the customer and driver apps; ?theme=dark for a darkened room.
+  const theme = params.get("theme") === "dark" ? "dark" : "light";
   const rotateS = Number(params.get("rotate")) > 0 ? Math.max(15, Number(params.get("rotate"))) : 0;
   const testAreas = useTestAreas();
 
@@ -292,10 +294,12 @@ function Wall() {
   });
   const noPermit = board.tk.filter((x) => !permitSummary(x, now, lang).valid);
   const openOrders = board.ord.length;
+  // Open SOS on the map all along; the flashing band only for SOS_BANNER_MS, until acknowledged.
   const sos = board.al.filter((a) => a.type === "SOS");
+  const sosBand = sos.filter((a) => a.state === "open" && now - Date.parse(a.created_at) < SOS_BANNER_MS);
   const high = board.al.filter((a) => a.severity === "high" && a.type !== "SOS").slice(0, 12);
 
-  const sosTankers = useMemo(() => new Set(sos.map((a) => a.tanker_id)), [sos]);
+  const sosTankers = useMemo(() => new Set(board.al.filter((a) => a.type === "SOS").map((a) => a.tanker_id)), [board.al]);
   // GPS age only moves the "stale" flag, so it's worked out per fetch (not per clock tick) to keep the map still.
   const mapTankers = useMemo<MapTanker[]>(() => {
     const flagged = new Set(board.al.map((a) => a.tanker_id));
@@ -344,9 +348,9 @@ function Wall() {
   const alertType = (ty: string) => (OPS[`at_${ty}`] ? to(`at_${ty}`) : ty);
 
   return (
-    <div className={`wall ${idle ? "idle" : ""} ${sos.length ? "has-sos" : ""}`}>
+    <div className={`wall ${theme} ${idle ? "idle" : ""} ${sosBand.length ? "has-sos" : ""}`}>
       <div className="wall-map">
-        <FleetMap tankers={mapTankers} orders={mapOrders} sites={sites} alerts={rings} zones={mapZones} frame={frame} big theme="dark" />
+        <FleetMap tankers={mapTankers} orders={mapOrders} sites={sites} alerts={rings} zones={mapZones} frame={frame} big theme={theme} key={theme} />
       </div>
 
       <header className="wall-top">
@@ -378,12 +382,12 @@ function Wall() {
         </div>
       </header>
 
-      {sos.length > 0 && (
+      {sosBand.length > 0 && (
         <div className="wall-sos" role="alert">
           <b>
-            <Icon name="alert" /> {t("sos")} · {t("sosN", { n: f.n(sos.length) })}
+            <Icon name="alert" /> {t("sos")} · {t("sosN", { n: f.n(sosBand.length) })}
           </b>
-          {sos.slice(0, 3).map((a) => (
+          {sosBand.slice(0, 3).map((a) => (
             <span key={a.id}>
               {tkOf(a.tanker_id) && <bdi dir="ltr">{tkOf(a.tanker_id)!.plate}</bdi>} {alertMessage(a.message, lang)} · {f.ago(a.created_at, now)}
             </span>

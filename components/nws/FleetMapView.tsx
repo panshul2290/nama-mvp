@@ -72,7 +72,7 @@ const NO_SITES: MapSite[] = [];
 const NO_RINGS: LatLng[] = [];
 const NO_ZONES: MapZone[] = [];
 
-export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail = null, selectedId = null, alerts = NO_RINGS, onSelect, theme = "dark", zones = NO_ZONES, frame = null, big = false }: Props) {
+export default function FleetMapView({ tankers, orders, sites = NO_SITES, trail = null, selectedId = null, alerts = NO_RINGS, onSelect, theme = "light", zones = NO_ZONES, frame = null, big = false }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const ready = useRef(false);

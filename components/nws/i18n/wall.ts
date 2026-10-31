@@ -34,5 +34,5 @@ export const WALL: Dict = withCommon({
   lStale: { en: "No recent GPS", ar: "دون موقع حديث" },
   lBlocked: { en: "Suspended / no permit", ar: "موقوف / دون تصريح" },
   lOrder: { en: "Delivery point", ar: "نقطة التوصيل" },
-  tip: { en: "F full screen · R re-centre · ?zone= ?rotate=60 ?test=1", ar: "F ملء الشاشة · R إعادة التوسيط · ?zone= ?rotate=60 ?test=1" },
+  tip: { en: "F full screen · R re-centre · ?zone= ?rotate=60 ?test=1 ?theme=dark", ar: "F ملء الشاشة · R إعادة التوسيط · ?zone= ?rotate=60 ?test=1 ?theme=dark" },
 });

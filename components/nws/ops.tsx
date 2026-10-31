@@ -21,6 +21,8 @@ import { useFocusTrap } from "@/lib/useFocusTrap";
 
 export const HOUR = 3_600_000;
 export const DAY = 86_400_000;
+/** How long an unacknowledged driver SOS stays in the Live operations banner and the wall screen's SOS band. */
+export const SOS_BANNER_MS = HOUR;
 
 /** One-relation embeds come back as an object or a one-element array depending on the FK; normalise. */
 export const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));

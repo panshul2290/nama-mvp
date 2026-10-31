@@ -12,7 +12,7 @@ import type { LatLng, MapSite } from "@/components/nws/FleetMapView";
 import { permitSummary, type Permit } from "@/components/nws/fleetData";
 import { OPS } from "@/components/nws/i18n/ops";
 import { WALL } from "@/components/nws/i18n/wall";
-import { maskPhone, one, orderSla, SEV_LABEL, SEV_TONE, useNow, useRealtime, useRpc } from "@/components/nws/ops";
+import { maskPhone, one, orderSla, SEV_LABEL, SEV_TONE, SOS_BANNER_MS, useNow, useRealtime, useRpc } from "@/components/nws/ops";
 import { PenaltyDialog } from "@/components/nws/PenaltyDialog";
 import { ReasonDialog, useStaff } from "@/components/nws/StaffContext";
 import { statusText } from "@/components/OrderBits";
@@ -213,6 +213,9 @@ export default function LiveOperations() {
   // Driver SOS (0042): unresolved ones on top of the feed and in a banner; highlighted, no sound.
   const sosOpen = useMemo(() => alerts.filter((a) => a.type === "SOS" && a.state !== "resolved"), [alerts]);
   const sosFirst = useMemo(() => [...sosOpen, ...alerts.filter((a) => !(a.type === "SOS" && a.state !== "resolved"))], [alerts, sosOpen]);
+  // The banner shows an SOS for SOS_BANNER_MS after it is raised, until someone acknowledges it;
+  // after that it stays at the top of the alerts feed until resolved.
+  const sosBanner = sosOpen.filter((a) => a.state === "open" && now - Date.parse(a.created_at) < SOS_BANNER_MS);
   // KPIs leave out tankers and alerts in an active test zone (0020); the map and feed still show them.
   const inTest = (p: { lat: number | null; lng: number | null }) => p.lat != null && p.lng != null && inTestArea({ lat: p.lat, lng: p.lng }, testAreas);
   const allOnline = tankers.filter((t) => t.is_online);
@@ -322,10 +325,10 @@ export default function LiveOperations() {
 
   return (
     <>
-      {sosOpen.length > 0 && (
+      {sosBanner.length > 0 && (
         <div className="banner badb sos-row" role="alert">
-          <b>{t("sosBanner", { n: f.n(sosOpen.length) })}</b>
-          {sosOpen.map((a) => {
+          <b>{t("sosBanner", { n: f.n(sosBanner.length) })}</b>
+          {sosBanner.map((a) => {
             const tk = tankers.find((x) => x.id === a.tanker_id);
             return (
               <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
