@@ -15,6 +15,7 @@ import { BackButton, Loading } from "@/components/Shell";
 import { LangToggle, useLang, useT } from "@/lib/i18n";
 import { isEmail, normalizePhone } from "@/lib/phone";
 import { scratchClient, supabase } from "@/lib/supabase/client";
+import { MIN_PASSWORD, passwordTooShort } from "@/lib/password";
 import type { Role } from "@/lib/types";
 
 type SignupRole = "customer" | "driver" | "owner" | "business";
@@ -93,6 +94,7 @@ function Signup() {
     if (!e164) return setError(t("badMobile"));
     const mail = email.trim().toLowerCase();
     if (mail && !isEmail(mail)) return setError(t("badEmail"));
+    if (passwordTooShort(password)) return setError(t("pwShort"));
     if (role === "customer" && !desktop && addId && idNo.trim()) {
       const bad = idNoProblem(idType, idNo);
       if (bad) return setError(ti(bad));
@@ -166,8 +168,9 @@ function Signup() {
               <div className="si-f">
                 <label htmlFor="suW">{t("password")}</label>
                 <div className="in">
-                  <input id="suW" type="password" required minLength={6} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <input id="suW" type="password" required minLength={MIN_PASSWORD} aria-describedby="suWh" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
+                <small id="suWh">{t("pwRule")}</small>
               </div>
               <button className="si-btn" disabled={busy}>
                 {busy ? t("creating") : t(copy.button)}
@@ -236,7 +239,8 @@ function Signup() {
         </div>
         <div className="fld">
           <label htmlFor="password">{t("password")}</label>
-          <input id="password" type="password" required minLength={6} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input id="password" type="password" required minLength={MIN_PASSWORD} aria-describedby="pwHint" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <small id="pwHint" style={{ display: "block", marginTop: 4, fontSize: 12, color: "var(--muted)" }}>{t("pwRule")}</small>
         </div>
         {role === "customer" && (
           <>

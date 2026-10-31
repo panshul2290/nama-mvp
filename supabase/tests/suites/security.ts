@@ -3,6 +3,20 @@
 // (SEC-05), optional staff MFA (SEC-06) and limits / second approval on staff wallet credits
 // (SEC-08). Checks that change global settings run only on the fresh PGlite build.
 import type { Reporter, Target } from "../lib/harness";
+
+type Q = <R = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<R[]>;
+/** Run sql as a user whose JWT carries the given assurance level (aal1 / aal2), rolled back. */
+async function asAal(t: Target, uid: string, aal: string, sql: string, params: unknown[] = []): Promise<{ rows?: Record<string, unknown>[]; error?: string }> {
+  return t.adminRollback(async (q: Q) => {
+    await q("select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claims', $2, true)", [uid, JSON.stringify({ sub: uid, role: "authenticated", aal })]);
+    await q("set local role authenticated");
+    try {
+      return { rows: await q(sql, params) };
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+  });
+}
 import { makeWorld } from "../lib/world";
 
 type Row = Record<string, unknown>;
@@ -253,6 +267,39 @@ export async function securitySuite(t: Target, r: Reporter) {
       await r.denies("one staff member's credits are capped per day (approved ones aside)", () => one(CA.id, "select * from staff_customer_action($1, 'goodwill', 'TEST third', 2)", [GC.id]), "staff_daily_credit_cap");
     } finally {
       await t.admin("update app_settings set value = $1 where key = 'STAFF_CREDIT_LIMITS'", [lim.value]);
+    }
+  }
+
+  // ===========================================================================================
+  r.start("SECMFA optional staff two-step sign-in, required with STAFF_MFA on (0052)");
+  const AD = await mkStaff("sec-ad", "admin");
+  const [mfa0] = await t.admin<{ value: string }>("select value from app_settings where key = 'STAFF_MFA'");
+  r.check("STAFF_MFA is off by default (optional for the demo)", mfa0?.value === "off", mfa0);
+  const st1 = await asAal(t, OPS.id, "aal1", "select public.is_staff() as s");
+  r.check("with it off, a password-only (aal1) staff session works as before", st1.rows?.[0]?.s === true, st1);
+  const on1 = await asAal(t, AD.id, "aal1", "select staff_set_staff_mfa(true, 'TEST')");
+  r.check("an admin can't switch it on from a password-only session (would lock themselves out)", on1.error?.includes("mfa_required") === true, on1);
+  const notAdmin = await asAal(t, OPS.id, "aal2", "select staff_set_staff_mfa(true, 'TEST')");
+  r.check("only admins switch it", notAdmin.error?.includes("forbidden_for_role") === true, notAdmin);
+  if (!t.fresh) {
+    for (const n of ["aal1 staff session has no staff rights", "aal2 staff session keeps them", "status for the portal", "admin with aal2 switches it (audited)"]) r.skip(n, FRESH_ONLY);
+  } else {
+    try {
+      const on2 = await asAal(t, AD.id, "aal2", "select staff_set_staff_mfa(true, 'TEST turn on')");
+      await t.admin("update app_settings set value = 'on' where key = 'STAFF_MFA'");
+      r.check("an admin who passed the second step switches it on", on2.rows?.[0]?.staff_set_staff_mfa === "on", on2);
+      const a1 = await asAal(t, OPS.id, "aal1", "select public.is_staff() as s, (select count(*)::int from audit_log) as n");
+      const rpc1 = await asAal(t, OPS.id, "aal1", "select * from staff_adoption_claims()");
+      r.check("with it on, a password-only staff session has no staff rights (no RLS reads, no RPCs)", a1.rows?.[0]?.s === false && a1.rows?.[0]?.n === 0 && rpc1.error?.includes("not_staff") === true, { a1, rpc1 });
+      const a2 = await asAal(t, OPS.id, "aal2", "select public.is_staff() as s, (select count(*)::int from audit_log) as n");
+      r.check("…a session that passed the second step keeps them", a2.rows?.[0]?.s === true && Number(a2.rows?.[0]?.n) > 0, a2);
+      const stt = await asAal(t, OPS.id, "aal1", "select staff_mfa_status() as s");
+      const s = stt.rows?.[0]?.s as Record<string, unknown> | undefined;
+      r.check("the portal can tell the session needs the second step", s?.required === true && s?.aal === "aal1" && s?.staff === true, stt);
+      const off = await asAal(t, AD.id, "aal2", "select staff_set_staff_mfa(false, 'TEST turn off')");
+      r.check("…and an admin at aal2 can switch it off again (audited)", off.rows?.[0]?.staff_set_staff_mfa === "off", off);
+    } finally {
+      await t.admin("update app_settings set value = 'off' where key = 'STAFF_MFA'");
     }
   }
 }

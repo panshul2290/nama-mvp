@@ -7,6 +7,7 @@ import { Icon, NamaLogo, type IconName } from "@/components/icons";
 import { canSee } from "@/components/nws/access";
 import { RoleGate } from "@/components/nws/RoleGate";
 import { StaffProvider, type Staff } from "@/components/nws/StaffContext";
+import { StaffMfaGate } from "@/components/nws/StaffMfa";
 import { Loading } from "@/components/Shell";
 import { useProfile } from "@/components/useProfile";
 import { PORTAL } from "@/components/portal/dict";
@@ -45,14 +46,17 @@ export default function NwsLayout({ children }: { children: React.ReactNode }) {
   // The control-room wall screen fills the window: no sidebar.
   if (wall)
     return (
-      <StaffProvider staff={profile as Staff}>
-        <div className="nws wall-host" dir={dir} lang={lang}>
-          <RoleGate>{children}</RoleGate>
-        </div>
-      </StaffProvider>
+      <StaffMfaGate>
+        <StaffProvider staff={profile as Staff}>
+          <div className="nws wall-host" dir={dir} lang={lang}>
+            <RoleGate>{children}</RoleGate>
+          </div>
+        </StaffProvider>
+      </StaffMfaGate>
     );
 
   return (
+    <StaffMfaGate>
     <StaffProvider staff={profile as Staff}>
       <div className="nws" dir={dir} lang={lang}>
         <nav className="side" aria-label={t("nwsPortal")}>
@@ -76,6 +80,9 @@ export default function NwsLayout({ children }: { children: React.ReactNode }) {
             <b>{profile.full_name || t("nwsStaff")}</b>
             {staffRoleLabel(profile.staff_role, lang)}
             <PortalLangToggle className="side-lang" />
+            <Link href="/nws/security" className="navsec" aria-current={path === "/nws/security" ? "page" : undefined}>
+              {t("twoStep")}
+            </Link>
             <button onClick={signOut}>{t("signOut")}</button>
           </div>
         </nav>
@@ -84,5 +91,6 @@ export default function NwsLayout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </StaffProvider>
+    </StaffMfaGate>
   );
 }

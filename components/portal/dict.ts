@@ -10,6 +10,7 @@ export const PORTAL: Dict = {
   allApps: { en: "All apps", ar: "جميع التطبيقات" },
   allAppsTitle: { en: "All apps on this site", ar: "جميع التطبيقات على هذا الموقع" },
   signOut: { en: "Sign out", ar: "تسجيل الخروج" },
+  twoStep: { en: "Two-step sign-in", ar: "الدخول بخطوتين" },
   sections: { en: "{app} sections", ar: "أقسام {app}" },
   language: { en: "Language", ar: "اللغة" },
   loading: { en: "Loading…", ar: "جارٍ التحميل…" },

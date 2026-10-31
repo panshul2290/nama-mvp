@@ -184,3 +184,7 @@
 .nws .navfoot .plang { display: flex; margin-top: 12px; }
 .nws .navfoot .plang button { flex: 1; padding: 6px 4px; }
 @media (max-width: 900px) { .nws .navfoot .plang { margin-top: 0; } }
+/* Two-step sign-in link above Sign out (0052). */
+.nws .navfoot > .navsec { display: block; margin-top: 10px; color: var(--navInk); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.nws .navfoot > .navsec[aria-current="page"] { color: var(--navOn); }
+@media (max-width: 900px) { .nws .navfoot > .navsec { margin: 0; white-space: nowrap; } }

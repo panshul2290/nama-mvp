@@ -12,6 +12,7 @@ import { Loading } from "@/components/Shell";
 import { LangToggle, useLang, useT } from "@/lib/i18n";
 import { formatPhone, parseContact } from "@/lib/phone";
 import { supabase } from "@/lib/supabase/client";
+import { MIN_PASSWORD, passwordTooShort } from "@/lib/password";
 import type { Role } from "@/lib/types";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 
@@ -87,6 +88,7 @@ function Reset() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    if (passwordTooShort(password)) return setError(t("pwShort"));
     if (password !== confirm) return setError(t("pwMismatch"));
     setBusy(true);
     setError(null);
@@ -146,11 +148,11 @@ function Reset() {
               {error && <div className="banner badb">{error}</div>}
               <div className="fld">
                 <label htmlFor="pw">{t("newPw")}</label>
-                <input id="pw" type="password" required minLength={6} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <input id="pw" type="password" required minLength={MIN_PASSWORD} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
               <div className="fld">
                 <label htmlFor="pw2">{t("newPw2")}</label>
-                <input id="pw2" type="password" required minLength={6} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+                <input id="pw2" type="password" required minLength={MIN_PASSWORD} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
               </div>
               <button className="cta" disabled={busy}>
                 {busy ? t("saving") : t("savePw")}
