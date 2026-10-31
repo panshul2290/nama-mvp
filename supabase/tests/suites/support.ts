@@ -92,8 +92,9 @@ export async function supportSuite(t: Target, r: Reporter) {
   const [notify0] = await t.admin<{ value: string }>("select value from app_settings where key = 'NOTIFY'");
   const cfg0 = JSON.parse(notify0.value);
   r.check("NOTIFY has separate transactional and marketing sender IDs", cfg0.sender_ids?.transactional && cfg0.sender_ids?.marketing && cfg0.sender_ids.transactional !== cfg0.sender_ids.marketing, cfg0.sender_ids);
-  // Quiet hours around the current Muscat hour, so the check works at any time of day.
-  await t.admin("update app_settings set value = $1 where key = 'NOTIFY'", [JSON.stringify({ ...cfg0, quiet_hours: { start: h, end: (h + 1) % 24 } })]);
+  // Quiet hours around the current Muscat hour, so the check works at any time of day (two hours
+  // long: ending at the next full hour would be under a minute away when the run starts at hh:59).
+  await t.admin("update app_settings set value = $1 where key = 'NOTIFY'", [JSON.stringify({ ...cfg0, quiet_hours: { start: h, end: (h + 2) % 24 } })]);
   try {
     await t.admin("select public.notify($1, 'promo_offer', null, $2::jsonb)", [w.C1.id, vars]);
     const [mk] = await events(w.C1.id, "promo_offer");

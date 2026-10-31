@@ -284,18 +284,21 @@ export async function moneySuite(t: Target, r: Reporter) {
   // ===========================================================================================
   r.start("PAY payments confirm at once, pending shown, live (0036)");
   const bal = async (uid: string) => Number((await one<{ b: string }>(uid, "select my_wallet() ->> 'balance' as b")).b);
+  // Balances are 3-decimal OMR; compare in baisa so b0 + 10 never trips over binary floats
+  // (b0 depends on earlier orders, e.g. 1.2x peak prices between 18:00 and 20:00 Muscat).
+  const same = (a: unknown, b: number) => Math.round(Number(a) * 1000) === Math.round(b * 1000);
   const b0 = await bal(C1.id);
   const top = await one<{ w: Row }>(C1.id, "select wallet_topup(10, 'card', '4417') as w");
   const tu = top.w.topup as Row;
-  r.check("a top-up is confirmed at once, with a reference", tu?.status === "confirmed" && /^SIM-TU-\d+$/.test(String(tu.gateway_ref)) && Number(top.w.balance) === b0 + 10, top.w);
+  r.check("a top-up is confirmed at once, with a reference", tu?.status === "confirmed" && /^SIM-TU-\d+$/.test(String(tu.gateway_ref)) && same(top.w.balance, b0 + 10), top.w);
   const [memo] = await t.admin<{ memo: string }>("select memo from wallet_tx where id = $1", [tu.wallet_tx_id]);
   r.check("the wallet line names the top-up reference", memo?.memo.includes(`TU-${tu.topup_no}`) === true, memo);
   const pend = await one<{ w: Row }>(C1.id, "select wallet_topup(5, 'card', '0003') as w");
-  r.check("a gateway that answers later leaves the top-up pending, not yet in the balance", (pend.w.topup as Row).status === "pending" && Number(pend.w.balance) === b0 + 10, pend.w);
+  r.check("a gateway that answers later leaves the top-up pending, not yet in the balance", (pend.w.topup as Row).status === "pending" && same(pend.w.balance, b0 + 10), pend.w);
   await t.admin("update topups set created_at = now() - interval '1 minute' where id = $1", [(pend.w.topup as Row).id]);
   await t.admin("select confirm_simulated_payments()");
   const [tu2] = await t.as<{ status: string; confirmed_at: string | null }>(C1.id, "select status, confirmed_at from topups where id = $1", [(pend.w.topup as Row).id]);
-  r.check("the gateway's answer confirms it and credits the wallet", tu2?.status === "confirmed" && tu2.confirmed_at != null && (await bal(C1.id)) === b0 + 15, { tu2, b: await bal(C1.id) });
+  r.check("the gateway's answer confirms it and credits the wallet", tu2?.status === "confirmed" && tu2.confirmed_at != null && same(await bal(C1.id), b0 + 15), { tu2, b: await bal(C1.id) });
   await r.denies("a declined card is refused", () => one(C1.id, "select wallet_topup(5, 'card', '0002')"), "payment_failed");
   r.check("another customer sees none of these top-ups", (await t.as(C2.id, "select 1 from topups where customer_id = $1", [C1.id])).length === 0);
   await r.denies("customers can't write top-ups", () => t.as(C1.id, "update topups set status = 'confirmed'"), "permission denied");
